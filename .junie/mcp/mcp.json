@@ -1,0 +1,11 @@
+{
+    "mcpServers": {
+        "laravel-boost": {
+            "command": "/Users/virajkhatavkar/.config/herd-lite/bin/php",
+            "args": [
+                "/Users/virajkhatavkar/Sites/momoindiascreener-v3/artisan",
+                "boost:mcp"
+            ]
+        }
+    }
+}

@@ -1,0 +1,21 @@
+@import 'tailwindcss';
+
+@source '../../vendor/laravel/framework/src/Illuminate/Pagination/resources/views/*.blade.php';
+@source '../../storage/framework/views/*.php';
+
+@layer base {
+    *,
+    ::after,
+    ::before,
+    ::backdrop {
+        border-color: var(--color-gray-200, currentcolor);
+    }
+
+    input::file-selector-button {
+        all: revert;
+    }
+
+    input::file-selector-button {
+        margin: 2px 4px;
+    }
+}
