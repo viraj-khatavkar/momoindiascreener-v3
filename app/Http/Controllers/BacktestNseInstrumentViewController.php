@@ -23,7 +23,7 @@ class BacktestNseInstrumentViewController extends Controller
             'cons' => $this->generateCons($instrument),
             'priceHistory' => Inertia::defer(fn () => BacktestNseInstrumentPrice::query()
                 ->where('symbol', $symbol)
-                ->select('date', 'close_adjusted', 'ma_50', 'ma_200', 'ema_50', 'ema_200', 'price_to_earnings', 'marketcap', 'absolute_return_one_year', 'rsi_one_year')
+                ->select('date', 'open_adjusted', 'high_adjusted', 'low_adjusted', 'close_adjusted', 'volume_adjusted')
                 ->orderBy('date', 'asc')
                 ->get()
                 ->toArray(), 'chart'),

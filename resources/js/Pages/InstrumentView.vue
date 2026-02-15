@@ -132,47 +132,120 @@
                         </button>
                     </div>
 
-                    <!-- Chart View Tabs -->
-                    <div class="inline-flex rounded-md border border-gray-300 bg-white">
-                        <button
-                            v-for="view in chartViews"
-                            :key="view.key"
-                            type="button"
-                            class="cursor-pointer px-3 py-1.5 text-sm font-medium first:rounded-l-md last:rounded-r-md"
-                            :class="
-                                selectedChartView === view.key
-                                    ? 'text-purple-600 font-bold'
-                                    : 'text-gray-700 hover:bg-gray-50'
-                            "
-                            @click="selectedChartView = view.key"
+                    <!-- Indicator Picker -->
+                    <Popover class="relative">
+                        <PopoverButton
+                            class="inline-flex cursor-pointer items-center gap-1.5 rounded-md border border-gray-300 bg-white px-3 py-1.5 text-sm font-medium text-gray-700 hover:bg-gray-50"
                         >
-                            {{ view.label }}
+                            Indicators
+                            <span
+                                v-if="activeIndicators.size > 0"
+                                class="inline-flex h-5 w-5 items-center justify-center rounded-full bg-purple-600 text-xs text-white"
+                            >
+                                {{ activeIndicators.size }}
+                            </span>
+                        </PopoverButton>
+                        <PopoverPanel
+                            class="absolute right-0 z-10 mt-2 w-64 rounded-lg border border-gray-200 bg-white p-3 shadow-lg"
+                        >
+                            <div class="mb-2 text-xs font-semibold uppercase tracking-wide text-gray-400">
+                                Overlays
+                            </div>
+                            <button
+                                v-for="ind in overlayIndicators"
+                                :key="ind.id"
+                                type="button"
+                                class="flex w-full cursor-pointer items-center gap-2 rounded px-2 py-1.5 text-left text-sm hover:bg-gray-50"
+                                @click="toggleIndicator(ind.id)"
+                            >
+                                <span
+                                    class="inline-block h-3 w-3 rounded-full border"
+                                    :style="{
+                                        backgroundColor: activeIndicators.has(ind.id)
+                                            ? ind.plots[0].color
+                                            : 'transparent',
+                                        borderColor: ind.plots[0].color,
+                                    }"
+                                />
+                                <span :class="activeIndicators.has(ind.id) ? 'font-medium text-gray-900' : 'text-gray-600'">
+                                    {{ ind.label }}
+                                </span>
+                            </button>
+                            <div
+                                v-if="paneIndicators.length > 0"
+                                class="mb-2 mt-3 text-xs font-semibold uppercase tracking-wide text-gray-400"
+                            >
+                                Pane
+                            </div>
+                            <button
+                                v-for="ind in paneIndicators"
+                                :key="ind.id"
+                                type="button"
+                                class="flex w-full cursor-pointer items-center gap-2 rounded px-2 py-1.5 text-left text-sm hover:bg-gray-50"
+                                @click="toggleIndicator(ind.id)"
+                            >
+                                <span
+                                    class="inline-block h-3 w-3 rounded-full border"
+                                    :style="{
+                                        backgroundColor: activeIndicators.has(ind.id)
+                                            ? ind.plots[0].color
+                                            : 'transparent',
+                                        borderColor: ind.plots[0].color,
+                                    }"
+                                />
+                                <span :class="activeIndicators.has(ind.id) ? 'font-medium text-gray-900' : 'text-gray-600'">
+                                    {{ ind.label }}
+                                </span>
+                            </button>
+                        </PopoverPanel>
+                    </Popover>
+                </div>
+
+                <!-- Active Indicator Pills -->
+                <div v-if="activeIndicators.size > 0" class="mt-3 flex flex-wrap items-center gap-2">
+                    <span class="text-xs font-medium text-gray-500">Active:</span>
+                    <span
+                        v-for="id in activeIndicators"
+                        :key="id"
+                        class="inline-flex items-center gap-1 rounded-full border border-gray-300 bg-white px-2.5 py-1 text-xs font-medium text-gray-700"
+                    >
+                        <span
+                            class="inline-block h-2 w-2 rounded-full"
+                            :style="{ backgroundColor: getIndicatorConfig(id)?.plots[0].color }"
+                        />
+                        {{ getIndicatorConfig(id)?.label }} {{ getIndicatorConfig(id) ? formatParamsLabel(getIndicatorConfig(id)!) : '' }}
+                        <button
+                            type="button"
+                            class="ml-0.5 cursor-pointer text-gray-400 hover:text-gray-600"
+                            @click="toggleIndicator(id)"
+                        >
+                            &times;
                         </button>
+                    </span>
+                </div>
+
+                <!-- Main Chart -->
+                <div class="relative mt-4 h-[400px]">
+                    <div ref="chartContainer" class="h-full" />
+                    <div
+                        v-if="legendItems.length > 0"
+                        class="pointer-events-none absolute left-2 top-2 z-10 flex flex-col gap-0.5 rounded bg-white/80 px-2 py-1 text-xs backdrop-blur-sm"
+                    >
+                        <div v-for="item in legendItems" :key="item.label" class="flex items-center gap-1.5">
+                            <span class="inline-block h-2 w-2 rounded-full" :style="{ backgroundColor: item.color }" />
+                            <span class="font-medium text-gray-700">{{ item.label }}:</span>
+                            <span class="text-gray-600">{{ item.value }}</span>
+                        </div>
                     </div>
                 </div>
 
-                <!-- Overlay Toggles (Price view only) -->
-                <div v-if="selectedChartView === 'price'" class="mt-3 flex flex-wrap items-center gap-2">
-                    <span class="text-xs font-medium text-gray-500">Overlays:</span>
-                    <button
-                        v-for="overlay in overlayOptions"
-                        :key="overlay.key"
-                        type="button"
-                        class="inline-flex cursor-pointer items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs font-medium"
-                        :class="
-                            overlays[overlay.key]
-                                ? 'border-transparent text-white'
-                                : 'border-gray-300 bg-white text-gray-600 hover:bg-gray-50'
-                        "
-                        :style="overlays[overlay.key] ? { backgroundColor: overlay.color } : {}"
-                        @click="overlays[overlay.key] = !overlays[overlay.key]"
-                    >
-                        {{ overlay.label }}
-                    </button>
-                </div>
-
-                <!-- Chart -->
-                <div ref="chartContainer" class="mt-4 h-[400px]" />
+                <!-- Pane Charts -->
+                <div
+                    v-for="id in activePaneIndicatorIds"
+                    :key="id"
+                    :ref="(el) => setPaneRef(id, el as HTMLDivElement | null)"
+                    class="mt-1 h-[150px]"
+                />
             </div>
         </Deferred>
 
@@ -407,32 +480,26 @@
 
 <script setup lang="ts">
 import { Deferred, Head } from '@inertiajs/vue3';
-import { computed, onUnmounted, ref, watch } from 'vue';
+import { Popover, PopoverButton, PopoverPanel } from '@headlessui/vue';
+import { computed, nextTick, onUnmounted, ref, watch } from 'vue';
 import {
     AreaSeries,
     ColorType,
     CrosshairMode,
+    HistogramSeries,
     LineSeries,
-    LineStyle,
     createChart,
 } from 'lightweight-charts';
-import type { IChartApi, ISeriesApi, SeriesType, Time } from 'lightweight-charts';
+import type { IChartApi, ISeriesApi, LineStyle, SeriesType, Time } from 'lightweight-charts';
 import { ArrowTopRightOnSquareIcon } from '@heroicons/vue/24/outline';
+import type { Bar } from 'oakscriptjs';
 import PageHeader from '@/Components/PageHeader.vue';
 import type { BacktestNseInstrumentViewResource } from '@/types/app/Resources/BacktestNseInstrumentViewResource';
-
-interface PriceHistoryRecord {
-    date: string;
-    close_adjusted: number;
-    ma_50: number | null;
-    ma_200: number | null;
-    ema_50: number | null;
-    ema_200: number | null;
-    price_to_earnings: number | null;
-    marketcap: number | null;
-    absolute_return_one_year: number | null;
-    rsi_one_year: number | null;
-}
+import type { PriceHistoryRecord } from '@/utils/chartDataConverter';
+import { pricesToBars } from '@/utils/chartDataConverter';
+import { computeIndicator } from '@/utils/indicatorCalculator';
+import { formatParamsLabel, getIndicatorConfig, getOverlayIndicators, getPaneIndicators } from '@/utils/indicatorRegistry';
+import type { IndicatorConfig } from '@/utils/indicatorRegistry';
 
 interface CorporateAction {
     date: string;
@@ -468,32 +535,29 @@ const timeRanges = [
 
 type TimeRangeKey = (typeof timeRanges)[number]['key'];
 
-const chartViews = [
-    { key: 'price', label: 'Price' },
-    { key: 'returns', label: '1Yr Returns' },
-    { key: 'rsi', label: 'RSI' },
-] as const;
-
-type ChartViewKey = (typeof chartViews)[number]['key'];
-
 const selectedTimeRange = ref<TimeRangeKey>('1y');
-const selectedChartView = ref<ChartViewKey>('price');
 
-const overlayOptions = [
-    { key: 'ma200' as const, label: '200 DMA', color: '#10b981', field: 'ma_200' as const, dash: 0 },
-    { key: 'ma50' as const, label: '50 DMA', color: '#f97316', field: 'ma_50' as const, dash: 0 },
-    { key: 'ema200' as const, label: '200 EMA', color: '#06b6d4', field: 'ema_200' as const, dash: 5 },
-    { key: 'ema50' as const, label: '50 EMA', color: '#f59e0b', field: 'ema_50' as const, dash: 5 },
-];
+// --- Indicator state ---
+const activeIndicators = ref<Set<string>>(new Set(['sma-200']));
+const overlayIndicators = getOverlayIndicators();
+const paneIndicators = getPaneIndicators();
 
-type OverlayKey = (typeof overlayOptions)[number]['key'];
+const activePaneIndicatorIds = computed(() =>
+    [...activeIndicators.value].filter((id) => {
+        const config = getIndicatorConfig(id);
+        return config?.category === 'pane';
+    }),
+);
 
-const overlays = ref<Record<OverlayKey, boolean>>({
-    ma200: true,
-    ma50: false,
-    ema200: false,
-    ema50: false,
-});
+function toggleIndicator(id: string): void {
+    const next = new Set(activeIndicators.value);
+    if (next.has(id)) {
+        next.delete(id);
+    } else {
+        next.add(id);
+    }
+    activeIndicators.value = next;
+}
 
 const periodStatsRows = computed(() => {
     const i = props.instrument;
@@ -511,138 +575,293 @@ function toDateString(iso: string): string {
     return iso.slice(0, 10);
 }
 
-// --- Lightweight Charts (plain variables, NOT refs) ---
+// --- Lightweight Charts ---
 const chartContainer = ref<HTMLDivElement>();
 let chart: IChartApi | null = null;
 let mainSeries: ISeriesApi<SeriesType> | null = null;
-const overlaySeriesMap = new Map<string, ISeriesApi<SeriesType>>();
+const overlaySeriesMap = new Map<string, ISeriesApi<SeriesType>[]>();
+const seriesMeta = new Map<ISeriesApi<SeriesType>, { label: string; color: string }>();
+const legendItems = ref<{ label: string; color: string; value: string }[]>([]);
+const paneCharts = new Map<string, { chart: IChartApi; series: ISeriesApi<SeriesType>[] }>();
+const paneRefs = new Map<string, HTMLDivElement>();
+let cachedBars: Bar[] | null = null;
+let isSyncing = false;
+
+const chartOptions = {
+    layout: {
+        background: { type: ColorType.Solid, color: '#f8fafc' },
+        textColor: '#6b7280',
+    },
+    grid: {
+        vertLines: { color: '#f1f5f9' },
+        horzLines: { color: '#f1f5f9' },
+    },
+    crosshair: {
+        mode: CrosshairMode.Magnet,
+    },
+    rightPriceScale: {
+        borderColor: '#e2e8f0',
+    },
+    timeScale: {
+        borderColor: '#e2e8f0',
+    },
+} as const;
+
+function setPaneRef(id: string, el: HTMLDivElement | null): void {
+    if (el) {
+        paneRefs.set(id, el);
+    } else {
+        paneRefs.delete(id);
+    }
+}
+
+function getBars(): Bar[] {
+    if (!cachedBars && props.priceHistory) {
+        cachedBars = pricesToBars(props.priceHistory);
+    }
+    return cachedBars ?? [];
+}
+
+function updateLegendDefaults(): void {
+    if (!props.priceHistory || props.priceHistory.length === 0) {
+        legendItems.value = [];
+        return;
+    }
+
+    const items: { label: string; color: string; value: string }[] = [];
+    const lastPrice = props.priceHistory[props.priceHistory.length - 1];
+    items.push({ label: 'Price', color: '#7c3aed', value: Number(lastPrice.close_adjusted).toFixed(2) });
+
+    for (const [, meta] of seriesMeta) {
+        items.push({ label: meta.label, color: meta.color, value: '-' });
+    }
+
+    legendItems.value = items;
+}
 
 function initChart(container: HTMLDivElement): void {
     chart = createChart(container, {
         autoSize: true,
-        layout: {
-            background: { type: ColorType.Solid, color: '#f8fafc' },
-            textColor: '#6b7280',
-        },
-        grid: {
-            vertLines: { color: '#f1f5f9' },
-            horzLines: { color: '#f1f5f9' },
-        },
-        crosshair: {
-            mode: CrosshairMode.Magnet,
-        },
-        rightPriceScale: {
-            borderColor: '#e2e8f0',
-        },
-        timeScale: {
-            borderColor: '#e2e8f0',
-        },
+        ...chartOptions,
     });
 
-    updateSeries();
+    chart.subscribeCrosshairMove((param) => {
+        if (!param.time || !param.seriesData.size) {
+            updateLegendDefaults();
+            return;
+        }
+
+        const items: { label: string; color: string; value: string }[] = [];
+
+        if (mainSeries) {
+            const data = param.seriesData.get(mainSeries) as { value?: number } | undefined;
+            if (data?.value !== undefined) {
+                items.push({ label: 'Price', color: '#7c3aed', value: data.value.toFixed(2) });
+            }
+        }
+
+        for (const [series, meta] of seriesMeta) {
+            const data = param.seriesData.get(series) as { value?: number } | undefined;
+            if (data?.value !== undefined) {
+                items.push({ label: meta.label, color: meta.color, value: data.value.toFixed(2) });
+            }
+        }
+
+        legendItems.value = items;
+    });
+
+    updateMainSeries();
+    syncIndicators();
     applyTimeRange();
+    updateLegendDefaults();
 }
 
-function updateSeries(): void {
+function updateMainSeries(): void {
     if (!chart || !props.priceHistory) {
         return;
     }
 
-    // Remove existing series
     if (mainSeries) {
         chart.removeSeries(mainSeries);
         mainSeries = null;
     }
-    for (const [, series] of overlaySeriesMap) {
-        chart.removeSeries(series);
-    }
-    overlaySeriesMap.clear();
 
-    const data = props.priceHistory;
-
-    if (selectedChartView.value === 'price') {
-        mainSeries = chart.addSeries(AreaSeries, {
-            lineColor: '#7c3aed',
-            topColor: 'rgba(124, 58, 237, 0.15)',
-            bottomColor: 'rgba(124, 58, 237, 0)',
-            lineWidth: 2,
-            lastValueVisible: false,
-            priceLineVisible: false,
-        });
-        mainSeries.setData(
-            data.map((p) => ({
-                time: toDateString(p.date) as Time,
-                value: Number(p.close_adjusted),
-            })),
-        );
-
-        addActiveOverlays();
-    } else {
-        const fieldMap: Record<string, keyof PriceHistoryRecord> = {
-            returns: 'absolute_return_one_year',
-            rsi: 'rsi_one_year',
-        };
-        const field = fieldMap[selectedChartView.value];
-
-        mainSeries = chart.addSeries(LineSeries, {
-            color: '#7c3aed',
-            lineWidth: 2,
-            lastValueVisible: false,
-            priceLineVisible: false,
-        });
-        mainSeries.setData(
-            data.map((p) => {
-                const val = p[field];
-                return val !== null
-                    ? { time: toDateString(p.date) as Time, value: Number(val) }
-                    : { time: toDateString(p.date) as Time };
-            }),
-        );
-    }
+    mainSeries = chart.addSeries(AreaSeries, {
+        lineColor: '#7c3aed',
+        topColor: 'rgba(124, 58, 237, 0.15)',
+        bottomColor: 'rgba(124, 58, 237, 0)',
+        lineWidth: 2,
+        lastValueVisible: false,
+        priceLineVisible: false,
+    });
+    mainSeries.setData(
+        props.priceHistory.map((p) => ({
+            time: toDateString(p.date) as Time,
+            value: Number(p.close_adjusted),
+        })),
+    );
 }
 
-function addActiveOverlays(): void {
-    if (!chart || !props.priceHistory) {
+function syncIndicators(): void {
+    if (!chart) {
         return;
     }
 
-    for (const overlay of overlayOptions) {
-        if (overlays.value[overlay.key] && !overlaySeriesMap.has(overlay.key)) {
+    const bars = getBars();
+    if (bars.length === 0) {
+        return;
+    }
+
+    const activeIds = activeIndicators.value;
+
+    // --- Overlays: remove stale, add new ---
+    for (const [id, seriesList] of overlaySeriesMap) {
+        if (!activeIds.has(id)) {
+            for (const s of seriesList) {
+                chart.removeSeries(s);
+                seriesMeta.delete(s);
+            }
+            overlaySeriesMap.delete(id);
+        }
+    }
+
+    for (const id of activeIds) {
+        const config = getIndicatorConfig(id);
+        if (!config || config.category !== 'overlay') {
+            continue;
+        }
+        if (overlaySeriesMap.has(id)) {
+            continue;
+        }
+
+        const computed = computeIndicator(bars, config);
+        const seriesList: ISeriesApi<SeriesType>[] = [];
+
+        for (let i = 0; i < config.plots.length; i++) {
+            const plotStyle = config.plots[i];
+            const plotData = computed.plots[i]?.data ?? [];
+
             const series = chart.addSeries(LineSeries, {
-                color: overlay.color,
-                lineWidth: 1,
-                lineStyle: overlay.dash > 0 ? LineStyle.Dashed : LineStyle.Solid,
+                color: plotStyle.color,
+                lineWidth: (plotStyle.lineWidth ?? 1) as 1 | 2 | 3 | 4,
+                lineStyle: plotStyle.lineStyle as LineStyle | undefined,
                 lastValueVisible: false,
                 priceLineVisible: false,
             });
-            series.setData(
-                props.priceHistory.map((p) => {
-                    const val = p[overlay.field];
-                    return val !== null
-                        ? { time: toDateString(p.date) as Time, value: Number(val) }
-                        : { time: toDateString(p.date) as Time };
-                }),
-            );
-            overlaySeriesMap.set(overlay.key, series);
+            series.setData(plotData);
+            seriesMeta.set(series, { label: plotStyle.label, color: plotStyle.color });
+            seriesList.push(series);
         }
+
+        overlaySeriesMap.set(id, seriesList);
+    }
+
+    // --- Pane indicators: remove stale, add new ---
+    for (const [id, pane] of paneCharts) {
+        if (!activeIds.has(id)) {
+            pane.chart.remove();
+            paneCharts.delete(id);
+        }
+    }
+
+    for (const id of activeIds) {
+        const config = getIndicatorConfig(id);
+        if (!config || config.category !== 'pane') {
+            continue;
+        }
+        if (paneCharts.has(id)) {
+            continue;
+        }
+
+        const el = paneRefs.get(id);
+        if (!el) {
+            continue;
+        }
+
+        createPaneChart(id, config, bars, el);
     }
 }
 
-function updateOverlays(): void {
-    if (!chart || !props.priceHistory) {
-        return;
-    }
+function createPaneChart(id: string, config: IndicatorConfig, bars: Bar[], container: HTMLDivElement): void {
+    const paneChart = createChart(container, {
+        autoSize: true,
+        ...chartOptions,
+        timeScale: {
+            ...chartOptions.timeScale,
+            visible: false,
+        },
+    });
 
-    // Remove overlays that were turned off
-    for (const [key, series] of overlaySeriesMap) {
-        if (!overlays.value[key as OverlayKey]) {
-            chart.removeSeries(series);
-            overlaySeriesMap.delete(key);
+    const computed = computeIndicator(bars, config);
+    const seriesList: ISeriesApi<SeriesType>[] = [];
+
+    for (let i = 0; i < config.plots.length; i++) {
+        const plotStyle = config.plots[i];
+        const plotData = computed.plots[i]?.data ?? [];
+
+        if (plotStyle.seriesKind === 'histogram') {
+            const series = paneChart.addSeries(HistogramSeries, {
+                color: plotStyle.color,
+                lastValueVisible: false,
+                priceLineVisible: false,
+            });
+            series.setData(plotData);
+            seriesList.push(series);
+        } else {
+            const series = paneChart.addSeries(LineSeries, {
+                color: plotStyle.color,
+                lineWidth: (plotStyle.lineWidth ?? 1) as 1 | 2 | 3 | 4,
+                lastValueVisible: false,
+                priceLineVisible: false,
+            });
+            series.setData(plotData);
+            seriesList.push(series);
         }
     }
 
-    // Add overlays that were turned on
-    addActiveOverlays();
+    paneCharts.set(id, { chart: paneChart, series: seriesList });
+
+    // Sync time scale from main chart
+    if (chart) {
+        const mainRange = chart.timeScale().getVisibleLogicalRange();
+        if (mainRange) {
+            paneChart.timeScale().setVisibleLogicalRange(mainRange);
+        }
+    }
+
+    // Subscribe pane to sync back
+    paneChart.timeScale().subscribeVisibleLogicalRangeChange((range) => {
+        if (isSyncing || !range) {
+            return;
+        }
+        isSyncing = true;
+        if (chart) {
+            chart.timeScale().setVisibleLogicalRange(range);
+        }
+        for (const [paneId, pane] of paneCharts) {
+            if (paneId !== id) {
+                pane.chart.timeScale().setVisibleLogicalRange(range);
+            }
+        }
+        isSyncing = false;
+    });
+}
+
+function setupMainTimeScaleSync(): void {
+    if (!chart) {
+        return;
+    }
+
+    chart.timeScale().subscribeVisibleLogicalRangeChange((range) => {
+        if (isSyncing || !range) {
+            return;
+        }
+        isSyncing = true;
+        for (const [, pane] of paneCharts) {
+            pane.chart.timeScale().setVisibleLogicalRange(range);
+        }
+        isSyncing = false;
+    });
 }
 
 function applyTimeRange(): void {
@@ -655,6 +874,9 @@ function applyTimeRange(): void {
 
     if (!range || range.days === Infinity) {
         chart.timeScale().fitContent();
+        for (const [, pane] of paneCharts) {
+            pane.chart.timeScale().fitContent();
+        }
         return;
     }
 
@@ -662,7 +884,6 @@ function applyTimeRange(): void {
     const from = toDateString(data[startIndex].date);
     const to = toDateString(data[data.length - 1].date);
 
-    // LC needs a frame to index data before setVisibleRange works
     requestAnimationFrame(() => {
         if (!chart) {
             return;
@@ -688,11 +909,18 @@ function formatDate(dateString: string): string {
 }
 
 function destroyChart(): void {
+    for (const [, pane] of paneCharts) {
+        pane.chart.remove();
+    }
+    paneCharts.clear();
+
     if (chart) {
         chart.remove();
         chart = null;
         mainSeries = null;
         overlaySeriesMap.clear();
+        seriesMeta.clear();
+        legendItems.value = [];
     }
 }
 
@@ -704,24 +932,34 @@ watch(chartContainer, (el) => {
     }
     if (!chart) {
         initChart(el);
+        setupMainTimeScaleSync();
     }
 });
 
 // Rebuild chart when priceHistory changes (Inertia navigation between instruments)
-watch(() => props.priceHistory, () => {
-    if (chart) {
-        updateSeries();
-        applyTimeRange();
-    }
-});
-
-watch(selectedChartView, () => {
-    if (!chart) {
-        return;
-    }
-    updateSeries();
-    applyTimeRange();
-});
+watch(
+    () => props.priceHistory,
+    () => {
+        cachedBars = null;
+        if (chart) {
+            updateMainSeries();
+            // Remove all indicator series so they get recomputed
+            for (const [, seriesList] of overlaySeriesMap) {
+                for (const s of seriesList) {
+                    chart.removeSeries(s);
+                }
+            }
+            overlaySeriesMap.clear();
+            seriesMeta.clear();
+            for (const [, pane] of paneCharts) {
+                pane.chart.remove();
+            }
+            paneCharts.clear();
+            syncIndicators();
+            applyTimeRange();
+        }
+    },
+);
 
 watch(selectedTimeRange, () => {
     if (!chart) {
@@ -730,12 +968,20 @@ watch(selectedTimeRange, () => {
     applyTimeRange();
 });
 
-watch(overlays, () => {
-    if (!chart || selectedChartView.value !== 'price') {
-        return;
-    }
-    updateOverlays();
-}, { deep: true });
+watch(
+    activeIndicators,
+    async () => {
+        if (!chart) {
+            return;
+        }
+        // Wait for pane DOM elements to render
+        await nextTick();
+        syncIndicators();
+        applyTimeRange();
+        updateLegendDefaults();
+    },
+    { deep: true },
+);
 
 onUnmounted(destroyChart);
 </script>
