@@ -25,6 +25,7 @@ return new class extends Migration
             $table->string('phone')->nullable();
             $table->string('postal_code')->nullable();
             $table->boolean('is_paid')->default(false);
+            $table->boolean('is_newsletter_paid')->default(false);
             $table->boolean('is_admin')->default(false);
             $table->date('plan_ends_at')->nullable();
             $table->rememberToken();

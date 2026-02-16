@@ -11,8 +11,9 @@ return new class extends Migration
      */
     public function up(): void
     {
-        Schema::table('users', function (Blueprint $table) {
-            $table->boolean('is_newsletter_paid')->default(false)->after('is_paid');
+        Schema::table('nse_indices', function (Blueprint $table) {
+            $table->index(['slug', 'date']);
+            $table->index(['date', 'percentage_change']);
         });
     }
 
@@ -21,8 +22,9 @@ return new class extends Migration
      */
     public function down(): void
     {
-        Schema::table('users', function (Blueprint $table) {
-            $table->dropColumn('is_newsletter_paid');
+        Schema::table('nse_indices', function (Blueprint $table) {
+            $table->dropIndex(['slug', 'date']);
+            $table->dropIndex(['date', 'percentage_change']);
         });
     }
 };

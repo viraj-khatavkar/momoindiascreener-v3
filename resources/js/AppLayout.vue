@@ -223,6 +223,8 @@ import {
     AdjustmentsHorizontalIcon,
     ArrowLeftStartOnRectangleIcon,
     Bars3Icon,
+    ChartBarIcon,
+    ChartBarSquareIcon,
     CurrencyDollarIcon,
     DocumentTextIcon,
     HomeIcon,
@@ -249,10 +251,22 @@ const navigation = computed(() => {
     const items = [
         { name: 'Home', href: '/', icon: HomeIcon, current: page.url === '/' },
         {
+            name: 'Indices',
+            href: '/dashboard',
+            icon: ChartBarSquareIcon,
+            current: page.url.startsWith('/dashboard') || page.url.startsWith('/nse-index'),
+        },
+        {
             name: 'Screens',
             href: '/screens',
             icon: AdjustmentsHorizontalIcon,
             current: page.url.startsWith('/screens'),
+        },
+        {
+            name: 'Market Health',
+            href: '/market-health',
+            icon: ChartBarIcon,
+            current: page.url.startsWith('/market-health'),
         },
         {
             name: 'Profile',

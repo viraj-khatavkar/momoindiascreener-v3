@@ -15,6 +15,7 @@ return new class extends Migration
             $table->id();
             $table->date('date')->index();
             $table->string('symbol');
+            $table->string('name')->nullable();
             $table->string('series')->nullable();
             $table->boolean('is_delisted')->default(false);
             $table->decimal('open_adjusted', 20, 2);

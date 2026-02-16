@@ -2,11 +2,14 @@
 
 use App\Http\Controllers\AuthController;
 use App\Http\Controllers\BacktestNseInstrumentViewController;
-use App\Http\Controllers\InstrumentSearchController;
 use App\Http\Controllers\BillingAcceptTermsController;
 use App\Http\Controllers\ChangePasswordController;
+use App\Http\Controllers\IndicesDashboardController;
+use App\Http\Controllers\InstrumentSearchController;
 use App\Http\Controllers\InvoiceDownloadController;
 use App\Http\Controllers\InvoicesController;
+use App\Http\Controllers\MarketHealthController;
+use App\Http\Controllers\NseIndexViewController;
 use App\Http\Controllers\OrdersController;
 use App\Http\Controllers\PaymentsController;
 use App\Http\Controllers\PricingController;
@@ -61,8 +64,13 @@ Route::get('/pricing', PricingController::class);
 Route::post('/razorpay/callback', [RazorpayController::class, 'callback']);
 Route::get('/razorpay/cancel', [RazorpayController::class, 'cancel']);
 
+Route::get('/dashboard', IndicesDashboardController::class);
+Route::get('/nse-index/{slug}', NseIndexViewController::class);
+
 Route::get('/instruments/search', InstrumentSearchController::class);
 Route::get('/instruments/{symbol}', BacktestNseInstrumentViewController::class);
+
+Route::get('/market-health/{index?}', MarketHealthController::class);
 
 Route::get('/screens', [ScreensController::class, 'index']);
 Route::get('/screens/create', [ScreensController::class, 'create'])->middleware(['auth', 'verified']);
