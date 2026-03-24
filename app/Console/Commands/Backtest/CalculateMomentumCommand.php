@@ -86,12 +86,36 @@ class CalculateMomentumCommand extends Command
 
         $calculatePercentageAction = app(CalculatePercentageDifferenceAction::class);
 
-        $oneYearPrices = $this->fetchPrices($symbol, $fromDateBeforeOneYear, $date);
-        $nineMonthsPrices = $this->fetchPrices($symbol, $fromDateBeforeNineMonths, $date);
-        $sixMonthsPrices = $this->fetchPrices($symbol, $fromDateBeforeSixMonths, $date);
-        $threeMonthsPrices = $this->fetchPrices($symbol, $fromDateBeforeThreeMonths, $date);
-        $oneMonthsPrices = $this->fetchPrices($symbol, $fromDateBeforeOneMonth, $date);
-        $oneWeekPrices = $this->fetchPrices($symbol, $fromDateBeforeOneWeek, $date);
+        $oneYearPrices = $this->fetchPrices(
+            $symbol,
+            $fromDateBeforeOneYear,
+            $date
+        );
+        $nineMonthsPrices = $this->fetchPrices(
+            $symbol,
+            $fromDateBeforeNineMonths,
+            $date
+        );
+        $sixMonthsPrices = $this->fetchPrices(
+            $symbol,
+            $fromDateBeforeSixMonths,
+            $date
+        );
+        $threeMonthsPrices = $this->fetchPrices(
+            $symbol,
+            $fromDateBeforeThreeMonths,
+            $date
+        );
+        $oneMonthsPrices = $this->fetchPrices(
+            $symbol,
+            $fromDateBeforeOneMonth,
+            $date
+        );
+        $oneWeekPrices = $this->fetchPrices(
+            $symbol,
+            $fromDateBeforeOneWeek,
+            $date
+        );
 
         $twelveOnePrices = BacktestNseInstrumentPrice::query()
             ->where('symbol', $symbol)
@@ -282,40 +306,176 @@ class CalculateMomentumCommand extends Command
         $backtestNseInstrumentPrice->refresh();
 
         $averagesToCalculate = [
-            'average_absolute_return_twelve_nine_six_three_one_months' => ['absolute_return_one_year', 'absolute_return_nine_months', 'absolute_return_six_months', 'absolute_return_three_months', 'absolute_return_one_months'],
-            'average_absolute_return_twelve_nine_six_three_months' => ['absolute_return_one_year', 'absolute_return_nine_months', 'absolute_return_six_months', 'absolute_return_three_months'],
-            'average_absolute_return_twelve_nine_six_months' => ['absolute_return_one_year', 'absolute_return_nine_months', 'absolute_return_six_months'],
-            'average_absolute_return_twelve_nine_months' => ['absolute_return_one_year', 'absolute_return_nine_months'],
-            'average_absolute_return_twelve_six_three_one_months' => ['absolute_return_one_year', 'absolute_return_six_months', 'absolute_return_three_months', 'absolute_return_one_months'],
-            'average_absolute_return_twelve_six_three_months' => ['absolute_return_one_year', 'absolute_return_six_months', 'absolute_return_three_months'],
-            'average_absolute_return_twelve_six_months' => ['absolute_return_one_year', 'absolute_return_six_months'],
-            'average_absolute_return_twelve_three_one_months' => ['absolute_return_one_year', 'absolute_return_three_months', 'absolute_return_one_months'],
-            'average_absolute_return_twelve_three_months' => ['absolute_return_one_year', 'absolute_return_three_months'],
-            'average_absolute_return_twelve_nine_three_one_months' => ['absolute_return_one_year', 'absolute_return_nine_months', 'absolute_return_three_months', 'absolute_return_one_months'],
-            'average_absolute_return_twelve_nine_three_months' => ['absolute_return_one_year', 'absolute_return_nine_months', 'absolute_return_three_months'],
-            'average_absolute_return_nine_six_three_one_months' => ['absolute_return_nine_months', 'absolute_return_six_months', 'absolute_return_three_months', 'absolute_return_one_months'],
-            'average_absolute_return_nine_six_three_months' => ['absolute_return_nine_months', 'absolute_return_six_months', 'absolute_return_three_months'],
-            'average_absolute_return_nine_six_months' => ['absolute_return_nine_months', 'absolute_return_six_months'],
-            'average_absolute_return_six_three_one_months' => ['absolute_return_six_months', 'absolute_return_three_months', 'absolute_return_one_months'],
-            'average_absolute_return_six_three_months' => ['absolute_return_six_months', 'absolute_return_three_months'],
-            'average_absolute_return_three_one_months' => ['absolute_return_three_months', 'absolute_return_one_months'],
-            'average_sharpe_return_twelve_nine_six_three_one_months' => ['sharpe_return_one_year', 'sharpe_return_nine_months', 'sharpe_return_six_months', 'sharpe_return_three_months', 'sharpe_return_one_months'],
-            'average_sharpe_return_twelve_nine_six_three_months' => ['sharpe_return_one_year', 'sharpe_return_nine_months', 'sharpe_return_six_months', 'sharpe_return_three_months'],
-            'average_sharpe_return_twelve_nine_six_months' => ['sharpe_return_one_year', 'sharpe_return_nine_months', 'sharpe_return_six_months'],
-            'average_sharpe_return_twelve_nine_months' => ['sharpe_return_one_year', 'sharpe_return_nine_months'],
-            'average_sharpe_return_twelve_six_three_one_months' => ['sharpe_return_one_year', 'sharpe_return_six_months', 'sharpe_return_three_months', 'sharpe_return_one_months'],
-            'average_sharpe_return_twelve_six_three_months' => ['sharpe_return_one_year', 'sharpe_return_six_months', 'sharpe_return_three_months'],
-            'average_sharpe_return_twelve_six_months' => ['sharpe_return_one_year', 'sharpe_return_six_months'],
-            'average_sharpe_return_twelve_three_one_months' => ['sharpe_return_one_year', 'sharpe_return_three_months', 'sharpe_return_one_months'],
-            'average_sharpe_return_twelve_three_months' => ['sharpe_return_one_year', 'sharpe_return_three_months'],
-            'average_sharpe_return_twelve_nine_three_one_months' => ['sharpe_return_one_year', 'sharpe_return_nine_months', 'sharpe_return_three_months', 'sharpe_return_one_months'],
-            'average_sharpe_return_twelve_nine_three_months' => ['sharpe_return_one_year', 'sharpe_return_nine_months', 'sharpe_return_three_months'],
-            'average_sharpe_return_nine_six_three_one_months' => ['sharpe_return_nine_months', 'sharpe_return_six_months', 'sharpe_return_three_months', 'sharpe_return_one_months'],
-            'average_sharpe_return_nine_six_three_months' => ['sharpe_return_nine_months', 'sharpe_return_six_months', 'sharpe_return_three_months'],
-            'average_sharpe_return_nine_six_months' => ['sharpe_return_nine_months', 'sharpe_return_six_months'],
-            'average_sharpe_return_six_three_one_months' => ['sharpe_return_six_months', 'sharpe_return_three_months', 'sharpe_return_one_months'],
-            'average_sharpe_return_six_three_months' => ['sharpe_return_six_months', 'sharpe_return_three_months'],
-            'average_sharpe_return_three_one_months' => ['sharpe_return_three_months', 'sharpe_return_one_months'],
+            'average_absolute_return_twelve_nine_six_three_one_months' => [
+                'absolute_return_one_year',
+                'absolute_return_nine_months',
+                'absolute_return_six_months',
+                'absolute_return_three_months',
+                'absolute_return_one_months',
+            ],
+            'average_absolute_return_twelve_nine_six_three_months' => [
+                'absolute_return_one_year',
+                'absolute_return_nine_months',
+                'absolute_return_six_months',
+                'absolute_return_three_months',
+            ],
+            'average_absolute_return_twelve_nine_six_months' => [
+                'absolute_return_one_year',
+                'absolute_return_nine_months',
+                'absolute_return_six_months',
+            ],
+            'average_absolute_return_twelve_nine_months' => [
+                'absolute_return_one_year',
+                'absolute_return_nine_months',
+            ],
+            'average_absolute_return_twelve_six_three_one_months' => [
+                'absolute_return_one_year',
+                'absolute_return_six_months',
+                'absolute_return_three_months',
+                'absolute_return_one_months',
+            ],
+            'average_absolute_return_twelve_six_three_months' => [
+                'absolute_return_one_year',
+                'absolute_return_six_months',
+                'absolute_return_three_months',
+            ],
+            'average_absolute_return_twelve_six_months' => [
+                'absolute_return_one_year',
+                'absolute_return_six_months',
+            ],
+            'average_absolute_return_twelve_three_one_months' => [
+                'absolute_return_one_year',
+                'absolute_return_three_months',
+                'absolute_return_one_months',
+            ],
+            'average_absolute_return_twelve_three_months' => [
+                'absolute_return_one_year',
+                'absolute_return_three_months',
+            ],
+            'average_absolute_return_twelve_nine_three_one_months' => [
+                'absolute_return_one_year',
+                'absolute_return_nine_months',
+                'absolute_return_three_months',
+                'absolute_return_one_months',
+            ],
+            'average_absolute_return_twelve_nine_three_months' => [
+                'absolute_return_one_year',
+                'absolute_return_nine_months',
+                'absolute_return_three_months',
+            ],
+            'average_absolute_return_nine_six_three_one_months' => [
+                'absolute_return_nine_months',
+                'absolute_return_six_months',
+                'absolute_return_three_months',
+                'absolute_return_one_months',
+            ],
+            'average_absolute_return_nine_six_three_months' => [
+                'absolute_return_nine_months',
+                'absolute_return_six_months',
+                'absolute_return_three_months',
+            ],
+            'average_absolute_return_nine_six_months' => [
+                'absolute_return_nine_months',
+                'absolute_return_six_months',
+            ],
+            'average_absolute_return_six_three_one_months' => [
+                'absolute_return_six_months',
+                'absolute_return_three_months',
+                'absolute_return_one_months',
+            ],
+            'average_absolute_return_six_three_months' => [
+                'absolute_return_six_months',
+                'absolute_return_three_months',
+            ],
+            'average_absolute_return_three_one_months' => [
+                'absolute_return_three_months',
+                'absolute_return_one_months',
+            ],
+            'average_sharpe_return_twelve_nine_six_three_one_months' => [
+                'sharpe_return_one_year',
+                'sharpe_return_nine_months',
+                'sharpe_return_six_months',
+                'sharpe_return_three_months',
+                'sharpe_return_one_months',
+            ],
+            'average_sharpe_return_twelve_nine_six_three_months' => [
+                'sharpe_return_one_year',
+                'sharpe_return_nine_months',
+                'sharpe_return_six_months',
+                'sharpe_return_three_months',
+            ],
+            'average_sharpe_return_twelve_nine_six_months' => [
+                'sharpe_return_one_year',
+                'sharpe_return_nine_months',
+                'sharpe_return_six_months',
+            ],
+            'average_sharpe_return_twelve_nine_months' => [
+                'sharpe_return_one_year',
+                'sharpe_return_nine_months',
+            ],
+            'average_sharpe_return_twelve_six_three_one_months' => [
+                'sharpe_return_one_year',
+                'sharpe_return_six_months',
+                'sharpe_return_three_months',
+                'sharpe_return_one_months',
+            ],
+            'average_sharpe_return_twelve_six_three_months' => [
+                'sharpe_return_one_year',
+                'sharpe_return_six_months',
+                'sharpe_return_three_months',
+            ],
+            'average_sharpe_return_twelve_six_months' => [
+                'sharpe_return_one_year',
+                'sharpe_return_six_months',
+            ],
+            'average_sharpe_return_twelve_three_one_months' => [
+                'sharpe_return_one_year',
+                'sharpe_return_three_months',
+                'sharpe_return_one_months',
+            ],
+            'average_sharpe_return_twelve_three_months' => [
+                'sharpe_return_one_year',
+                'sharpe_return_three_months',
+            ],
+            'average_sharpe_return_twelve_nine_three_one_months' => [
+                'sharpe_return_one_year',
+                'sharpe_return_nine_months',
+                'sharpe_return_three_months',
+                'sharpe_return_one_months',
+            ],
+            'average_sharpe_return_twelve_nine_three_months' => [
+                'sharpe_return_one_year',
+                'sharpe_return_nine_months',
+                'sharpe_return_three_months',
+            ],
+            'average_sharpe_return_nine_six_three_one_months' => [
+                'sharpe_return_nine_months',
+                'sharpe_return_six_months',
+                'sharpe_return_three_months',
+                'sharpe_return_one_months',
+            ],
+            'average_sharpe_return_nine_six_three_months' => [
+                'sharpe_return_nine_months',
+                'sharpe_return_six_months',
+                'sharpe_return_three_months',
+            ],
+            'average_sharpe_return_nine_six_months' => [
+                'sharpe_return_nine_months',
+                'sharpe_return_six_months',
+            ],
+            'average_sharpe_return_six_three_one_months' => [
+                'sharpe_return_six_months',
+                'sharpe_return_three_months',
+                'sharpe_return_one_months',
+            ],
+            'average_sharpe_return_six_three_months' => [
+                'sharpe_return_six_months',
+                'sharpe_return_three_months',
+            ],
+            'average_sharpe_return_three_one_months' => [
+                'sharpe_return_three_months',
+                'sharpe_return_one_months',
+            ],
         ];
 
         foreach ($averagesToCalculate as $column => $averageableColumns) {
@@ -431,5 +591,6 @@ class CalculateMomentumCommand extends Command
         }
 
         $backtestNseInstrumentPrice->save();
+
     }
 }

@@ -82,6 +82,42 @@
                                                 </li>
                                             </ul>
                                         </li>
+                                        <li v-if="page.props.auth.user?.is_admin">
+                                            <div
+                                                class="text-xs font-semibold leading-6 text-gray-400"
+                                            >
+                                                Admin
+                                            </div>
+                                            <ul role="list" class="-mx-2 mt-2 space-y-1">
+                                                <li
+                                                    v-for="item in adminNavigation"
+                                                    :key="item.name"
+                                                >
+                                                    <Link
+                                                        :href="item.href"
+                                                        :class="[
+                                                            item.current
+                                                                ? 'bg-gray-50 text-purple-600'
+                                                                : 'text-gray-700 hover:bg-gray-50 hover:text-purple-600',
+                                                            'group flex gap-x-3 rounded-md p-2 text-sm font-semibold leading-6',
+                                                        ]"
+                                                        @click="sidebarOpen = false"
+                                                    >
+                                                        <span
+                                                            :class="[
+                                                                item.current
+                                                                    ? 'border-purple-600 text-purple-600'
+                                                                    : 'border-gray-200 text-gray-400 group-hover:border-purple-600 group-hover:text-purple-600',
+                                                                'flex h-6 w-6 shrink-0 items-center justify-center rounded-lg border bg-white text-[0.625rem] font-medium',
+                                                            ]"
+                                                        >
+                                                            {{ item.initial }}
+                                                        </span>
+                                                        {{ item.name }}
+                                                    </Link>
+                                                </li>
+                                            </ul>
+                                        </li>
                                     </ul>
                                 </nav>
                             </div>
@@ -329,6 +365,33 @@ const navigation = computed(() => {
 
     return items;
 });
+
+const adminNavigation = computed(() => [
+    {
+        name: 'Dashboard',
+        href: '/admin',
+        initial: 'D',
+        current: page.url === '/admin',
+    },
+    {
+        name: 'Users',
+        href: '/admin/users',
+        initial: 'U',
+        current: page.url.startsWith('/admin/users'),
+    },
+    {
+        name: 'Orders',
+        href: '/admin/orders',
+        initial: 'O',
+        current: page.url.startsWith('/admin/orders'),
+    },
+    {
+        name: 'NSE Files',
+        href: '/admin/nse-files',
+        initial: 'N',
+        current: page.url.startsWith('/admin/nse-files'),
+    },
+]);
 
 const authUserNavigation = [
     { name: 'Your profile', href: '/profile' },

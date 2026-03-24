@@ -65,11 +65,31 @@ class CalculateRsiCommand extends Command
             ->where('symbol', $symbol)
             ->first();
 
-        $oneYearPrices = $this->fetchPrices($symbol, $fromDateBeforeOneYear, $date);
-        $nineMonthsPrices = $this->fetchPrices($symbol, $fromDateBeforeNineMonths, $date);
-        $sixMonthsPrices = $this->fetchPrices($symbol, $fromDateBeforeSixMonths, $date);
-        $threeMonthsPrices = $this->fetchPrices($symbol, $fromDateBeforeThreeMonths, $date);
-        $oneMonthsPrices = $this->fetchPrices($symbol, $fromDateBeforeOneMonth, $date);
+        $oneYearPrices = $this->fetchPrices(
+            $symbol,
+            $fromDateBeforeOneYear,
+            $date
+        );
+        $nineMonthsPrices = $this->fetchPrices(
+            $symbol,
+            $fromDateBeforeNineMonths,
+            $date
+        );
+        $sixMonthsPrices = $this->fetchPrices(
+            $symbol,
+            $fromDateBeforeSixMonths,
+            $date
+        );
+        $threeMonthsPrices = $this->fetchPrices(
+            $symbol,
+            $fromDateBeforeThreeMonths,
+            $date
+        );
+        $oneMonthsPrices = $this->fetchPrices(
+            $symbol,
+            $fromDateBeforeOneMonth,
+            $date
+        );
 
         $this->calculateRsi(
             $backtestNseInstrumentPrice,
@@ -103,36 +123,41 @@ class CalculateRsiCommand extends Command
 
         $rsiAction = app(CalculateRsiAction::class);
 
+        // One Year RSI - minimum 235 trading days required
         if ($oneYearPrices->count() >= 235) {
-            $rsiPeriod = $oneYearPrices->count() - 1;
+            $rsiPeriod = $oneYearPrices->count() - 1; // Use all available price changes
             $backtestNseInstrumentPrice->rsi_one_year = $rsiAction->execute($oneYearPrices, $rsiPeriod, 'close_adjusted');
         } else {
             $backtestNseInstrumentPrice->rsi_one_year = null;
         }
 
+        // Nine Months RSI - minimum 170 trading days required
         if ($nineMonthsPrices->count() >= 170) {
-            $rsiPeriod = $nineMonthsPrices->count() - 1;
+            $rsiPeriod = $nineMonthsPrices->count() - 1; // Use all available price changes
             $backtestNseInstrumentPrice->rsi_nine_months = $rsiAction->execute($nineMonthsPrices, $rsiPeriod, 'close_adjusted');
         } else {
             $backtestNseInstrumentPrice->rsi_nine_months = null;
         }
 
+        // Six Months RSI - minimum 116 trading days required
         if ($sixMonthsPrices->count() >= 116) {
-            $rsiPeriod = $sixMonthsPrices->count() - 1;
+            $rsiPeriod = $sixMonthsPrices->count() - 1; // Use all available price changes
             $backtestNseInstrumentPrice->rsi_six_months = $rsiAction->execute($sixMonthsPrices, $rsiPeriod, 'close_adjusted');
         } else {
             $backtestNseInstrumentPrice->rsi_six_months = null;
         }
 
+        // Three Months RSI - minimum 50 trading days required
         if ($threeMonthsPrices->count() >= 50) {
-            $rsiPeriod = $threeMonthsPrices->count() - 1;
+            $rsiPeriod = $threeMonthsPrices->count() - 1; // Use all available price changes
             $backtestNseInstrumentPrice->rsi_three_months = $rsiAction->execute($threeMonthsPrices, $rsiPeriod, 'close_adjusted');
         } else {
             $backtestNseInstrumentPrice->rsi_three_months = null;
         }
 
+        // One Month RSI - minimum 18 trading days required
         if ($oneMonthPrices->count() >= 18) {
-            $rsiPeriod = $oneMonthPrices->count() - 1;
+            $rsiPeriod = $oneMonthPrices->count() - 1; // Use all available price changes
             $backtestNseInstrumentPrice->rsi_one_months = $rsiAction->execute($oneMonthPrices, $rsiPeriod, 'close_adjusted');
         } else {
             $backtestNseInstrumentPrice->rsi_one_months = null;
@@ -148,23 +173,91 @@ class CalculateRsiCommand extends Command
         $backtestNseInstrumentPrice->refresh();
 
         $averagesToCalculate = [
-            'average_rsi_twelve_nine_six_three_one_months' => ['rsi_one_year', 'rsi_nine_months', 'rsi_six_months', 'rsi_three_months', 'rsi_one_months'],
-            'average_rsi_twelve_nine_six_three_months' => ['rsi_one_year', 'rsi_nine_months', 'rsi_six_months', 'rsi_three_months'],
-            'average_rsi_twelve_nine_six_months' => ['rsi_one_year', 'rsi_nine_months', 'rsi_six_months'],
-            'average_rsi_twelve_nine_months' => ['rsi_one_year', 'rsi_nine_months'],
-            'average_rsi_twelve_six_three_one_months' => ['rsi_one_year', 'rsi_six_months', 'rsi_three_months', 'rsi_one_months'],
-            'average_rsi_twelve_six_three_months' => ['rsi_one_year', 'rsi_six_months', 'rsi_three_months'],
-            'average_rsi_twelve_six_months' => ['rsi_one_year', 'rsi_six_months'],
-            'average_rsi_twelve_three_one_months' => ['rsi_one_year', 'rsi_three_months', 'rsi_one_months'],
-            'average_rsi_twelve_three_months' => ['rsi_one_year', 'rsi_three_months'],
-            'average_rsi_twelve_nine_three_one_months' => ['rsi_one_year', 'rsi_nine_months', 'rsi_three_months', 'rsi_one_months'],
-            'average_rsi_twelve_nine_three_months' => ['rsi_one_year', 'rsi_nine_months', 'rsi_three_months'],
-            'average_rsi_nine_six_three_one_months' => ['rsi_nine_months', 'rsi_six_months', 'rsi_three_months', 'rsi_one_months'],
-            'average_rsi_nine_six_three_months' => ['rsi_nine_months', 'rsi_six_months', 'rsi_three_months'],
-            'average_rsi_nine_six_months' => ['rsi_nine_months', 'rsi_six_months'],
-            'average_rsi_six_three_one_months' => ['rsi_six_months', 'rsi_three_months', 'rsi_one_months'],
-            'average_rsi_six_three_months' => ['rsi_six_months', 'rsi_three_months'],
-            'average_rsi_three_one_months' => ['rsi_three_months', 'rsi_one_months'],
+            'average_rsi_twelve_nine_six_three_one_months' => [
+                'rsi_one_year',
+                'rsi_nine_months',
+                'rsi_six_months',
+                'rsi_three_months',
+                'rsi_one_months',
+            ],
+            'average_rsi_twelve_nine_six_three_months' => [
+                'rsi_one_year',
+                'rsi_nine_months',
+                'rsi_six_months',
+                'rsi_three_months',
+            ],
+            'average_rsi_twelve_nine_six_months' => [
+                'rsi_one_year',
+                'rsi_nine_months',
+                'rsi_six_months',
+            ],
+            'average_rsi_twelve_nine_months' => [
+                'rsi_one_year',
+                'rsi_nine_months',
+            ],
+            'average_rsi_twelve_six_three_one_months' => [
+                'rsi_one_year',
+                'rsi_six_months',
+                'rsi_three_months',
+                'rsi_one_months',
+            ],
+            'average_rsi_twelve_six_three_months' => [
+                'rsi_one_year',
+                'rsi_six_months',
+                'rsi_three_months',
+            ],
+            'average_rsi_twelve_six_months' => [
+                'rsi_one_year',
+                'rsi_six_months',
+            ],
+            'average_rsi_twelve_three_one_months' => [
+                'rsi_one_year',
+                'rsi_three_months',
+                'rsi_one_months',
+            ],
+            'average_rsi_twelve_three_months' => [
+                'rsi_one_year',
+                'rsi_three_months',
+            ],
+            'average_rsi_twelve_nine_three_one_months' => [
+                'rsi_one_year',
+                'rsi_nine_months',
+                'rsi_three_months',
+                'rsi_one_months',
+            ],
+            'average_rsi_twelve_nine_three_months' => [
+                'rsi_one_year',
+                'rsi_nine_months',
+                'rsi_three_months',
+            ],
+            'average_rsi_nine_six_three_one_months' => [
+                'rsi_nine_months',
+                'rsi_six_months',
+                'rsi_three_months',
+                'rsi_one_months',
+            ],
+            'average_rsi_nine_six_three_months' => [
+                'rsi_nine_months',
+                'rsi_six_months',
+                'rsi_three_months',
+            ],
+            'average_rsi_nine_six_months' => [
+                'rsi_nine_months',
+                'rsi_six_months',
+            ],
+            'average_rsi_six_three_one_months' => [
+                'rsi_six_months',
+                'rsi_three_months',
+                'rsi_one_months',
+            ],
+            'average_rsi_six_three_months' => [
+                'rsi_six_months',
+                'rsi_three_months',
+            ],
+            'average_rsi_three_one_months' => [
+                'rsi_three_months',
+                'rsi_one_months',
+            ],
         ];
 
         foreach ($averagesToCalculate as $column => $averageableColumns) {

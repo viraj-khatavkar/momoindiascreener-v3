@@ -1,16 +1,18 @@
 <template>
-    <div>
-        <div class="flex items-baseline gap-2">
-            <h3 class="text-sm font-medium text-gray-700">{{ title }}</h3>
-            <span class="text-xs text-gray-500">{{ displayValue }}</span>
+    <div class="rounded-lg border border-gray-200 bg-white p-4 md:p-5">
+        <div class="flex items-baseline justify-between">
+            <h3 class="text-sm font-semibold text-gray-700">{{ title }}</h3>
+            <span class="text-lg font-bold" :class="valueColorClass">
+                {{ displayValue }}
+            </span>
         </div>
-        <div ref="chartContainer" class="mt-1 h-[200px]" />
+        <div ref="chartContainer" class="mt-3" :class="tall ? 'h-[450px]' : 'h-[300px]'" />
     </div>
 </template>
 
 <script setup lang="ts">
-import { onUnmounted, ref, watch } from 'vue';
-import { AreaSeries, ColorType, CrosshairMode, createChart } from 'lightweight-charts';
+import { computed, onUnmounted, ref, watch } from 'vue';
+import { AreaSeries, ColorType, CrosshairMode, LineSeries, createChart } from 'lightweight-charts';
 import type { IChartApi, ISeriesApi, SeriesType, Time } from 'lightweight-charts';
 
 interface DataPoint {
@@ -23,6 +25,8 @@ const props = withDefaults(
         title: string;
         data: DataPoint[];
         color?: string;
+        referenceLine?: number;
+        tall?: boolean;
     }>(),
     {
         color: '#7c3aed',
@@ -35,6 +39,19 @@ let series: ISeriesApi<SeriesType> | null = null;
 
 const displayValue = ref('');
 
+const valueColorClass = computed(() => {
+    if (!displayValue.value || props.referenceLine == null) {
+        return 'text-gray-900';
+    }
+    return parseFloat(displayValue.value) >= props.referenceLine
+        ? 'text-green-600'
+        : 'text-red-600';
+});
+
+function toSeriesData(data: DataPoint[]): { time: Time; value: number }[] {
+    return data.map((d) => ({ time: d.time as Time, value: d.value }));
+}
+
 function getLastValue(): string {
     if (props.data.length === 0) {
         return '';
@@ -46,12 +63,13 @@ function initChart(container: HTMLDivElement): void {
     chart = createChart(container, {
         autoSize: true,
         layout: {
-            background: { type: ColorType.Solid, color: '#f8fafc' },
+            background: { type: ColorType.Solid, color: '#ffffff' },
             textColor: '#6b7280',
+            fontFamily: 'inherit',
         },
         grid: {
             vertLines: { color: '#f1f5f9' },
-            horzLines: { color: '#f1f5f9' },
+            horzLines: { color: '#e2e8f0' },
         },
         crosshair: {
             mode: CrosshairMode.Magnet,
@@ -61,26 +79,37 @@ function initChart(container: HTMLDivElement): void {
         },
         timeScale: {
             borderColor: '#e2e8f0',
+            rightOffset: 5,
         },
     });
 
     series = chart.addSeries(AreaSeries, {
         lineColor: props.color,
-        topColor: hexToRgba(props.color, 0.15),
-        bottomColor: hexToRgba(props.color, 0),
+        topColor: hexToRgba(props.color, 0.25),
+        bottomColor: hexToRgba(props.color, 0.02),
         lineWidth: 2,
         lastValueVisible: false,
         priceLineVisible: false,
     });
 
-    series.setData(
-        props.data.map((d) => ({
-            time: d.time as Time,
-            value: d.value,
-        })),
-    );
+    series.setData(toSeriesData(props.data));
 
-    chart.timeScale().fitContent();
+    if (props.referenceLine != null && props.data.length >= 2) {
+        const refSeries = chart.addSeries(LineSeries, {
+            color: '#9ca3af',
+            lineWidth: 1,
+            lineStyle: 2,
+            lastValueVisible: false,
+            priceLineVisible: false,
+            crosshairMarkerVisible: false,
+        });
+        refSeries.setData([
+            { time: props.data[0].time as Time, value: props.referenceLine },
+            { time: props.data[props.data.length - 1].time as Time, value: props.referenceLine },
+        ]);
+    }
+
+    showLast12Months();
 
     displayValue.value = getLastValue();
 
@@ -95,6 +124,25 @@ function initChart(container: HTMLDivElement): void {
             displayValue.value = data.value.toFixed(2);
         }
     });
+}
+
+function showLast12Months(): void {
+    if (!chart || props.data.length === 0) {
+        return;
+    }
+
+    const lastDate = props.data[props.data.length - 1].time;
+    const [year, month, day] = lastDate.split('-').map(Number);
+    const fromDate = `${year - 1}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+
+    try {
+        chart.timeScale().setVisibleRange({
+            from: fromDate as Time,
+            to: lastDate as Time,
+        });
+    } catch {
+        chart.timeScale().fitContent();
+    }
 }
 
 function destroyChart(): void {
@@ -126,13 +174,8 @@ watch(
     () => props.data,
     () => {
         if (chart && series) {
-            series.setData(
-                props.data.map((d) => ({
-                    time: d.time as Time,
-                    value: d.value,
-                })),
-            );
-            chart.timeScale().fitContent();
+            series.setData(toSeriesData(props.data));
+            showLast12Months();
             displayValue.value = getLastValue();
         }
     },

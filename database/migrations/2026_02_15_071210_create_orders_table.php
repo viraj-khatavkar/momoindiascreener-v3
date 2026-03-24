@@ -14,9 +14,9 @@ return new class extends Migration
         Schema::create('orders', function (Blueprint $table) {
             $table->id();
             $table->string('order_id');
-            $table->foreignId('user_id')->constrained()->cascadeOnDelete();
+            $table->foreignId('user_id')->constrained();
             $table->integer('invoice_number')->nullable();
-            $table->string('description');
+            $table->string('description')->nullable();
             $table->string('plan');
             $table->decimal('amount', 10, 2);
             $table->string('status')->default('pending');
@@ -24,8 +24,8 @@ return new class extends Migration
             $table->string('razorpay_order_id')->nullable();
             $table->string('razorpay_signature')->nullable();
             $table->string('email')->nullable();
-            $table->string('address_line_one')->nullable();
-            $table->string('address_line_two')->nullable();
+            $table->text('address_line_one')->nullable();
+            $table->text('address_line_two')->nullable();
             $table->string('city')->nullable();
             $table->string('postal_code')->nullable();
             $table->string('state')->nullable();
