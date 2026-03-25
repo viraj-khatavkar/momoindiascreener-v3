@@ -2,6 +2,9 @@
 
 use App\Http\Controllers\AuthController;
 use App\Http\Controllers\BacktestNseInstrumentViewController;
+use App\Http\Controllers\BacktestProgressController;
+use App\Http\Controllers\BacktestRunController;
+use App\Http\Controllers\BacktestsController;
 use App\Http\Controllers\BillingAcceptTermsController;
 use App\Http\Controllers\ChangePasswordController;
 use App\Http\Controllers\IndicesDashboardController;
@@ -100,4 +103,17 @@ Route::middleware(['auth', 'verified'])->group(function () {
     Route::put('/screens/{screen}/columns', [ScreenColumnsController::class, 'update']);
     Route::delete('/screens/{screen}', [ScreensController::class, 'destroy']);
     Route::get('/screens/{screen}/csv', ScreenCsvController::class);
+
+    // Backtests (all routes require paid subscription)
+    Route::middleware(VerifyIsPaid::class)->group(function () {
+        Route::get('/backtests', [BacktestsController::class, 'index']);
+        Route::get('/backtests/create', [BacktestsController::class, 'create']);
+        Route::post('/backtests', [BacktestsController::class, 'store']);
+        Route::get('/backtests/{backtest}', [BacktestsController::class, 'show']);
+        Route::get('/backtests/{backtest}/edit', [BacktestsController::class, 'edit']);
+        Route::put('/backtests/{backtest}', [BacktestsController::class, 'update']);
+        Route::delete('/backtests/{backtest}', [BacktestsController::class, 'destroy']);
+        Route::post('/backtests/{backtest}/run', BacktestRunController::class);
+        Route::get('/backtests/{backtest}/progress', BacktestProgressController::class);
+    });
 });

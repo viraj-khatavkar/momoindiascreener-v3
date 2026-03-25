@@ -258,6 +258,7 @@ import {
 import {
     AdjustmentsHorizontalIcon,
     ArrowLeftStartOnRectangleIcon,
+    BeakerIcon,
     Bars3Icon,
     ChartBarIcon,
     ChartBarSquareIcon,
@@ -297,6 +298,12 @@ const navigation = computed(() => {
             href: '/screens',
             icon: AdjustmentsHorizontalIcon,
             current: page.url.startsWith('/screens'),
+        },
+        {
+            name: 'Backtests',
+            href: '/backtests',
+            icon: BeakerIcon,
+            current: page.url.startsWith('/backtests'),
         },
         {
             name: 'Market Health',

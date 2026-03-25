@@ -53,4 +53,9 @@ class User extends Authenticatable implements MustVerifyEmail
     {
         return $this->hasMany(Screen::class);
     }
+
+    public function backtests(): HasMany
+    {
+        return $this->hasMany(Backtest::class);
+    }
 }
