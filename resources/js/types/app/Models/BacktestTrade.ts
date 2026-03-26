@@ -4,7 +4,7 @@ export interface BacktestTrade {
     symbol: string;
     name: string | null;
     trade_type: 'buy' | 'sell';
-    reason: 'entry' | 'exit_rank_exceeded' | 'exit_not_in_universe' | 'exit_cash_call' | 'rebalance_weight_adjustment';
+    reason: string;
     date: string;
     quantity: number;
     price: number;

@@ -186,14 +186,19 @@
                 </div>
             </div>
 
-            <!-- Rolling Returns + Yearly Breakdown side by side -->
-            <div class="grid grid-cols-1 gap-6 lg:grid-cols-2">
-                <!-- Rolling Returns -->
+            <!-- Rolling Returns -->
+            <div class="grid grid-cols-1 gap-6">
                 <div
                     v-if="hasRollingReturns"
                     class="rounded-xl bg-white p-6 shadow-xs ring-1 ring-gray-100"
                 >
                     <h2 class="mb-4 text-sm font-semibold uppercase tracking-wide text-gray-500">Rolling Returns (Annualized)</h2>
+                    <RollingReturnsChart
+                        :one-year="summaryMetrics.rolling_returns_one_year"
+                        :three-year="summaryMetrics.rolling_returns_three_year"
+                        :five-year="summaryMetrics.rolling_returns_five_year"
+                        class="mb-6"
+                    />
                     <table class="w-full text-sm">
                         <thead>
                             <tr class="border-b border-gray-200">
@@ -214,38 +219,6 @@
                                 </td>
                                 <td class="py-2.5 text-right" :class="rollingReturnColor(rollingStats(period.key).max)">
                                     {{ formatPercent(rollingStats(period.key).max) }}
-                                </td>
-                            </tr>
-                        </tbody>
-                    </table>
-                </div>
-
-                <!-- Yearly Breakdown -->
-                <div
-                    v-if="yearlyBreakdown.length > 0"
-                    class="rounded-xl bg-white p-6 shadow-xs ring-1 ring-gray-100"
-                >
-                    <h2 class="mb-4 text-sm font-semibold uppercase tracking-wide text-gray-500">Yearly Breakdown</h2>
-                    <table class="w-full text-sm">
-                        <thead>
-                            <tr class="border-b border-gray-200">
-                                <th class="pb-2 text-left font-medium text-gray-500">Year</th>
-                                <th class="pb-2 text-right font-medium text-purple-700">Strategy</th>
-                                <th class="pb-2 text-right font-medium text-gray-500">Benchmark</th>
-                                <th class="pb-2 text-right font-medium text-gray-500">Alpha</th>
-                            </tr>
-                        </thead>
-                        <tbody class="divide-y divide-gray-100">
-                            <tr v-for="row in yearlyBreakdown" :key="row.year">
-                                <td class="py-2.5 font-medium text-gray-900">{{ row.year }}</td>
-                                <td class="py-2.5 text-right font-semibold" :class="row.strategyReturn >= 0 ? 'text-green-700' : 'text-red-700'">
-                                    {{ (row.strategyReturn >= 0 ? '+' : '') + (row.strategyReturn * 100).toFixed(1) + '%' }}
-                                </td>
-                                <td class="py-2.5 text-right" :class="row.benchmarkReturn >= 0 ? 'text-green-700' : 'text-red-700'">
-                                    {{ (row.benchmarkReturn >= 0 ? '+' : '') + (row.benchmarkReturn * 100).toFixed(1) + '%' }}
-                                </td>
-                                <td class="py-2.5 text-right" :class="row.alpha >= 0 ? 'text-green-700' : 'text-red-700'">
-                                    {{ (row.alpha >= 0 ? '+' : '') + (row.alpha * 100).toFixed(1) + '%' }}
                                 </td>
                             </tr>
                         </tbody>
@@ -273,6 +246,7 @@ import ErrorAlert from '@/Components/Alerts/ErrorAlert.vue';
 import InfoAlert from '@/Components/Alerts/InfoAlert.vue';
 import BacktestNavChart from '@/Pages/Backtests/partials/BacktestNavChart.vue';
 import CashAllocationChart from '@/Pages/Backtests/partials/CashAllocationChart.vue';
+import RollingReturnsChart from '@/Pages/Backtests/partials/RollingReturnsChart.vue';
 import TradeLogTable from '@/Pages/Backtests/partials/TradeLogTable.vue';
 import type { Backtest } from '@/types/app/Models/Backtest';
 import type { BacktestSummaryMetric } from '@/types/app/Models/BacktestSummaryMetric';
