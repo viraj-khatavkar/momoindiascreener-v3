@@ -1,6 +1,7 @@
 <?php
 
 use App\Http\Controllers\AuthController;
+use App\Http\Controllers\BacktestBenchmarkController;
 use App\Http\Controllers\BacktestNseInstrumentViewController;
 use App\Http\Controllers\BacktestProgressController;
 use App\Http\Controllers\BacktestRunController;
@@ -115,5 +116,6 @@ Route::middleware(['auth', 'verified'])->group(function () {
         Route::delete('/backtests/{backtest}', [BacktestsController::class, 'destroy']);
         Route::post('/backtests/{backtest}/run', BacktestRunController::class);
         Route::get('/backtests/{backtest}/progress', BacktestProgressController::class);
+        Route::get('/backtests/{backtest}/benchmark', BacktestBenchmarkController::class);
     });
 });

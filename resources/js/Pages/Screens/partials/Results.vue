@@ -124,15 +124,20 @@
                                 >
                                     <Link
                                         :href="`/instruments/${item.symbol}`"
-                                        class="text-purple-600 hover:text-purple-500 hover:underline"
+                                        class="cursor-pointer text-gray-900 hover:text-purple-600 hover:underline"
                                     >
                                         {{ item.name }}
                                     </Link>
                                 </td>
                                 <td
-                                    class="whitespace-nowrap px-3 py-4 text-sm text-gray-500 hover:underline"
+                                    class="whitespace-nowrap px-3 py-4 text-sm"
                                 >
-                                    {{ item.symbol }}
+                                    <Link
+                                        :href="`/instruments/${item.symbol}`"
+                                        class="cursor-pointer text-gray-900 hover:text-purple-600 hover:underline"
+                                    >
+                                        {{ item.symbol }}
+                                    </Link>
                                 </td>
                                 <td
                                     class="whitespace-nowrap px-3 py-4 text-sm text-gray-500"
@@ -185,7 +190,12 @@
                         </div>
                         <div class="flex flex-row justify-between">
                             <span class="text-sm font-semibold">Symbol:</span>
-                            <span class="ml-2 text-sm">{{ item.symbol }}</span>
+                            <Link
+                                :href="`/instruments/${item.symbol}`"
+                                class="ml-2 text-sm text-purple-600 hover:text-purple-500 hover:underline"
+                            >
+                                {{ item.symbol }}
+                            </Link>
                         </div>
                         <div class="flex flex-row justify-between">
                             <span class="text-sm font-semibold">Sorting Factor:</span>

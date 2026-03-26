@@ -126,6 +126,7 @@ class ApplyBacktestFiltersAction
         $query = $this->priceRangeFilters($query, $backtest);
 
         $query = $this->seriesFilter($query, $backtest);
+        $query = $this->ignoreAboveBetaFilter($query, $backtest);
         $query = $this->customFilters($query, $backtest);
 
         if ($backtest->minimum_return_one_year > -100) {
@@ -234,6 +235,15 @@ class ApplyBacktestFiltersAction
     {
         return $query->where('close_raw', '>=', $backtest->price_from)
             ->where('close_raw', '<=', $backtest->price_to);
+    }
+
+    protected function ignoreAboveBetaFilter(Builder $query, Backtest $backtest)
+    {
+        if ($backtest->ignore_above_beta < 100) {
+            return $query->where('beta', '<=', $backtest->ignore_above_beta);
+        }
+
+        return $query;
     }
 
     protected function customFilters(Builder $query, Backtest $backtest)

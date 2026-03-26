@@ -71,7 +71,49 @@
 
             <!-- Row 1: NAV Chart (primary visual) -->
             <div class="rounded-xl bg-white p-6 shadow-xs ring-1 ring-gray-100">
-                <BacktestNavChart :daily-snapshots="dailySnapshots" />
+                <div class="mb-4 flex items-center justify-between">
+                    <h2 class="text-sm font-semibold uppercase tracking-wide text-gray-500">NAV Chart</h2>
+                    <div class="flex items-center gap-2">
+                        <label class="text-xs text-gray-500">Benchmark:</label>
+                        <select
+                            v-model="selectedBenchmark"
+                            class="rounded-md border-gray-300 py-1 pl-2 pr-8 text-sm text-gray-700 shadow-xs focus:border-purple-500 focus:ring-purple-500"
+                        >
+                            <option value="">None</option>
+                            <option v-for="opt in benchmarkOptions" :key="opt.id" :value="opt.id">
+                                {{ opt.name }}
+                            </option>
+                        </select>
+                        <span v-if="loadingBenchmark" class="text-xs text-gray-400">Loading...</span>
+                    </div>
+                </div>
+                <BacktestNavChart :daily-snapshots="dailySnapshots" :benchmark-data="benchmarkData" />
+
+                <!-- Benchmark comparison metrics -->
+                <div v-if="benchmarkData.length > 0" class="mt-4 flex flex-wrap gap-6 border-t border-gray-100 pt-4 text-sm">
+                    <div>
+                        <span class="text-gray-500">Benchmark CAGR: </span>
+                        <span :class="benchmarkMetrics.cagr >= 0 ? 'text-green-700' : 'text-red-700'" class="font-semibold">
+                            {{ formatPercent(benchmarkMetrics.cagr) }}
+                        </span>
+                    </div>
+                    <div>
+                        <span class="text-gray-500">Alpha: </span>
+                        <span :class="benchmarkMetrics.alpha >= 0 ? 'text-green-700' : 'text-red-700'" class="font-semibold">
+                            {{ formatPercent(benchmarkMetrics.alpha) }}
+                        </span>
+                    </div>
+                    <div>
+                        <span class="text-gray-500">Benchmark Max DD: </span>
+                        <span class="font-semibold text-red-700">{{ formatPercent(benchmarkMetrics.maxDrawdown) }}</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Drawdown Chart -->
+            <div class="rounded-xl bg-white p-6 shadow-xs ring-1 ring-gray-100">
+                <h2 class="mb-4 text-sm font-semibold uppercase tracking-wide text-gray-500">Drawdown</h2>
+                <DrawdownChart :daily-snapshots="dailySnapshots" />
             </div>
 
             <!-- Row 2: Key Metrics table + Cash Allocation chart side by side -->
@@ -84,30 +126,21 @@
                         <thead>
                             <tr class="border-b border-gray-200">
                                 <th class="pb-2 text-left font-medium text-gray-500"></th>
-                                <th class="pb-2 text-right font-semibold text-purple-700">Strategy</th>
-                                <th class="pb-2 text-right font-semibold text-gray-500">Benchmark</th>
+                                <th class="pb-2 text-right font-semibold text-purple-700">Value</th>
                             </tr>
                         </thead>
                         <tbody class="divide-y divide-gray-100">
                             <tr>
                                 <td class="py-2.5 text-gray-600">CAGR</td>
                                 <td class="py-2.5 text-right font-semibold" :class="summaryMetrics.cagr >= 0 ? 'text-green-700' : 'text-red-700'">{{ formatPercent(summaryMetrics.cagr) }}</td>
-                                <td class="py-2.5 text-right" :class="summaryMetrics.benchmark_cagr >= 0 ? 'text-green-700' : 'text-red-700'">{{ formatPercent(summaryMetrics.benchmark_cagr) }}</td>
                             </tr>
                             <tr>
                                 <td class="py-2.5 text-gray-600">Total Return</td>
                                 <td class="py-2.5 text-right font-semibold" :class="totalReturn >= 0 ? 'text-green-700' : 'text-red-700'">{{ formatPercent(totalReturn) }}</td>
-                                <td class="py-2.5 text-right" :class="benchmarkTotalReturn >= 0 ? 'text-green-700' : 'text-red-700'">{{ formatPercent(benchmarkTotalReturn) }}</td>
-                            </tr>
-                            <tr>
-                                <td class="py-2.5 text-gray-600">Alpha</td>
-                                <td class="py-2.5 text-right font-semibold" :class="alpha >= 0 ? 'text-green-700' : 'text-red-700'">{{ formatPercent(alpha) }}</td>
-                                <td class="py-2.5 text-right text-gray-400">-</td>
                             </tr>
                             <tr>
                                 <td class="py-2.5 text-gray-600">Max Drawdown</td>
                                 <td class="py-2.5 text-right font-semibold text-red-700">{{ formatPercent(summaryMetrics.max_drawdown) }}</td>
-                                <td class="py-2.5 text-right text-red-700">{{ formatPercent(summaryMetrics.benchmark_max_drawdown) }}</td>
                             </tr>
                             <tr v-if="summaryMetrics.max_drawdown_start_date">
                                 <td class="py-2.5 text-gray-600">Drawdown Period</td>
@@ -240,24 +273,32 @@
 
 <script setup lang="ts">
 import { Head, Link, router } from '@inertiajs/vue3';
-import { computed, onMounted, onUnmounted, watch } from 'vue';
+import { computed, onMounted, onUnmounted, ref, watch } from 'vue';
 import PageHeader from '@/Components/PageHeader.vue';
 import ErrorAlert from '@/Components/Alerts/ErrorAlert.vue';
 import InfoAlert from '@/Components/Alerts/InfoAlert.vue';
 import BacktestNavChart from '@/Pages/Backtests/partials/BacktestNavChart.vue';
 import CashAllocationChart from '@/Pages/Backtests/partials/CashAllocationChart.vue';
+import DrawdownChart from '@/Pages/Backtests/partials/DrawdownChart.vue';
 import RollingReturnsChart from '@/Pages/Backtests/partials/RollingReturnsChart.vue';
 import TradeLogTable from '@/Pages/Backtests/partials/TradeLogTable.vue';
 import type { Backtest } from '@/types/app/Models/Backtest';
 import type { BacktestSummaryMetric } from '@/types/app/Models/BacktestSummaryMetric';
 import type { BacktestDailySnapshot } from '@/types/app/Models/BacktestDailySnapshot';
 import type { BacktestTrade } from '@/types/app/Models/BacktestTrade';
+import type { SelectOption } from '@/types/SelectOption';
+
+interface BenchmarkPoint {
+    date: string;
+    nav: number;
+}
 
 const props = defineProps<{
     backtest: Backtest;
     summaryMetrics: BacktestSummaryMetric | null;
     dailySnapshots: BacktestDailySnapshot[];
     trades: BacktestTrade[];
+    benchmarkOptions: SelectOption[];
 }>();
 
 // --- Polling ---
@@ -285,6 +326,67 @@ function startPolling(): void {
 function stopPolling(): void {
     if (pollInterval) { clearInterval(pollInterval); pollInterval = null; }
 }
+
+// --- Benchmark ---
+
+const selectedBenchmark = ref<string>('nifty-50');
+const benchmarkData = ref<BenchmarkPoint[]>([]);
+const loadingBenchmark = ref(false);
+
+async function fetchBenchmark(slug: string): Promise<void> {
+    if (!slug) {
+        benchmarkData.value = [];
+        return;
+    }
+    loadingBenchmark.value = true;
+    try {
+        const response = await fetch(`/backtests/${props.backtest.id}/benchmark?slug=${slug}`);
+        benchmarkData.value = await response.json();
+    } catch {
+        benchmarkData.value = [];
+    } finally {
+        loadingBenchmark.value = false;
+    }
+}
+
+watch(selectedBenchmark, (slug) => fetchBenchmark(slug));
+
+// Load default benchmark on mount if completed
+onMounted(() => {
+    if (props.backtest.status === 'completed') {
+        fetchBenchmark(selectedBenchmark.value);
+    }
+});
+
+const benchmarkMetrics = computed(() => {
+    if (benchmarkData.value.length < 2 || !props.dailySnapshots || props.dailySnapshots.length < 2) {
+        return { cagr: 0, alpha: 0, maxDrawdown: 0, totalReturn: 0 };
+    }
+
+    const firstNav = benchmarkData.value[0].nav;
+    const lastNav = benchmarkData.value[benchmarkData.value.length - 1].nav;
+    const totalReturn = (lastNav - firstNav) / firstNav;
+
+    const first = new Date(benchmarkData.value[0].date);
+    const last = new Date(benchmarkData.value[benchmarkData.value.length - 1].date);
+    const years = (last.getTime() - first.getTime()) / (365.25 * 24 * 60 * 60 * 1000);
+
+    const cagr = years > 0 ? Math.pow(lastNav / firstNav, 1 / years) - 1 : 0;
+    const alpha = props.summaryMetrics ? props.summaryMetrics.cagr - cagr : 0;
+
+    // Max drawdown
+    let peak = 0;
+    let maxDd = 0;
+    for (const point of benchmarkData.value) {
+        if (point.nav > peak) peak = point.nav;
+        if (peak > 0) {
+            const dd = (point.nav - peak) / peak;
+            if (dd < maxDd) maxDd = dd;
+        }
+    }
+
+    return { cagr, alpha, maxDrawdown: maxDd, totalReturn };
+});
 
 // --- Formatters ---
 
@@ -321,16 +423,6 @@ function rollingReturnColor(value: number): string {
 
 const totalReturn = computed(() =>
     props.summaryMetrics ? (props.summaryMetrics.final_value - props.backtest.initial_capital) / props.backtest.initial_capital : 0,
-);
-
-const benchmarkTotalReturn = computed(() => {
-    if (!props.dailySnapshots || props.dailySnapshots.length < 2) return 0;
-    const last = Number(props.dailySnapshots[props.dailySnapshots.length - 1].benchmark_nav);
-    return (last - 100) / 100;
-});
-
-const alpha = computed(() =>
-    props.summaryMetrics ? props.summaryMetrics.cagr - props.summaryMetrics.benchmark_cagr : 0,
 );
 
 const backtestPeriod = computed(() => {

@@ -50,6 +50,7 @@ class CreateDefaultScreenAction
             'price_to_earnings_to' => 10000,
             'series_eq' => true,
             'series_be' => true,
+            'ignore_above_beta' => 100,
             'price_from' => 0,
             'price_to' => 10000000,
             'apply_factor_two' => false,

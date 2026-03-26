@@ -146,6 +146,7 @@ class ApplyScreenFiltersAction
         $query = $this->priceRangeFilters($query, $screen);
 
         $query = $this->seriesFilter($query, $screen);
+        $query = $this->ignoreAboveBetaFilter($query, $screen);
         $query = $this->customFilters($query, $screen);
 
         if ($screen->minimum_return_one_year > -100) {
@@ -231,6 +232,15 @@ class ApplyScreenFiltersAction
     {
         return $query->where('close_raw', '>=', $screen->price_from)
             ->where('close_raw', '<=', $screen->price_to);
+    }
+
+    protected function ignoreAboveBetaFilter(Builder $query, Screen $screen)
+    {
+        if ($screen->ignore_above_beta < 100) {
+            return $query->where('beta', '<=', $screen->ignore_above_beta);
+        }
+
+        return $query;
     }
 
     protected function customFilters(Builder $query, Screen $screen)

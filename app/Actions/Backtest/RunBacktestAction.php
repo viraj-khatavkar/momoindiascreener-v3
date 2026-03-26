@@ -25,8 +25,6 @@ class RunBacktestAction
 
     private float $initialCapital;
 
-    private float $benchmarkStartClose;
-
     private array $indexData = [];
 
     private array $dmaData = [];
@@ -68,12 +66,6 @@ class RunBacktestAction
         $this->computeDma();
         $this->computeRebalanceDates($backtest, $tradingDates);
 
-        $this->benchmarkStartClose = $this->indexData[$tradingDates->first()->format('Y-m-d')] ?? 0;
-
-        if ($this->benchmarkStartClose == 0) {
-            return;
-        }
-
         $totalDays = $tradingDates->count();
         $dayIndex = 0;
 
@@ -98,11 +90,6 @@ class RunBacktestAction
             $totalValue = $portfolioValue + $this->cash;
             $nav = $this->navBase * ($totalValue / $this->initialCapital);
 
-            $benchmarkClose = $this->indexData[$dateStr] ?? 0;
-            $benchmarkNav = $benchmarkClose > 0
-                ? $this->navBase * ($benchmarkClose / $this->benchmarkStartClose)
-                : 0;
-
             // Step C: Save snapshot
             $this->snapshotBatch[] = [
                 'backtest_id' => $backtest->id,
@@ -112,8 +99,6 @@ class RunBacktestAction
                 'cash' => round($this->cash, 2),
                 'total_value' => round($totalValue, 2),
                 'holdings_count' => count($this->holdings),
-                'benchmark_close' => round($benchmarkClose, 2),
-                'benchmark_nav' => $benchmarkNav,
             ];
 
             if (count($this->snapshotBatch) >= 100) {
@@ -553,6 +538,10 @@ class RunBacktestAction
             }
             if (! empty($series) && ! in_array($stock->series, $series)) {
                 $failures[] = 'Series mismatch ('.$stock->series.')';
+            }
+
+            if ($backtest->ignore_above_beta < 100 && $stock->beta > $backtest->ignore_above_beta) {
+                $failures[] = 'Beta too high ('.$stock->beta.' > '.$backtest->ignore_above_beta.')';
             }
 
             $reasons[$symbol] = ! empty($failures)

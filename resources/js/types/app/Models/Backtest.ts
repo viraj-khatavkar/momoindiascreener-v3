@@ -58,6 +58,7 @@ export interface Backtest {
     price_to_earnings_to: number;
     series_eq: boolean;
     series_be: boolean;
+    ignore_above_beta: number;
     price_from: number;
     price_to: number;
     apply_filters_on: string;

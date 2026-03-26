@@ -7,6 +7,4 @@ export interface BacktestDailySnapshot {
     cash: number;
     total_value: number;
     holdings_count: number;
-    benchmark_close: number;
-    benchmark_nav: number;
 }

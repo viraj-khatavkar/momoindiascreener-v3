@@ -1,29 +1,22 @@
 <template>
     <div class="rounded-lg bg-slate-50 p-4 md:p-6">
-        <div ref="chartContainer" class="h-[400px]" />
+        <div ref="chartContainer" class="h-[250px]" />
     </div>
 </template>
 
 <script setup lang="ts">
 import { onUnmounted, ref, watch } from 'vue';
-import { LineSeries, ColorType, CrosshairMode, createChart } from 'lightweight-charts';
+import { AreaSeries, ColorType, CrosshairMode, createChart } from 'lightweight-charts';
 import type { IChartApi, ISeriesApi, SeriesType, Time } from 'lightweight-charts';
 import type { BacktestDailySnapshot } from '@/types/app/Models/BacktestDailySnapshot';
 
-interface BenchmarkPoint {
-    date: string;
-    nav: number;
-}
-
 const props = defineProps<{
     dailySnapshots: BacktestDailySnapshot[];
-    benchmarkData: BenchmarkPoint[];
 }>();
 
 const chartContainer = ref<HTMLDivElement>();
 let chart: IChartApi | null = null;
-let strategySeries: ISeriesApi<SeriesType> | null = null;
-let benchmarkSeries: ISeriesApi<SeriesType> | null = null;
+let series: ISeriesApi<SeriesType> | null = null;
 
 function initChart(container: HTMLDivElement): void {
     chart = createChart(container, {
@@ -47,54 +40,39 @@ function initChart(container: HTMLDivElement): void {
         },
     });
 
-    strategySeries = chart.addSeries(LineSeries, {
-        color: '#7c3aed',
+    series = chart.addSeries(AreaSeries, {
+        lineColor: '#dc2626',
+        topColor: 'rgba(220, 38, 38, 0)',
+        bottomColor: 'rgba(220, 38, 38, 0.15)',
         lineWidth: 2,
-        title: 'Strategy',
         lastValueVisible: true,
         priceLineVisible: false,
+        title: 'Drawdown %',
     });
 
-    benchmarkSeries = chart.addSeries(LineSeries, {
-        color: '#9ca3af',
-        lineWidth: 2,
-        title: 'Benchmark',
-        lastValueVisible: true,
-        priceLineVisible: false,
-    });
-
-    setStrategyData();
-    setBenchmarkData();
+    setData();
     chart.timeScale().fitContent();
 }
 
-function setStrategyData(): void {
-    if (!strategySeries) return;
-    strategySeries.setData(
-        props.dailySnapshots.map((s) => ({
-            time: s.date.substring(0, 10) as unknown as Time,
-            value: Number(s.nav),
-        })),
-    );
-}
+function setData(): void {
+    if (!series) return;
 
-function setBenchmarkData(): void {
-    if (!benchmarkSeries) return;
-    benchmarkSeries.setData(
-        props.benchmarkData.map((s) => ({
+    let peak = 0;
+    const data = props.dailySnapshots.map((s) => {
+        const nav = Number(s.nav);
+        if (nav > peak) peak = nav;
+        const dd = peak > 0 ? ((nav - peak) / peak) * 100 : 0;
+        return {
             time: s.date.substring(0, 10) as unknown as Time,
-            value: Number(s.nav),
-        })),
-    );
+            value: Math.round(dd * 100) / 100,
+        };
+    });
+
+    series.setData(data);
 }
 
 function destroyChart(): void {
-    if (chart) {
-        chart.remove();
-        chart = null;
-        strategySeries = null;
-        benchmarkSeries = null;
-    }
+    if (chart) { chart.remove(); chart = null; series = null; }
 }
 
 watch(chartContainer, (el) => {
@@ -103,11 +81,7 @@ watch(chartContainer, (el) => {
 });
 
 watch(() => props.dailySnapshots, () => {
-    if (chart) { setStrategyData(); chart.timeScale().fitContent(); }
-});
-
-watch(() => props.benchmarkData, () => {
-    if (chart) { setBenchmarkData(); chart.timeScale().fitContent(); }
+    if (chart) { setData(); chart.timeScale().fitContent(); }
 });
 
 onUnmounted(destroyChart);

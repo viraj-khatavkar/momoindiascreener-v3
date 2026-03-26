@@ -249,102 +249,108 @@
             </div>
         </Deferred>
 
-        <hr class="mt-8" />
-
-        <!-- Price Levels & Moving Averages -->
-        <dl class="mt-8 grid grid-cols-2 gap-4 md:grid-cols-4">
-            <div>
-                <dt class="text-sm font-medium text-gray-500">1-Year High</dt>
-                <dd class="mt-1 text-sm text-gray-900">{{ instrument.high_one_year }}</dd>
-            </div>
-            <div>
-                <dt class="text-sm font-medium text-gray-500">Away from 1Y High</dt>
-                <dd class="mt-1 text-sm text-gray-900">{{ instrument.away_from_high_one_year }}</dd>
-            </div>
-            <div>
-                <dt class="text-sm font-medium text-gray-500">All Time High</dt>
-                <dd class="mt-1 text-sm text-gray-900">{{ instrument.high_all_time }}</dd>
-            </div>
-            <div>
-                <dt class="text-sm font-medium text-gray-500">Away from ATH</dt>
-                <dd class="mt-1 text-sm text-gray-900">{{ instrument.away_from_high_all_time }}</dd>
-            </div>
-            <div>
-                <dt class="text-sm font-medium text-gray-500">200 DMA</dt>
-                <dd class="mt-1 text-sm text-gray-900">{{ instrument.ma_200 }}</dd>
-            </div>
-            <div>
-                <dt class="text-sm font-medium text-gray-500">100 DMA</dt>
-                <dd class="mt-1 text-sm text-gray-900">{{ instrument.ma_100 }}</dd>
-            </div>
-            <div>
-                <dt class="text-sm font-medium text-gray-500">50 DMA</dt>
-                <dd class="mt-1 text-sm text-gray-900">{{ instrument.ma_50 }}</dd>
-            </div>
-            <div>
-                <dt class="text-sm font-medium text-gray-500">20 DMA</dt>
-                <dd class="mt-1 text-sm text-gray-900">{{ instrument.ma_20 }}</dd>
-            </div>
-            <div>
-                <dt class="text-sm font-medium text-gray-500">200 EMA</dt>
-                <dd class="mt-1 text-sm text-gray-900">{{ instrument.ema_200 }}</dd>
-            </div>
-            <div>
-                <dt class="text-sm font-medium text-gray-500">100 EMA</dt>
-                <dd class="mt-1 text-sm text-gray-900">{{ instrument.ema_100 }}</dd>
-            </div>
-            <div>
-                <dt class="text-sm font-medium text-gray-500">50 EMA</dt>
-                <dd class="mt-1 text-sm text-gray-900">{{ instrument.ema_50 }}</dd>
-            </div>
-            <div>
-                <dt class="text-sm font-medium text-gray-500">20 EMA</dt>
-                <dd class="mt-1 text-sm text-gray-900">{{ instrument.ema_20 }}</dd>
-            </div>
-        </dl>
-
-        <!-- Momentum Returns & Volume -->
-        <dl class="mt-8 grid grid-cols-2 gap-4 md:grid-cols-4">
-            <div>
-                <dt class="text-sm font-medium text-gray-500">12M - 1M Return</dt>
-                <dd class="mt-1 text-sm text-gray-900">{{ instrument.return_twelve_minus_one_months }}</dd>
-            </div>
-            <div>
-                <dt class="text-sm font-medium text-gray-500">12M - 2M Return</dt>
-                <dd class="mt-1 text-sm text-gray-900">{{ instrument.return_twelve_minus_two_months }}</dd>
-            </div>
-            <div>
-                <dt class="text-sm font-medium text-gray-500">Median Daily Vol 1Y (&#8377; cr)</dt>
-                <dd class="mt-1 text-sm text-gray-900">{{ instrument.median_volume_one_year }}</dd>
-            </div>
-        </dl>
-
-        <hr class="mt-8" />
-
-        <!-- Time-Period Stats Table -->
+        <!-- Price Levels -->
         <div class="mt-8">
-            <h2 class="text-lg font-semibold leading-6 text-gray-900">Period-wise Stats</h2>
-            <div class="mt-4 overflow-x-auto">
-                <table class="min-w-full divide-y divide-gray-300 text-sm">
+            <h2 class="mb-4 text-sm font-semibold uppercase tracking-wide text-gray-500">Price Levels</h2>
+            <div class="grid grid-cols-2 gap-3 md:grid-cols-4">
+                <div class="rounded-lg bg-white p-4 shadow-xs ring-1 ring-gray-100">
+                    <div class="text-xs text-gray-500">1-Year High</div>
+                    <div class="mt-1 text-lg font-semibold text-gray-900">{{ instrument.high_one_year }}</div>
+                </div>
+                <div class="rounded-lg bg-white p-4 shadow-xs ring-1 ring-gray-100">
+                    <div class="text-xs text-gray-500">Away from 1Y High</div>
+                    <div class="mt-1 text-lg font-semibold" :class="Number(instrument.away_from_high_one_year) >= 0 ? 'text-green-700' : 'text-red-700'">{{ instrument.away_from_high_one_year }}%</div>
+                </div>
+                <div class="rounded-lg bg-white p-4 shadow-xs ring-1 ring-gray-100">
+                    <div class="text-xs text-gray-500">All Time High</div>
+                    <div class="mt-1 text-lg font-semibold text-gray-900">{{ instrument.high_all_time }}</div>
+                </div>
+                <div class="rounded-lg bg-white p-4 shadow-xs ring-1 ring-gray-100">
+                    <div class="text-xs text-gray-500">Away from ATH</div>
+                    <div class="mt-1 text-lg font-semibold" :class="Number(instrument.away_from_high_all_time) >= 0 ? 'text-green-700' : 'text-red-700'">{{ instrument.away_from_high_all_time }}%</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Moving Averages -->
+        <div class="mt-8">
+            <h2 class="mb-4 text-sm font-semibold uppercase tracking-wide text-gray-500">Moving Averages</h2>
+            <div class="overflow-x-auto">
+                <table class="min-w-full text-sm">
                     <thead>
-                        <tr>
-                            <th class="py-3 pr-4 text-left font-semibold text-gray-900" />
-                            <th class="px-4 py-3 text-right font-semibold text-gray-900">1M</th>
-                            <th class="px-4 py-3 text-right font-semibold text-gray-900">3M</th>
-                            <th class="px-4 py-3 text-right font-semibold text-gray-900">6M</th>
-                            <th class="px-4 py-3 text-right font-semibold text-gray-900">9M</th>
-                            <th class="px-4 py-3 text-right font-semibold text-gray-900">1Y</th>
+                        <tr class="border-b border-gray-200">
+                            <th class="pb-2 text-left font-medium text-gray-500"></th>
+                            <th class="pb-2 text-right font-medium text-gray-500">200</th>
+                            <th class="pb-2 text-right font-medium text-gray-500">100</th>
+                            <th class="pb-2 text-right font-medium text-gray-500">50</th>
+                            <th class="pb-2 text-right font-medium text-gray-500">20</th>
                         </tr>
                     </thead>
-                    <tbody class="divide-y divide-gray-200">
-                        <tr v-for="row in periodStatsRows" :key="row.label">
-                            <td class="whitespace-nowrap py-3 pr-4 font-medium text-gray-700">
+                    <tbody class="divide-y divide-gray-100">
+                        <tr>
+                            <td class="py-2.5 font-medium text-gray-700">SMA</td>
+                            <td class="py-2.5 text-right" :class="Number(instrument.close_adjusted) > Number(instrument.ma_200) ? 'text-green-700' : 'text-red-700'">{{ instrument.ma_200 }}</td>
+                            <td class="py-2.5 text-right" :class="Number(instrument.close_adjusted) > Number(instrument.ma_100) ? 'text-green-700' : 'text-red-700'">{{ instrument.ma_100 }}</td>
+                            <td class="py-2.5 text-right" :class="Number(instrument.close_adjusted) > Number(instrument.ma_50) ? 'text-green-700' : 'text-red-700'">{{ instrument.ma_50 }}</td>
+                            <td class="py-2.5 text-right" :class="Number(instrument.close_adjusted) > Number(instrument.ma_20) ? 'text-green-700' : 'text-red-700'">{{ instrument.ma_20 }}</td>
+                        </tr>
+                        <tr>
+                            <td class="py-2.5 font-medium text-gray-700">EMA</td>
+                            <td class="py-2.5 text-right" :class="Number(instrument.close_adjusted) > Number(instrument.ema_200) ? 'text-green-700' : 'text-red-700'">{{ instrument.ema_200 }}</td>
+                            <td class="py-2.5 text-right" :class="Number(instrument.close_adjusted) > Number(instrument.ema_100) ? 'text-green-700' : 'text-red-700'">{{ instrument.ema_100 }}</td>
+                            <td class="py-2.5 text-right" :class="Number(instrument.close_adjusted) > Number(instrument.ema_50) ? 'text-green-700' : 'text-red-700'">{{ instrument.ema_50 }}</td>
+                            <td class="py-2.5 text-right" :class="Number(instrument.close_adjusted) > Number(instrument.ema_20) ? 'text-green-700' : 'text-red-700'">{{ instrument.ema_20 }}</td>
+                        </tr>
+                    </tbody>
+                </table>
+                <p class="mt-2 text-xs text-gray-400">Green = price above MA, Red = price below MA</p>
+            </div>
+        </div>
+
+        <!-- Momentum & Volume -->
+        <div class="mt-8">
+            <h2 class="mb-4 text-sm font-semibold uppercase tracking-wide text-gray-500">Momentum & Volume</h2>
+            <div class="grid grid-cols-2 gap-3 md:grid-cols-3">
+                <div class="rounded-lg bg-white p-4 shadow-xs ring-1 ring-gray-100">
+                    <div class="text-xs text-gray-500">12M - 1M Return</div>
+                    <div class="mt-1 text-lg font-semibold" :class="Number(instrument.return_twelve_minus_one_months) >= 0 ? 'text-green-700' : 'text-red-700'">{{ instrument.return_twelve_minus_one_months }}%</div>
+                </div>
+                <div class="rounded-lg bg-white p-4 shadow-xs ring-1 ring-gray-100">
+                    <div class="text-xs text-gray-500">12M - 2M Return</div>
+                    <div class="mt-1 text-lg font-semibold" :class="Number(instrument.return_twelve_minus_two_months) >= 0 ? 'text-green-700' : 'text-red-700'">{{ instrument.return_twelve_minus_two_months }}%</div>
+                </div>
+                <div class="rounded-lg bg-white p-4 shadow-xs ring-1 ring-gray-100">
+                    <div class="text-xs text-gray-500">Median Daily Vol 1Y</div>
+                    <div class="mt-1 text-lg font-semibold text-gray-900">&#8377;{{ instrument.median_volume_one_year }} cr</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Period-wise Stats Table -->
+        <div class="mt-8">
+            <h2 class="mb-4 text-sm font-semibold uppercase tracking-wide text-gray-500">Period-wise Stats</h2>
+            <div class="overflow-x-auto rounded-lg ring-1 ring-gray-100">
+                <table class="min-w-full text-sm">
+                    <thead>
+                        <tr class="bg-gray-50">
+                            <th class="px-4 py-3 text-left font-medium text-gray-500"></th>
+                            <th class="px-4 py-3 text-right font-medium text-gray-500">1M</th>
+                            <th class="px-4 py-3 text-right font-medium text-gray-500">3M</th>
+                            <th class="px-4 py-3 text-right font-medium text-gray-500">6M</th>
+                            <th class="px-4 py-3 text-right font-medium text-gray-500">9M</th>
+                            <th class="px-4 py-3 text-right font-medium text-gray-500">1Y</th>
+                        </tr>
+                    </thead>
+                    <tbody class="divide-y divide-gray-100 bg-white">
+                        <tr v-for="row in periodStatsRows" :key="row.label" class="hover:bg-gray-50">
+                            <td class="whitespace-nowrap px-4 py-3 font-medium text-gray-900">
                                 {{ row.label }}
                             </td>
                             <td
                                 v-for="(val, i) in row.values"
                                 :key="i"
-                                class="whitespace-nowrap px-4 py-3 text-right text-gray-600"
+                                class="whitespace-nowrap px-4 py-3 text-right"
+                                :class="row.colorize && String(val).includes('-') ? 'text-red-700' : row.colorize ? 'text-green-700' : 'text-gray-700'"
                             >
                                 {{ val }}
                             </td>
@@ -562,12 +568,12 @@ function toggleIndicator(id: string): void {
 const periodStatsRows = computed(() => {
     const i = props.instrument;
     return [
-        { label: 'Returns', values: [i.absolute_return_one_months, i.absolute_return_three_months, i.absolute_return_six_months, i.absolute_return_nine_months, i.absolute_return_one_year] },
-        { label: 'Volatility', values: [i.volatility_one_months, i.volatility_three_months, i.volatility_six_months, i.volatility_nine_months, i.volatility_one_year] },
-        { label: 'Sharpe Returns', values: [i.sharpe_return_one_months, i.sharpe_return_three_months, i.sharpe_return_six_months, i.sharpe_return_nine_months, i.sharpe_return_one_year] },
-        { label: 'RSI', values: [i.rsi_one_months, i.rsi_three_months, i.rsi_six_months, i.rsi_nine_months, i.rsi_one_year] },
-        { label: 'Positive Days %', values: [i.positive_days_percent_one_months, i.positive_days_percent_three_months, i.positive_days_percent_six_months, i.positive_days_percent_nine_months, i.positive_days_percent_one_year] },
-        { label: 'Circuits', values: [i.circuits_one_months, i.circuits_three_months, i.circuits_six_months, i.circuits_nine_months, i.circuits_one_year] },
+        { label: 'Returns', colorize: true, values: [i.absolute_return_one_months + '%', i.absolute_return_three_months + '%', i.absolute_return_six_months + '%', i.absolute_return_nine_months + '%', i.absolute_return_one_year + '%'] },
+        { label: 'Volatility', colorize: false, values: [i.volatility_one_months, i.volatility_three_months, i.volatility_six_months, i.volatility_nine_months, i.volatility_one_year] },
+        { label: 'Sharpe Returns', colorize: true, values: [i.sharpe_return_one_months, i.sharpe_return_three_months, i.sharpe_return_six_months, i.sharpe_return_nine_months, i.sharpe_return_one_year] },
+        { label: 'RSI', colorize: false, values: [i.rsi_one_months, i.rsi_three_months, i.rsi_six_months, i.rsi_nine_months, i.rsi_one_year] },
+        { label: 'Positive Days %', colorize: false, values: [i.positive_days_percent_one_months + '%', i.positive_days_percent_three_months + '%', i.positive_days_percent_six_months + '%', i.positive_days_percent_nine_months + '%', i.positive_days_percent_one_year + '%'] },
+        { label: 'Circuits', colorize: false, values: [i.circuits_one_months, i.circuits_three_months, i.circuits_six_months, i.circuits_nine_months, i.circuits_one_year] },
     ];
 });
 

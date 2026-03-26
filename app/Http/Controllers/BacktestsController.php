@@ -51,6 +51,13 @@ class BacktestsController extends Controller
             'summaryMetrics' => $backtest->summaryMetrics,
             'dailySnapshots' => $backtest->dailySnapshots()->orderBy('date')->get(),
             'trades' => $backtest->trades()->orderBy('date')->orderBy('trade_type')->get(),
+            'benchmarkOptions' => [
+                ['id' => 'nifty-50', 'name' => 'Nifty 50'],
+                ['id' => 'nifty-100', 'name' => 'Nifty 100'],
+                ['id' => 'nifty-500', 'name' => 'Nifty 500'],
+                ['id' => 'nifty200-momentum-30', 'name' => 'Nifty 200 Momentum 30'],
+                ['id' => 'nifty500-momentum-50', 'name' => 'Nifty 500 Momentum 50'],
+            ],
         ]);
     }
 

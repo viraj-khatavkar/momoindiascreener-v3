@@ -78,6 +78,7 @@ class StoreBacktestRequest extends FormRequest
             'price_to_earnings_to' => ['required', 'numeric', 'between:0,10000'],
             'series_eq' => ['required', 'boolean'],
             'series_be' => ['required', 'boolean'],
+            'ignore_above_beta' => ['required', 'numeric', 'between:0,100'],
             'price_from' => ['required', 'numeric', 'between:0,10000000'],
             'price_to' => ['required', 'numeric', 'between:0,10000000'],
             'apply_factor_two' => ['required', 'boolean'],

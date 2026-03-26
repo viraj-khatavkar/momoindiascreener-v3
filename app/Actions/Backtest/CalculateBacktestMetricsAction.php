@@ -12,7 +12,7 @@ class CalculateBacktestMetricsAction
     {
         $snapshots = $backtest->dailySnapshots()
             ->orderBy('date')
-            ->get(['date', 'nav', 'benchmark_nav', 'total_value']);
+            ->get(['date', 'nav', 'total_value']);
 
         if ($snapshots->count() < 2) {
             return;
@@ -21,9 +21,7 @@ class CalculateBacktestMetricsAction
         $firstSnapshot = $snapshots->first();
         $lastSnapshot = $snapshots->last();
 
-        $firstDate = $firstSnapshot->date;
-        $lastDate = $lastSnapshot->date;
-        $years = $firstDate->diffInDays($lastDate) / 365.25;
+        $years = $firstSnapshot->date->diffInDays($lastSnapshot->date) / 365.25;
 
         if ($years <= 0) {
             return;
@@ -33,14 +31,8 @@ class CalculateBacktestMetricsAction
         $finalNav = (float) $lastSnapshot->nav;
         $cagr = pow($finalNav / 100.0, 1.0 / $years) - 1;
 
-        $finalBenchmarkNav = (float) $lastSnapshot->benchmark_nav;
-        $benchmarkCagr = $finalBenchmarkNav > 0
-            ? pow($finalBenchmarkNav / 100.0, 1.0 / $years) - 1
-            : 0;
-
         // Max Drawdown
-        [$maxDrawdown, $ddStartDate, $ddEndDate] = $this->calculateMaxDrawdown($snapshots, 'nav');
-        [$benchmarkMaxDrawdown] = $this->calculateMaxDrawdown($snapshots, 'benchmark_nav');
+        [$maxDrawdown, $ddStartDate, $ddEndDate] = $this->calculateMaxDrawdown($snapshots);
 
         // Rolling Returns
         $rollingReturnsOneYear = $this->calculateRollingReturns($snapshots, 252);
@@ -54,11 +46,9 @@ class CalculateBacktestMetricsAction
         BacktestSummaryMetric::create([
             'backtest_id' => $backtest->id,
             'cagr' => round($cagr, 4),
-            'benchmark_cagr' => round($benchmarkCagr, 4),
             'max_drawdown' => round($maxDrawdown, 4),
             'max_drawdown_start_date' => $ddStartDate,
             'max_drawdown_end_date' => $ddEndDate,
-            'benchmark_max_drawdown' => round($benchmarkMaxDrawdown, 4),
             'total_trades' => $totalTrades,
             'total_charges_paid' => round($totalCharges, 2),
             'final_value' => round((float) $lastSnapshot->total_value, 2),
@@ -71,7 +61,7 @@ class CalculateBacktestMetricsAction
     /**
      * @return array{0: float, 1: string|null, 2: string|null}
      */
-    private function calculateMaxDrawdown($snapshots, string $navField): array
+    private function calculateMaxDrawdown($snapshots): array
     {
         $peak = 0;
         $maxDd = 0;
@@ -80,7 +70,7 @@ class CalculateBacktestMetricsAction
         $currentPeakDate = null;
 
         foreach ($snapshots as $snapshot) {
-            $nav = (float) $snapshot->$navField;
+            $nav = (float) $snapshot->nav;
 
             if ($nav > $peak) {
                 $peak = $nav;

@@ -425,6 +425,28 @@
                     </DisclosurePanel>
                 </Disclosure>
 
+                <!-- Ignore Above Beta -->
+                <Disclosure v-slot="{ open }" as="div" class="mt-4 border border-gray-200 rounded-md">
+                    <DisclosureButton class="flex w-full items-center justify-between bg-gray-50 px-4 py-3">
+                        <span class="text-sm font-semibold text-gray-900">Ignore Above Beta</span>
+                        <ChevronDownIcon :class="[open ? 'rotate-180' : '', 'h-5 w-5 text-gray-500']" />
+                    </DisclosureButton>
+                    <DisclosurePanel class="p-4">
+                        <div class="mb-4 text-sm text-purple-500">
+                            Stocks with beta above this value will be excluded. Keep at 100 to include all stocks.
+                        </div>
+                        <div class="grid grid-cols-1 gap-x-8 sm:grid-cols-2 lg:grid-cols-4">
+                            <TextInput
+                                v-model="form.ignore_above_beta"
+                                type="number"
+                                label="Max Beta"
+                                name="ignore_above_beta"
+                                :error="form.errors.ignore_above_beta"
+                            />
+                        </div>
+                    </DisclosurePanel>
+                </Disclosure>
+
                 <!-- Price (CMP) Range -->
                 <Disclosure v-slot="{ open }" as="div" class="mt-4 border border-gray-200 rounded-md">
                     <DisclosureButton class="flex w-full items-center justify-between bg-gray-50 px-4 py-3">
@@ -808,6 +830,7 @@ const form = useForm({
     price_to_earnings_to: props.backtest.price_to_earnings_to,
     series_eq: props.backtest.series_eq,
     series_be: props.backtest.series_be,
+    ignore_above_beta: props.backtest.ignore_above_beta,
     price_from: props.backtest.price_from,
     price_to: props.backtest.price_to,
     apply_factor_two: props.backtest.apply_factor_two,
