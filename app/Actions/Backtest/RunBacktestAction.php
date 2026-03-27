@@ -37,6 +37,8 @@ class RunBacktestAction
 
     private float $dailyCashReturnRate = 0;
 
+    private int $dmaPeriod = 50;
+
     public function __construct(
         private ApplyBacktestFiltersAction $filtersAction,
         private CalculateTransactionCostsAction $costsAction,
@@ -62,8 +64,9 @@ class RunBacktestAction
             return;
         }
 
+        $this->dmaPeriod = (int) $backtest->cash_call_dma_period;
         $this->loadIndexData($backtest->cash_call_index);
-        $this->computeDma();
+        $this->computeDma($this->dmaPeriod);
         $this->computeRebalanceDates($backtest, $tradingDates);
 
         $totalDays = $tradingDates->count();
@@ -139,7 +142,7 @@ class RunBacktestAction
             });
     }
 
-    private function computeDma(): void
+    private function computeDma(int $period): void
     {
         $closes = [];
 
@@ -147,8 +150,8 @@ class RunBacktestAction
             $closes[] = $close;
             $count = count($closes);
 
-            if ($count >= 50) {
-                $this->dmaData[$date] = array_sum(array_slice($closes, -50)) / 50;
+            if ($count >= $period) {
+                $this->dmaData[$date] = array_sum(array_slice($closes, -$period)) / $period;
             }
         }
     }
@@ -219,7 +222,7 @@ class RunBacktestAction
         $cashCall = $backtest->cash_call;
 
         if ($cashCall === BacktestCashCallEnum::FullCashBelowIndexDma && $indexBelowDma) {
-            $this->sellEverything($backtest, $date, 'Cash call - index below 50 DMA');
+            $this->sellEverything($backtest, $date, 'Cash call - index below '.$this->dmaPeriod.' DMA');
 
             return;
         }
@@ -242,7 +245,7 @@ class RunBacktestAction
             BacktestCashCallEnum::OnlyExitsAllocateToGoldBelowIndexDma,
         ]);
         if ($isGoldCashCall && isset($this->holdings['GOLDBEES'])) {
-            $this->executeSell($backtest, $date, 'GOLDBEES', $this->holdings['GOLDBEES']['quantity'], 'Index recovered above 50 DMA - exiting gold');
+            $this->executeSell($backtest, $date, 'GOLDBEES', $this->holdings['GOLDBEES']['quantity'], 'Index recovered above '.$this->dmaPeriod.' DMA - exiting gold');
         }
 
         $onlyExits = $cashCall === BacktestCashCallEnum::OnlyExitsBelowIndexDma && $indexBelowDma;
@@ -345,6 +348,23 @@ class RunBacktestAction
         // Calculate target per stock
         $targets = $this->calculateTargetAllocations($backtest, $totalValue, $allTargetStocks);
 
+        // Phase 0: For inverse volatility, sell held stocks with no volatility data
+        if ($backtest->weightage === BacktestWeightageEnum::InverseVolatility) {
+            foreach ($this->holdings as $symbol => $holding) {
+                if ($symbol === 'GOLDBEES') {
+                    continue;
+                }
+                if (! isset($targets[$symbol])) {
+                    $this->executeSell($backtest, $date, $symbol, $holding['quantity'], 'No volatility data for inverse volatility weighting');
+                }
+            }
+
+            // Recalculate total value after selling null-vol stocks
+            $portfolioValue = $this->calculatePortfolioValue();
+            $totalValue = $portfolioValue + $this->cash;
+            $targets = $this->calculateTargetAllocations($backtest, $totalValue, $allTargetStocks);
+        }
+
         // Phase 1: Execute trims (sells of overweight positions)
         foreach ($this->holdings as $symbol => $holding) {
             if (! isset($targets[$symbol])) {
@@ -367,6 +387,10 @@ class RunBacktestAction
         $totalBuyBudget = 0;
 
         foreach ($allTargetStocks as $symbol => $stock) {
+            if (! isset($targets[$symbol])) {
+                continue;
+            }
+
             if (isset($this->holdings[$symbol])) {
                 $currentValue = $this->holdings[$symbol]['quantity'] * $this->holdings[$symbol]['last_known_price'];
                 $targetValue = $targets[$symbol];
@@ -569,7 +593,7 @@ class RunBacktestAction
         $symbols = array_keys($this->holdings);
         foreach ($symbols as $symbol) {
             if ($symbol !== 'GOLDBEES') {
-                $this->executeSell($backtest, $date, $symbol, $this->holdings[$symbol]['quantity'], 'Index below 50 DMA - rotating to gold');
+                $this->executeSell($backtest, $date, $symbol, $this->holdings[$symbol]['quantity'], 'Index below '.$this->dmaPeriod.' DMA - rotating to gold');
             }
         }
 
@@ -587,7 +611,7 @@ class RunBacktestAction
             return;
         }
 
-        $this->executeBuy($backtest, $date, $goldData, $this->cash, 'Index below 50 DMA - allocating to gold');
+        $this->executeBuy($backtest, $date, $goldData, $this->cash, 'Index below '.$this->dmaPeriod.' DMA - allocating to gold');
     }
 
     private function onlyExitsAndAllocateToGold(Backtest $backtest, Carbon $date, $rankedBySymbol): void
@@ -633,7 +657,7 @@ class RunBacktestAction
             return;
         }
 
-        $this->executeBuy($backtest, $date, $goldData, $this->cash, 'Index below 50 DMA - allocating exits to gold');
+        $this->executeBuy($backtest, $date, $goldData, $this->cash, 'Index below '.$this->dmaPeriod.' DMA - allocating exits to gold');
     }
 
     private function executeSell(Backtest $backtest, Carbon $date, string $symbol, int $quantity, string $reason): void

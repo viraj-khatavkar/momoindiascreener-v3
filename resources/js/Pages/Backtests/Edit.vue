@@ -69,6 +69,14 @@
                         :options="cashCallIndexOptions"
                         :error="form.errors.cash_call_index"
                     />
+                    <SelectInput
+                        v-if="['full_cash_below_index_dma', 'only_exits_below_index_dma', 'allocate_to_gold_below_index_dma', 'only_exits_allocate_to_gold_below_index_dma'].includes(form.cash_call)"
+                        v-model="form.cash_call_dma_period"
+                        label="DMA Period"
+                        name="cash_call_dma_period"
+                        :options="dmaPeriodOptions"
+                        :error="form.errors.cash_call_dma_period"
+                    />
                     <TextInput
                         v-model="form.cash_return_rate"
                         type="number"
@@ -751,6 +759,13 @@ const props = defineProps<{
     cashCallIndexOptions: SelectOption[];
 }>();
 
+const dmaPeriodOptions = [
+    { id: '20', name: '20 DMA' },
+    { id: '50', name: '50 DMA' },
+    { id: '100', name: '100 DMA' },
+    { id: '200', name: '200 DMA' },
+];
+
 const sortDirectionOptions = [
     { id: 'desc', name: 'Highest to Lowest' },
     { id: 'asc', name: 'Lowest to Highest' },
@@ -787,6 +802,7 @@ const form = useForm({
     weightage: props.backtest.weightage,
     cash_call: props.backtest.cash_call,
     cash_call_index: props.backtest.cash_call_index,
+    cash_call_dma_period: props.backtest.cash_call_dma_period,
     cash_return_rate: props.backtest.cash_return_rate,
     index: props.backtest.index,
     sort_by: props.backtest.sort_by,

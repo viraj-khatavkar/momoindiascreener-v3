@@ -28,6 +28,7 @@ class CreateDefaultBacktestAction
             'weightage' => BacktestWeightageEnum::EqualWeight->value,
             'cash_call' => BacktestCashCallEnum::NoCashCall->value,
             'cash_call_index' => 'nifty-50',
+            'cash_call_dma_period' => 50,
             'cash_return_rate' => 6.00,
             'initial_capital' => 5000000.00,
 
