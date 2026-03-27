@@ -33,6 +33,22 @@
                         name="worst_rank_held"
                         :error="form.errors.worst_rank_held"
                     />
+                    <div>
+                        <Toggle v-model="form.apply_hold_above_dma" label="Hold if Above DMA" />
+                        <p class="mt-1 text-xs text-gray-500">Don't exit a stock if its price is above its own moving average</p>
+                    </div>
+                    <SelectInput
+                        v-if="form.apply_hold_above_dma"
+                        v-model="form.hold_above_dma_period"
+                        label="Hold Above DMA Period"
+                        name="hold_above_dma_period"
+                        :options="holdDmaPeriodOptions"
+                        :error="form.errors.hold_above_dma_period"
+                    />
+                    <div>
+                        <Toggle v-model="form.execute_next_trading_day" label="Execute Next Trading Day" />
+                        <p class="mt-1 text-xs text-gray-500">Decide on rebalance day, execute trades at next day's close</p>
+                    </div>
                     <SelectInput
                         v-model="form.rebalance_frequency"
                         label="Rebalance Frequency"
@@ -759,6 +775,13 @@ const props = defineProps<{
     cashCallIndexOptions: SelectOption[];
 }>();
 
+const holdDmaPeriodOptions = [
+    { id: '20', name: '20 DMA' },
+    { id: '50', name: '50 DMA' },
+    { id: '100', name: '100 DMA' },
+    { id: '200', name: '200 DMA' },
+];
+
 const dmaPeriodOptions = [
     { id: '20', name: '20 DMA' },
     { id: '50', name: '50 DMA' },
@@ -797,6 +820,9 @@ const form = useForm({
     name: props.backtest.name,
     max_stocks_to_hold: props.backtest.max_stocks_to_hold,
     worst_rank_held: props.backtest.worst_rank_held,
+    apply_hold_above_dma: props.backtest.apply_hold_above_dma,
+    hold_above_dma_period: props.backtest.hold_above_dma_period,
+    execute_next_trading_day: props.backtest.execute_next_trading_day,
     rebalance_frequency: props.backtest.rebalance_frequency,
     rebalance_day: props.backtest.rebalance_day,
     weightage: props.backtest.weightage,

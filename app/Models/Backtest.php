@@ -29,6 +29,8 @@ class Backtest extends Model
             'cash_call' => BacktestCashCallEnum::class,
             'index' => NseIndexEnum::class,
             'apply_filters_on' => ApplyFiltersOnOptionEnum::class,
+            'apply_hold_above_dma' => 'boolean',
+            'execute_next_trading_day' => 'boolean',
             'apply_ma' => 'boolean',
             'above_ma_200' => 'boolean',
             'above_ma_100' => 'boolean',

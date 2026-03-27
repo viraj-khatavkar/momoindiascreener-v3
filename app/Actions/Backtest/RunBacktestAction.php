@@ -69,6 +69,12 @@ class RunBacktestAction
         $this->computeDma($this->dmaPeriod);
         $this->computeRebalanceDates($backtest, $tradingDates);
 
+        // When execute_next_trading_day is enabled, shift execution to next trading day
+        // rebalanceDates stores: executionDate => decisionDate (filterDate)
+        if ($backtest->execute_next_trading_day) {
+            $this->rebalanceDates = $this->shiftRebalanceDatesToNextDay($tradingDates);
+        }
+
         $totalDays = $tradingDates->count();
         $dayIndex = 0;
 
@@ -84,9 +90,11 @@ class RunBacktestAction
             // Step A: Mark-to-market FIRST (loads today's prices for held stocks)
             $this->markToMarket($date);
 
-            // Step B: Rebalance (if applicable) — uses today's prices from step A
+            // Step B: Rebalance (if applicable)
+            // rebalanceDates[executionDate] = decisionDate (filter date)
             if (isset($this->rebalanceDates[$dateStr])) {
-                $this->rebalance($backtest, $date);
+                $filterDate = $this->rebalanceDates[$dateStr];
+                $this->rebalance($backtest, $date, $filterDate);
             }
 
             $portfolioValue = $this->calculatePortfolioValue();
@@ -132,9 +140,13 @@ class RunBacktestAction
 
     private function loadIndexData(string $slug): void
     {
+        // Load enough history before START_DATE for the DMA period to be computed
+        // 200 DMA needs ~280 calendar days of prior data; use generous buffer
+        $loadFrom = Carbon::parse(self::START_DATE)->subDays($this->dmaPeriod * 2)->format('Y-m-d');
+
         NseIndex::query()
             ->where('slug', $slug)
-            ->where('date', '>=', '2010-10-01')
+            ->where('date', '>=', $loadFrom)
             ->orderBy('date')
             ->get(['date', 'close'])
             ->each(function ($row) {
@@ -162,7 +174,7 @@ class RunBacktestAction
 
         // First trading day is always initial rebalance
         $firstDate = $tradingDates->first()->format('Y-m-d');
-        $this->rebalanceDates[$firstDate] = true;
+        $this->rebalanceDates[$firstDate] = $firstDate;
 
         if ($backtest->rebalance_frequency->value === 'weekly') {
             $grouped = $tradingDates->groupBy(fn (Carbon $d) => $d->isoWeekYear().'-W'.$d->isoWeek());
@@ -182,7 +194,7 @@ class RunBacktestAction
                 }
 
                 if ($matched !== null && $matched !== $firstDate) {
-                    $this->rebalanceDates[$matched] = true;
+                    $this->rebalanceDates[$matched] = $matched;
                 }
             }
         } else {
@@ -203,19 +215,63 @@ class RunBacktestAction
                 }
 
                 if ($matched !== null && $matched !== $firstDate) {
-                    $this->rebalanceDates[$matched] = true;
+                    $this->rebalanceDates[$matched] = $matched;
                 }
             }
         }
     }
 
-    private function rebalance(Backtest $backtest, Carbon $date): void
+    private function shiftRebalanceDatesToNextDay($tradingDates): array
     {
-        $rankedStocks = $this->filtersAction->execute($backtest, $date->format('Y-m-d'));
+        $tradingDatesList = $tradingDates->map(fn ($d) => $d->format('Y-m-d'))->values()->toArray();
+        $dateIndex = array_flip($tradingDatesList);
+
+        $shifted = [];
+        foreach ($this->rebalanceDates as $decisionDate => $value) {
+            $idx = $dateIndex[$decisionDate] ?? null;
+
+            if ($idx === null || $idx + 1 >= count($tradingDatesList)) {
+                continue;
+            }
+
+            $executionDate = $tradingDatesList[$idx + 1];
+            $shifted[$executionDate] = $decisionDate;
+        }
+
+        return $shifted;
+    }
+
+    private function rebalance(Backtest $backtest, Carbon $date, ?string $filterDate = null): void
+    {
+        $filterDate = $filterDate ?? $date->format('Y-m-d');
+        $executionDateStr = $date->format('Y-m-d');
+
+        $rankedStocks = $this->filtersAction->execute($backtest, $filterDate);
+
+        // When executing next day, reload prices from execution date for buy candidates
+        if ($filterDate !== $executionDateStr) {
+            $symbols = $rankedStocks->pluck('symbol')->toArray();
+            $executionPrices = BacktestNseInstrumentPrice::query()
+                ->where('date', $executionDateStr)
+                ->whereIn('symbol', $symbols)
+                ->get(['symbol', 'close_adjusted', 'close_raw'])
+                ->keyBy('symbol');
+
+            $rankedStocks = $rankedStocks->map(function ($stock) use ($executionPrices) {
+                $execData = $executionPrices->get($stock->symbol);
+                if ($execData) {
+                    $stock->close_adjusted = $execData->close_adjusted;
+                    $stock->close_raw = $execData->close_raw;
+                }
+
+                return $stock;
+            });
+        }
         $rankedBySymbol = $rankedStocks->keyBy('symbol');
 
-        $indexClose = $this->indexData[$date->format('Y-m-d')] ?? 0;
-        $indexDma = $this->dmaData[$date->format('Y-m-d')] ?? null;
+        // Cash call DMA check uses decision date (not execution date)
+        $indexClose = $this->indexData[$filterDate] ?? 0;
+        $indexDma = $this->dmaData[$filterDate] ?? null;
         $indexBelowDma = $indexDma !== null && $indexClose < $indexDma;
 
         // Determine cash call behavior
@@ -234,7 +290,7 @@ class RunBacktestAction
         }
 
         if ($cashCall === BacktestCashCallEnum::OnlyExitsAllocateToGoldBelowIndexDma && $indexBelowDma) {
-            $this->onlyExitsAndAllocateToGold($backtest, $date, $rankedBySymbol);
+            $this->onlyExitsAndAllocateToGold($backtest, $date, $rankedBySymbol, $filterDate);
 
             return;
         }
@@ -264,12 +320,18 @@ class RunBacktestAction
             }
         }
 
-        // Diagnose why excluded stocks failed filters
+        // Diagnose why excluded stocks failed filters (use decision date, not execution date)
         if (! empty($excludedSymbols)) {
-            $excludedReasons = $this->diagnoseExclusions($backtest, $date, $excludedSymbols);
+            $diagnosisDate = Carbon::parse($filterDate);
+            $excludedReasons = $this->diagnoseExclusions($backtest, $diagnosisDate, $excludedSymbols);
             foreach ($excludedReasons as $symbol => $reason) {
                 $symbolsToSell[$symbol] = $reason;
             }
+        }
+
+        // Hold Above DMA override: protect stocks that are still above their own DMA
+        if ($backtest->apply_hold_above_dma && ! empty($symbolsToSell)) {
+            $symbolsToSell = $this->applyHoldAboveDmaOverride($backtest, $date, $symbolsToSell);
         }
 
         // For equal_weight_rebalanced and inverse_volatility, determine trims
@@ -576,6 +638,42 @@ class RunBacktestAction
         return $reasons;
     }
 
+    private function applyHoldAboveDmaOverride(Backtest $backtest, Carbon $date, array $symbolsToSell): array
+    {
+        $dateStr = $date->format('Y-m-d');
+        $dmaColumn = match ($backtest->hold_above_dma_period) {
+            20 => 'ma_20',
+            50 => 'ma_50',
+            100 => 'ma_100',
+            default => 'ma_200',
+        };
+
+        $symbols = array_keys($symbolsToSell);
+
+        $stockData = BacktestNseInstrumentPrice::query()
+            ->where('date', $dateStr)
+            ->whereIn('symbol', $symbols)
+            ->get(['symbol', 'close_raw', $dmaColumn])
+            ->keyBy('symbol');
+
+        foreach ($symbols as $symbol) {
+            $data = $stockData->get($symbol);
+
+            if (! $data) {
+                continue;
+            }
+
+            $closeRaw = (float) $data->close_raw;
+            $dmaValue = (float) $data->$dmaColumn;
+
+            if ($dmaValue > 0 && $closeRaw > $dmaValue) {
+                unset($symbolsToSell[$symbol]);
+            }
+        }
+
+        return $symbolsToSell;
+    }
+
     private function sellEverything(Backtest $backtest, Carbon $date, string $reason): void
     {
         $symbols = array_keys($this->holdings);
@@ -614,7 +712,7 @@ class RunBacktestAction
         $this->executeBuy($backtest, $date, $goldData, $this->cash, 'Index below '.$this->dmaPeriod.' DMA - allocating to gold');
     }
 
-    private function onlyExitsAndAllocateToGold(Backtest $backtest, Carbon $date, $rankedBySymbol): void
+    private function onlyExitsAndAllocateToGold(Backtest $backtest, Carbon $date, $rankedBySymbol, string $filterDate): void
     {
         $dateStr = $date->format('Y-m-d');
 
@@ -633,10 +731,16 @@ class RunBacktestAction
         }
 
         if (! empty($excludedSymbols)) {
-            $excludedReasons = $this->diagnoseExclusions($backtest, $date, $excludedSymbols);
+            $diagnosisDate = Carbon::parse($filterDate);
+            $excludedReasons = $this->diagnoseExclusions($backtest, $diagnosisDate, $excludedSymbols);
             foreach ($excludedReasons as $symbol => $reason) {
                 $symbolsToSell[$symbol] = $reason.' - rotating to gold';
             }
+        }
+
+        // Hold Above DMA override
+        if ($backtest->apply_hold_above_dma && ! empty($symbolsToSell)) {
+            $symbolsToSell = $this->applyHoldAboveDmaOverride($backtest, $date, $symbolsToSell);
         }
 
         foreach ($symbolsToSell as $symbol => $reason) {

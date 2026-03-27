@@ -27,6 +27,9 @@ class BacktestFactory extends Factory
             // Backtest-specific defaults
             'max_stocks_to_hold' => 30,
             'worst_rank_held' => 100,
+            'apply_hold_above_dma' => false,
+            'hold_above_dma_period' => 200,
+            'execute_next_trading_day' => false,
             'rebalance_frequency' => BacktestRebalanceFrequencyEnum::Monthly->value,
             'rebalance_day' => 1,
             'weightage' => BacktestWeightageEnum::EqualWeight->value,
