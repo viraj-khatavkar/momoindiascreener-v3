@@ -12,7 +12,7 @@
         <form @submit.prevent="update">
             <!-- Core Settings -->
             <div class="bg-slate-100 p-8">
-                <div class="grid grid-cols-1 gap-x-8 sm:grid-cols-2 lg:grid-cols-3">
+                <div class="grid grid-cols-1 gap-x-8 gap-y-6 sm:grid-cols-2 lg:grid-cols-3">
                     <SelectInput
                         v-model="form.index"
                         label="Index Universe"
@@ -50,7 +50,7 @@
                         <ChevronDownIcon :class="[open ? 'rotate-180' : '', 'h-5 w-5 text-gray-500']" />
                     </DisclosureButton>
                     <DisclosurePanel class="p-4">
-                        <div class="grid grid-cols-1 gap-x-8 sm:grid-cols-2 lg:grid-cols-3">
+                        <div class="grid grid-cols-1 gap-x-8 gap-y-6 sm:grid-cols-2 lg:grid-cols-3">
                             <TextInput
                                 v-model="form.name"
                                 label="Name"
@@ -129,7 +129,7 @@
                         <div class="mb-4 text-sm text-purple-500">
                             Note: Keep value as 100 if you want to ignore any of the away from high filter
                         </div>
-                        <div class="grid grid-cols-1 gap-x-8 sm:grid-cols-2">
+                        <div class="grid grid-cols-1 gap-x-8 gap-y-6 sm:grid-cols-2">
                             <TextInput
                                 v-model="form.away_from_high_all_time"
                                 type="number"
@@ -158,7 +158,7 @@
                         <div class="mb-4 text-sm text-purple-500">
                             Note: Keep value as 0 if you want to ignore any of the percentage of positive days filter
                         </div>
-                        <div class="grid grid-cols-1 gap-x-8 sm:grid-cols-2">
+                        <div class="grid grid-cols-1 gap-x-8 gap-y-6 sm:grid-cols-2">
                             <TextInput
                                 v-model="form.positive_days_percent_one_year"
                                 type="number"
@@ -211,7 +211,7 @@
                         <div class="mb-4 text-sm text-purple-500">
                             Keep value greater than 250 if you want to ignore any of the circuit filters.
                         </div>
-                        <div class="grid grid-cols-1 gap-x-8 sm:grid-cols-2">
+                        <div class="grid grid-cols-1 gap-x-8 gap-y-6 sm:grid-cols-2">
                             <TextInput
                                 v-model="form.circuits_one_year"
                                 type="number"
@@ -261,7 +261,7 @@
                         <div class="mb-4 text-sm text-purple-500">
                             This will include stocks between the marketcap range. The filter is applied only on the stocks that are present in the selected index filter.
                         </div>
-                        <div class="grid grid-cols-1 gap-x-8 sm:grid-cols-2">
+                        <div class="grid grid-cols-1 gap-x-8 gap-y-6 sm:grid-cols-2">
                             <TextInput
                                 v-model="form.marketcap_from"
                                 type="number"
@@ -292,7 +292,7 @@
                         </div>
                         <Toggle v-model="form.apply_pe" label="Apply Price to Earnings Filter" />
                         <template v-if="form.apply_pe">
-                            <div class="mt-4 grid grid-cols-1 gap-x-8 sm:grid-cols-2">
+                            <div class="mt-4 grid grid-cols-1 gap-x-8 gap-y-6 sm:grid-cols-2">
                                 <TextInput
                                     v-model="form.price_to_earnings_from"
                                     type="number"
@@ -342,7 +342,7 @@
                         <div class="mb-4 text-sm text-purple-500">
                             Stocks with beta above this value will be excluded. Keep at 100 to include all stocks.
                         </div>
-                        <div class="grid grid-cols-1 gap-x-8 sm:grid-cols-2 lg:grid-cols-4">
+                        <div class="grid grid-cols-1 gap-x-8 gap-y-6 sm:grid-cols-2 lg:grid-cols-4">
                             <TextInput
                                 v-model="form.ignore_above_beta"
                                 type="number"
@@ -364,7 +364,7 @@
                         <div class="mb-4 text-sm text-purple-500">
                             Only those stocks will be included in the ranking whose last closing price is between the range (inclusive).
                         </div>
-                        <div class="grid grid-cols-1 gap-x-8 sm:grid-cols-2">
+                        <div class="grid grid-cols-1 gap-x-8 gap-y-6 sm:grid-cols-2">
                             <TextInput
                                 v-model="form.price_from"
                                 type="number"
@@ -406,7 +406,7 @@
                         <Toggle v-model="form.apply_factor_two" label="Apply Factor Two" />
                         <template v-if="form.apply_factor_two">
                             <hr class="my-4" />
-                            <div class="grid grid-cols-1 gap-x-8 sm:grid-cols-2">
+                            <div class="grid grid-cols-1 gap-x-8 gap-y-6 sm:grid-cols-2">
                                 <SelectInput
                                     v-model="form.factor_two_sort_by"
                                     label="Sort By (Factor Two)"
@@ -429,7 +429,7 @@
                         <Toggle v-model="form.apply_factor_three" label="Apply Factor Three" />
                         <template v-if="form.apply_factor_three">
                             <hr class="my-4" />
-                            <div class="grid grid-cols-1 gap-x-8 sm:grid-cols-2">
+                            <div class="grid grid-cols-1 gap-x-8 gap-y-6 sm:grid-cols-2">
                                 <SelectInput
                                     v-model="form.factor_three_sort_by"
                                     label="Sort By (Factor Three)"
@@ -459,7 +459,7 @@
                         <Toggle v-model="form.apply_historical_date" label="Apply Historical Date" />
                         <template v-if="form.apply_historical_date">
                             <hr class="my-4" />
-                            <div class="grid grid-cols-1 gap-x-8 sm:grid-cols-2 lg:grid-cols-4">
+                            <div class="grid grid-cols-1 gap-x-8 gap-y-6 sm:grid-cols-2 lg:grid-cols-4">
                                 <TextInput
                                     v-model="form.historical_date"
                                     type="date"

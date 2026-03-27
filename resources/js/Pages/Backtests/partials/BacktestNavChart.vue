@@ -108,7 +108,7 @@ watch(() => props.dailySnapshots, () => {
 
 watch(() => props.benchmarkData, () => {
     if (chart) { setBenchmarkData(); chart.timeScale().fitContent(); }
-});
+}, { immediate: true, deep: true });
 
 onUnmounted(destroyChart);
 </script>

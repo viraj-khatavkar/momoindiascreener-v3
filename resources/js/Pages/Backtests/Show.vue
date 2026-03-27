@@ -309,17 +309,30 @@ onMounted(() => {
     if (props.backtest.status === 'running' || props.backtest.status === 'pending') {
         startPolling();
     }
+    if (props.backtest.status === 'completed') {
+        fetchBenchmark(selectedBenchmark.value);
+    }
 });
 
 onUnmounted(() => stopPolling());
 
-watch(() => props.backtest.status, (s) => {
-    if (s !== 'running' && s !== 'pending') stopPolling();
+watch(() => props.backtest.status, (newStatus, oldStatus) => {
+    if (newStatus === 'completed' && oldStatus !== 'completed') {
+        // Job just finished — reload all data and fetch benchmark
+        stopPolling();
+        router.reload({
+            only: ['backtest', 'summaryMetrics', 'dailySnapshots', 'trades'],
+            onFinish: () => fetchBenchmark(selectedBenchmark.value),
+        });
+    } else if (newStatus !== 'running' && newStatus !== 'pending') {
+        stopPolling();
+    }
 });
 
 function startPolling(): void {
     pollInterval = setInterval(() => {
-        router.reload({ only: ['backtest', 'summaryMetrics', 'dailySnapshots', 'trades'] });
+        // Only reload backtest (status/progress) while running — not the heavy data
+        router.reload({ only: ['backtest'] });
     }, 3000);
 }
 
@@ -350,13 +363,6 @@ async function fetchBenchmark(slug: string): Promise<void> {
 }
 
 watch(selectedBenchmark, (slug) => fetchBenchmark(slug));
-
-// Load default benchmark on mount if completed
-onMounted(() => {
-    if (props.backtest.status === 'completed') {
-        fetchBenchmark(selectedBenchmark.value);
-    }
-});
 
 const benchmarkMetrics = computed(() => {
     if (benchmarkData.value.length < 2 || !props.dailySnapshots || props.dailySnapshots.length < 2) {

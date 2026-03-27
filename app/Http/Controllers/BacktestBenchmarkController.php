@@ -32,7 +32,9 @@ class BacktestBenchmarkController extends Controller
             ->where('slug', $slug)
             ->whereBetween('date', [$startDate, $endDate])
             ->orderBy('date')
-            ->get(['date', 'close']);
+            ->select('date', 'close')
+            ->distinct()
+            ->get();
 
         if ($indexData->isEmpty()) {
             return response()->json([]);
