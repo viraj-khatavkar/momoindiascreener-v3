@@ -10,7 +10,8 @@
     "mcp": true,
     "sail": false,
     "skills": [
-        "wayfinder-development",
+        "laravel-best-practices",
+        "configuring-horizon",
         "pest-testing",
         "inertia-vue-development",
         "tailwindcss-development"
