@@ -6,6 +6,7 @@ use App\Actions\CreateDefaultBacktestAction;
 use App\Enums\ApplyFiltersOnOptionEnum;
 use App\Enums\BacktestCashCallEnum;
 use App\Enums\BacktestRebalanceFrequencyEnum;
+use App\Enums\BacktestStatusEnum;
 use App\Enums\BacktestWeightageEnum;
 use App\Enums\CustomFilterComparatorOptionEnum;
 use App\Enums\CustomFilterValueOptionEnum;
@@ -14,13 +15,17 @@ use App\Enums\ScreenSortByOptionEnum;
 use App\Http\Requests\UpdateBacktestRequest;
 use App\Models\Backtest;
 use Illuminate\Http\Request;
+use Inertia\Inertia;
 
 class BacktestsController extends Controller
 {
     public function index(Request $request)
     {
         return inertia('Backtests/Index', [
-            'backtests' => $request->user()->backtests()->latest()->get(),
+            'backtests' => $request->user()->backtests()
+                ->with(['summaryMetrics:id,backtest_id,cagr,max_drawdown,total_trades,total_charges_paid,final_value'])
+                ->latest()
+                ->get(),
         ]);
     }
 
@@ -46,11 +51,17 @@ class BacktestsController extends Controller
             abort(404);
         }
 
+        $isCompleted = $backtest->status === BacktestStatusEnum::Completed;
+
         return inertia('Backtests/Show', [
             'backtest' => $backtest,
-            'summaryMetrics' => $backtest->summaryMetrics,
-            'dailySnapshots' => $backtest->dailySnapshots()->orderBy('date')->get(),
-            'trades' => $backtest->trades()->orderBy('date')->orderBy('trade_type')->get(),
+            'summaryMetrics' => fn () => $backtest->summaryMetrics,
+            'dailySnapshots' => $isCompleted
+                ? Inertia::defer(fn () => $backtest->dailySnapshots()->orderBy('date')->get(), 'charts')
+                : [],
+            'trades' => $isCompleted
+                ? Inertia::defer(fn () => $backtest->trades()->orderBy('date')->orderBy('trade_type')->get(), 'trades')
+                : [],
             'benchmarkOptions' => [
                 ['id' => 'nifty-50', 'name' => 'Nifty 50'],
                 ['id' => 'nifty-100', 'name' => 'Nifty 100'],

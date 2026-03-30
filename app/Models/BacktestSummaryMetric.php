@@ -17,6 +17,7 @@ class BacktestSummaryMetric extends Model
             'rolling_returns_one_year' => 'array',
             'rolling_returns_three_year' => 'array',
             'rolling_returns_five_year' => 'array',
+            'stock_performance' => 'array',
         ];
     }
 

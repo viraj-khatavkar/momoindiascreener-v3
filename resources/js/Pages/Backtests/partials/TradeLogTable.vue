@@ -50,7 +50,8 @@
                                 <th class="px-3 py-2 text-left font-medium text-gray-500">Type</th>
                                 <th class="px-3 py-2 text-left font-medium text-gray-500">Reason</th>
                                 <th class="px-3 py-2 text-right font-medium text-gray-500">Qty</th>
-                                <th class="px-3 py-2 text-right font-medium text-gray-500">Price</th>
+                                <th class="px-3 py-2 text-right font-medium text-gray-500">Raw Price</th>
+                                <th class="px-3 py-2 text-right font-medium text-gray-500">Adj. Price</th>
                                 <th class="px-3 py-2 text-right font-medium text-gray-500">Gross</th>
                                 <th class="px-3 py-2 text-right font-medium text-gray-500">Charges</th>
                                 <th class="px-3 py-2 text-right font-medium text-gray-500">Net</th>
@@ -70,6 +71,7 @@
                                 <td class="whitespace-nowrap px-3 py-2 text-gray-600">{{ trade.reason }}</td>
                                 <td class="whitespace-nowrap px-3 py-2 text-right text-gray-900">{{ trade.quantity.toLocaleString('en-IN') }}</td>
                                 <td class="whitespace-nowrap px-3 py-2 text-right text-gray-900">{{ formatCurrency(trade.raw_price) }}</td>
+                                <td class="whitespace-nowrap px-3 py-2 text-right text-gray-500">{{ formatCurrency(trade.price) }}</td>
                                 <td class="whitespace-nowrap px-3 py-2 text-right text-gray-900">{{ formatCurrency(trade.gross_amount) }}</td>
                                 <td class="whitespace-nowrap px-3 py-2 text-right text-gray-500">{{ formatCurrency(trade.total_charges) }}</td>
                                 <td class="whitespace-nowrap px-3 py-2 text-right font-medium text-gray-900">{{ formatCurrency(trade.net_amount) }}</td>
