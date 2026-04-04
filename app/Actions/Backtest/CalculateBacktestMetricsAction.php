@@ -35,10 +35,10 @@ class CalculateBacktestMetricsAction
         // Max Drawdown
         [$maxDrawdown, $ddStartDate, $ddEndDate] = $this->calculateMaxDrawdown($snapshots);
 
-        // Rolling Returns
-        $rollingReturnsOneYear = $this->calculateRollingReturns($snapshots, 252);
-        $rollingReturnsThreeYear = $this->calculateRollingReturns($snapshots, 756);
-        $rollingReturnsFiveYear = $this->calculateRollingReturns($snapshots, 1260);
+        // Rolling Returns (by calendar years, not fixed trading days)
+        $rollingReturnsOneYear = $this->calculateRollingReturns($snapshots, 1);
+        $rollingReturnsThreeYear = $this->calculateRollingReturns($snapshots, 3);
+        $rollingReturnsFiveYear = $this->calculateRollingReturns($snapshots, 5);
 
         // Trade stats
         $totalTrades = BacktestTrade::where('backtest_id', $backtest->id)->count();
@@ -107,27 +107,51 @@ class CalculateBacktestMetricsAction
         return [$maxDd, $ddStart, $ddEnd];
     }
 
-    private function calculateRollingReturns($snapshots, int $tradingDaysLookback): array
+    private function calculateRollingReturns($snapshots, int $calendarYears): array
     {
         $returns = [];
         $count = $snapshots->count();
 
-        if ($count <= $tradingDaysLookback) {
+        if ($count < 10) {
             return $returns;
         }
 
-        $years = $tradingDaysLookback / 252.0;
+        // Build a date-indexed lookup for finding the snapshot closest to N years ago
+        $dateIndex = [];
+        foreach ($snapshots as $i => $snapshot) {
+            $dateIndex[$snapshot->date->format('Y-m-d')] = $i;
+        }
 
-        for ($i = $tradingDaysLookback; $i < $count; $i++) {
+        for ($i = 0; $i < $count; $i++) {
+            $currentDate = $snapshots[$i]->date;
+            $pastDate = $currentDate->copy()->subYears($calendarYears);
+
+            // Find the closest trading day on or after the target past date
+            $pastIdx = null;
+            for ($attempt = 0; $attempt < 10; $attempt++) {
+                $checkDate = $pastDate->copy()->addDays($attempt)->format('Y-m-d');
+                if (isset($dateIndex[$checkDate])) {
+                    $pastIdx = $dateIndex[$checkDate];
+                    break;
+                }
+            }
+
+            if ($pastIdx === null) {
+                continue;
+            }
+
             $currentNav = (float) $snapshots[$i]->nav;
-            $pastNav = (float) $snapshots[$i - $tradingDaysLookback]->nav;
+            $pastNav = (float) $snapshots[$pastIdx]->nav;
 
             if ($pastNav > 0) {
-                $annualizedReturn = pow($currentNav / $pastNav, 1.0 / $years) - 1;
-                $returns[] = [
-                    'date' => $snapshots[$i]->date->format('Y-m-d'),
-                    'return' => round($annualizedReturn, 4),
-                ];
+                $actualYears = $snapshots[$pastIdx]->date->diffInDays($currentDate) / 365.25;
+                if ($actualYears > 0) {
+                    $annualizedReturn = pow($currentNav / $pastNav, 1.0 / $actualYears) - 1;
+                    $returns[] = [
+                        'date' => $currentDate->format('Y-m-d'),
+                        'return' => round($annualizedReturn, 4),
+                    ];
+                }
             }
         }
 

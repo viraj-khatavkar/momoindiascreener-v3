@@ -179,15 +179,27 @@
                             <dd class="text-sm font-semibold" :class="Number(summaryMetrics.winners_percentage) >= 50 ? 'text-green-700' : 'text-red-700'">{{ Number(summaryMetrics.winners_percentage).toFixed(1) }}%</dd>
                         </div>
                         <div v-if="summaryMetrics.profit_factor !== null" class="flex items-center justify-between">
-                            <dt class="text-sm text-gray-500">Profit Factor</dt>
+                            <dt class="group relative text-sm text-gray-500">Profit Factor<span class="ml-1 inline-flex h-4 w-4 cursor-help items-center justify-center rounded-full bg-gray-200 text-[10px] font-bold text-gray-500">i</span><div class="invisible absolute bottom-full left-0 z-10 mb-2 w-64 rounded-lg border border-gray-200 bg-white p-3 text-xs leading-relaxed text-gray-600 shadow-md group-hover:visible">Ratio of total profits to total losses across all stocks traded. Above 1x means profits exceed losses. Higher is better.</div></dt>
                             <dd class="text-sm font-semibold" :class="Number(summaryMetrics.profit_factor) >= 1 ? 'text-green-700' : 'text-red-700'">{{ Number(summaryMetrics.profit_factor).toFixed(2) }}x</dd>
                         </div>
                         <div v-if="summaryMetrics.ulcer_index !== null" class="flex items-center justify-between">
-                            <dt class="text-sm text-gray-500">Ulcer Index</dt>
+                            <dt class="group relative text-sm text-gray-500">
+                                Ulcer Index
+                                <span class="ml-1 inline-flex h-4 w-4 cursor-help items-center justify-center rounded-full bg-gray-200 text-[10px] font-bold text-gray-500">i</span>
+                                <div class="invisible absolute bottom-full left-0 z-10 mb-2 w-64 rounded-lg border border-gray-200 bg-white p-3 text-xs leading-relaxed text-gray-600 shadow-md group-hover:visible">
+                                    Measures downside volatility. It's the average depth of drawdowns over time. Lower is better — a value of 0 means no drawdowns occurred.
+                                </div>
+                            </dt>
                             <dd class="text-sm font-semibold text-gray-900">{{ Number(summaryMetrics.ulcer_index).toFixed(2) }}</dd>
                         </div>
                         <div v-if="summaryMetrics.k_ratio !== null" class="flex items-center justify-between">
-                            <dt class="text-sm text-gray-500">K-Ratio</dt>
+                            <dt class="group relative text-sm text-gray-500">
+                                K-Ratio
+                                <span class="ml-1 inline-flex h-4 w-4 cursor-help items-center justify-center rounded-full bg-gray-200 text-[10px] font-bold text-gray-500">i</span>
+                                <div class="invisible absolute bottom-full left-0 z-10 mb-2 w-64 rounded-lg border border-gray-200 bg-white p-3 text-xs leading-relaxed text-gray-600 shadow-md group-hover:visible">
+                                    Measures how consistently the portfolio grows. A higher value means smoother, more linear equity growth. Negative values indicate erratic or declining returns.
+                                </div>
+                            </dt>
                             <dd class="text-sm font-semibold" :class="Number(summaryMetrics.k_ratio) > 0 ? 'text-green-700' : 'text-red-700'">{{ Number(summaryMetrics.k_ratio).toFixed(2) }}</dd>
                         </div>
                         <div v-if="trades && trades.length > 0" class="flex items-center justify-between border-t border-gray-100 pt-3">

@@ -1,5 +1,6 @@
 <?php
 
+use App\Http\Controllers\Admin\BlogsController;
 use App\Http\Controllers\Admin\DashboardController;
 use App\Http\Controllers\Admin\NseFilesController;
 use App\Http\Controllers\Admin\OrdersController;
@@ -15,3 +16,5 @@ Route::get('/orders', [OrdersController::class, 'index'])->name('admin.orders.in
 Route::get('/orders/download', [OrdersController::class, 'download'])->name('admin.orders.download');
 
 Route::resource('/nse-files', NseFilesController::class)->only(['index', 'create', 'store']);
+
+Route::resource('/blogs', BlogsController::class)->only(['index', 'create', 'store', 'edit', 'update']);

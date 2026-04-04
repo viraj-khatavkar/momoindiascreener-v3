@@ -267,6 +267,7 @@ import {
     HomeIcon,
     KeyIcon,
     LifebuoyIcon,
+    NewspaperIcon,
     QuestionMarkCircleIcon,
     SunIcon,
     UserIcon,
@@ -336,6 +337,12 @@ const navigation = computed(() => {
             current: page.url.startsWith('/invoices'),
         },
         {
+            name: 'Blog',
+            href: '/blogs',
+            icon: NewspaperIcon,
+            current: page.url.startsWith('/blogs'),
+        },
+        {
             name: 'FAQ',
             href: '/faq',
             icon: QuestionMarkCircleIcon,
@@ -397,6 +404,12 @@ const adminNavigation = computed(() => [
         href: '/admin/nse-files',
         initial: 'N',
         current: page.url.startsWith('/admin/nse-files'),
+    },
+    {
+        name: 'Blogs',
+        href: '/admin/blogs',
+        initial: 'B',
+        current: page.url.startsWith('/admin/blogs'),
     },
 ]);
 

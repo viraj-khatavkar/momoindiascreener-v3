@@ -7,6 +7,8 @@ use App\Http\Controllers\BacktestProgressController;
 use App\Http\Controllers\BacktestRunController;
 use App\Http\Controllers\BacktestsController;
 use App\Http\Controllers\BillingAcceptTermsController;
+use App\Http\Controllers\BlogCommentsController;
+use App\Http\Controllers\BlogsController;
 use App\Http\Controllers\ChangePasswordController;
 use App\Http\Controllers\IndicesDashboardController;
 use App\Http\Controllers\InstrumentSearchController;
@@ -56,6 +58,7 @@ Route::post('/email/verification-notification', function (Request $request) {
 
 Route::get('/logout', [AuthController::class, 'logout'])->middleware('auth')->name('auth.logout');
 
+Route::inertia('/about', 'About');
 Route::inertia('/faq', 'Faqs');
 Route::inertia('/support', 'Support');
 Route::get('/inspire', function () {
@@ -75,6 +78,11 @@ Route::get('/instruments/search', InstrumentSearchController::class);
 Route::get('/instruments/{symbol}', BacktestNseInstrumentViewController::class);
 
 Route::get('/market-health/{index?}', MarketHealthController::class);
+
+Route::get('/blogs', [BlogsController::class, 'index']);
+Route::get('/blogs/{blog:slug}', [BlogsController::class, 'show']);
+Route::post('/blogs/{blog:slug}/comments', [BlogCommentsController::class, 'store'])->middleware(['auth', 'verified']);
+Route::delete('/comments/{comment}', [BlogCommentsController::class, 'destroy'])->middleware(['auth', 'verified']);
 
 Route::get('/screens', [ScreensController::class, 'index']);
 Route::get('/screens/create', [ScreensController::class, 'create'])->middleware(['auth', 'verified']);

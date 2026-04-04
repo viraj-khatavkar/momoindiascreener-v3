@@ -1,3 +1,12 @@
+import dayjs from 'dayjs';
+import relativeTime from 'dayjs/plugin/relativeTime';
+
+dayjs.extend(relativeTime);
+
+export function formatRelativeDate(dateString: string): string {
+    return dayjs(dateString).fromNow();
+}
+
 export function formatDate(dateString: string): string {
     const date = new Date(dateString);
     return date.toLocaleDateString('en-IN', {
