@@ -8,6 +8,7 @@ use App\Enums\BacktestWeightageEnum;
 use App\Enums\CustomFilterComparatorOptionEnum;
 use App\Enums\CustomFilterValueOptionEnum;
 use App\Enums\ScreenSortByOptionEnum;
+use Illuminate\Contracts\Validation\ValidationRule;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
 
@@ -19,7 +20,7 @@ class StoreBacktestRequest extends FormRequest
     }
 
     /**
-     * @return array<string, \Illuminate\Contracts\Validation\ValidationRule|array<mixed>|string>
+     * @return array<string, ValidationRule|array<mixed>|string>
      */
     public function rules(): array
     {
@@ -37,6 +38,7 @@ class StoreBacktestRequest extends FormRequest
             'cash_call' => ['required', Rule::enum(BacktestCashCallEnum::class)],
             'cash_call_index' => ['required_if:cash_call,full_cash_below_index_dma,only_exits_below_index_dma,allocate_to_gold_below_index_dma,only_exits_allocate_to_gold_below_index_dma', 'nullable', 'string', Rule::in(['nifty-50', 'nifty-100', 'nifty-500', 'nifty200-momentum-30', 'nifty500-momentum-50'])],
             'cash_call_dma_period' => ['required_if:cash_call,full_cash_below_index_dma,only_exits_below_index_dma,allocate_to_gold_below_index_dma,only_exits_allocate_to_gold_below_index_dma', 'nullable', 'integer', 'in:20,50,100,200'],
+            'start_date' => ['required', 'date', 'after_or_equal:2011-01-05'],
             'cash_return_rate' => ['required', 'numeric', 'between:0,20'],
 
             // Screen filter fields

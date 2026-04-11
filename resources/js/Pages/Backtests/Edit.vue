@@ -100,6 +100,13 @@
                         name="cash_return_rate"
                         :error="form.errors.cash_return_rate"
                     />
+                    <TextInput
+                        v-model="form.start_date"
+                        type="date"
+                        label="Start Date"
+                        name="start_date"
+                        :error="form.errors.start_date"
+                    />
                     <div>
                         <label class="block text-sm/6 font-medium text-gray-900">Initial Capital</label>
                         <div class="mt-2 rounded-md bg-white px-3 py-2 text-sm text-gray-900 ring-1 ring-gray-300">
@@ -771,6 +778,7 @@ const form = useForm({
     cash_call_index: props.backtest.cash_call_index,
     cash_call_dma_period: props.backtest.cash_call_dma_period,
     cash_return_rate: props.backtest.cash_return_rate,
+    start_date: props.backtest.start_date ? props.backtest.start_date.substring(0, 10) : '2011-01-05',
     index: props.backtest.index,
     sort_by: props.backtest.sort_by,
     sort_direction: props.backtest.sort_direction,

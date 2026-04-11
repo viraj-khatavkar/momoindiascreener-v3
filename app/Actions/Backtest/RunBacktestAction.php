@@ -13,7 +13,9 @@ use Carbon\Carbon;
 
 class RunBacktestAction
 {
-    private const START_DATE = '2011-01-05';
+    private const DEFAULT_START_DATE = '2011-01-05';
+
+    private string $startDate;
 
     private const BUY_COST_RATE = 0.001187;
 
@@ -46,6 +48,9 @@ class RunBacktestAction
 
     public function execute(Backtest $backtest): void
     {
+        $this->startDate = $backtest->start_date
+            ? Carbon::parse($backtest->start_date)->format('Y-m-d')
+            : self::DEFAULT_START_DATE;
         $this->initialCapital = (float) $backtest->initial_capital;
         $this->cash = $this->initialCapital;
         $this->holdings = [];
@@ -130,7 +135,7 @@ class RunBacktestAction
     {
         return BacktestNseInstrumentPrice::query()
             ->where($backtest->index->isIndexFieldName(), true)
-            ->where('date', '>=', self::START_DATE)
+            ->where('date', '>=', $this->startDate)
             ->select('date')
             ->distinct()
             ->orderBy('date')
@@ -142,7 +147,7 @@ class RunBacktestAction
     {
         // Load enough history before START_DATE for the DMA period to be computed
         // 200 DMA needs ~280 calendar days of prior data; use generous buffer
-        $loadFrom = Carbon::parse(self::START_DATE)->subDays($this->dmaPeriod * 2)->format('Y-m-d');
+        $loadFrom = Carbon::parse($this->startDate)->subDays($this->dmaPeriod * 2)->format('Y-m-d');
 
         NseIndex::query()
             ->where('slug', $slug)

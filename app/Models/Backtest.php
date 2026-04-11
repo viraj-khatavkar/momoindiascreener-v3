@@ -59,6 +59,7 @@ class Backtest extends Model
             'apply_custom_filter_three' => 'boolean',
             'apply_custom_filter_four' => 'boolean',
             'apply_custom_filter_five' => 'boolean',
+            'start_date' => 'date',
             'started_at' => 'datetime',
             'completed_at' => 'datetime',
         ];

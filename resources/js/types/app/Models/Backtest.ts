@@ -17,6 +17,7 @@ export interface Backtest {
     cash_call_dma_period: number;
     cash_return_rate: number;
     initial_capital: number;
+    start_date: string;
     started_at: string | null;
     completed_at: string | null;
     error_message: string | null;

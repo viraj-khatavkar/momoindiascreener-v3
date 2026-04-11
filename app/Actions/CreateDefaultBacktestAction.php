@@ -34,6 +34,7 @@ class CreateDefaultBacktestAction
             'cash_call_dma_period' => 50,
             'cash_return_rate' => 6.00,
             'initial_capital' => 5000000.00,
+            'start_date' => '2011-01-05',
 
             // Screen filter defaults
             'index' => NseIndexEnum::NIFTY_ALLCAP->value,

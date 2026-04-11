@@ -10,11 +10,12 @@ use App\Enums\CustomFilterComparatorOptionEnum;
 use App\Enums\CustomFilterValueOptionEnum;
 use App\Enums\NseIndexEnum;
 use App\Enums\ScreenSortByOptionEnum;
+use App\Models\Backtest;
 use App\Models\User;
 use Illuminate\Database\Eloquent\Factories\Factory;
 
 /**
- * @extends \Illuminate\Database\Eloquent\Factories\Factory<\App\Models\Backtest>
+ * @extends Factory<Backtest>
  */
 class BacktestFactory extends Factory
 {
@@ -38,6 +39,7 @@ class BacktestFactory extends Factory
             'cash_call_dma_period' => 50,
             'cash_return_rate' => 6.00,
             'initial_capital' => 5000000.00,
+            'start_date' => '2011-01-05',
 
             // Screen filter defaults (matching CreateDefaultScreenAction)
             'index' => NseIndexEnum::NIFTY_ALLCAP->value,
