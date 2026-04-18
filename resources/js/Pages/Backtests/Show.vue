@@ -102,127 +102,186 @@
         <!-- Completed state -->
         <div v-else-if="backtest.status === 'completed' && summaryMetrics" class="mt-6 space-y-6">
 
-            <!-- Hero: one-line result (IMMEDIATE — from summaryMetrics) -->
-            <div class="inline-flex items-baseline gap-x-4 rounded-lg bg-linear-to-r from-purple-600 to-purple-800 px-5 py-3 text-white shadow-md">
-                <span class="text-xl font-bold">{{ formatPercent(summaryMetrics.cagr) }} CAGR</span>
-                <span class="text-sm text-purple-200">{{ formatCurrencyShort(backtest.initial_capital) }} &rarr; {{ formatCurrencyShort(summaryMetrics.final_value) }}</span>
-                <span class="text-xs text-purple-300">{{ backtestYears }} yrs</span>
+            <!-- EDITORIAL HERO: colored top rule + generous typography -->
+            <div>
+                <!-- Accent top rule (fades from signal color to transparent) -->
+                <div
+                    class="h-[3px] w-full rounded-full"
+                    :class="summaryMetrics.cagr >= 0 ? 'bg-linear-to-r from-emerald-500 via-gray-200/80 to-transparent' : 'bg-linear-to-r from-red-500 via-gray-200/80 to-transparent'"
+                    aria-hidden="true"
+                />
+
+                <!-- 4 primary stats -->
+                <dl class="mt-10 grid grid-cols-2 gap-y-10 gap-x-10 pb-4 md:grid-cols-4 md:gap-x-14">
+                    <!-- CAGR -->
+                    <div>
+                        <dt class="text-[11px] font-semibold uppercase tracking-[0.14em] text-gray-500">CAGR</dt>
+                        <dd class="mt-2 flex items-baseline gap-1">
+                            <span
+                                class="text-5xl font-bold tabular-nums leading-none tracking-tight"
+                                :class="summaryMetrics.cagr >= 0 ? 'text-emerald-700' : 'text-red-700'"
+                            >
+                                {{ (summaryMetrics.cagr * 100).toFixed(2) }}
+                            </span>
+                            <span class="text-2xl font-semibold text-gray-300">%</span>
+                        </dd>
+                        <dd class="mt-3 text-[11px] text-gray-500">over {{ backtestYears }} years</dd>
+                    </div>
+
+                    <!-- Total return -->
+                    <div>
+                        <dt class="text-[11px] font-semibold uppercase tracking-[0.14em] text-gray-500">Total return</dt>
+                        <dd
+                            class="mt-2 text-5xl font-bold tabular-nums leading-none tracking-tight"
+                            :class="totalReturn >= 0 ? 'text-emerald-700' : 'text-red-700'"
+                        >
+                            {{ totalReturn >= 0 ? '+' : '' }}{{ (totalReturn * 100).toFixed(2) }}%
+                        </dd>
+                        <dd class="mt-3 text-[11px] text-gray-500">compounded</dd>
+                    </div>
+
+                    <!-- Final value -->
+                    <div>
+                        <dt class="text-[11px] font-semibold uppercase tracking-[0.14em] text-gray-500">Final value</dt>
+                        <dd class="mt-2 text-5xl font-bold tabular-nums leading-none tracking-tight text-gray-900">
+                            {{ formatCurrencyShort(summaryMetrics.final_value) }}
+                        </dd>
+                        <dd class="mt-3 text-[11px] text-gray-500">
+                            from {{ formatCurrencyShort(backtest.initial_capital) }}
+                            <span class="mx-1 text-gray-300">·</span>
+                            <span class="font-semibold text-gray-700">{{ growthMultiplier }}× growth</span>
+                        </dd>
+                    </div>
+
+                    <!-- vs Nifty 50 (alpha) -->
+                    <div>
+                        <dt class="text-[11px] font-semibold uppercase tracking-[0.14em] text-gray-500">vs Nifty 50</dt>
+                        <Deferred data="defaultBenchmark">
+                            <template #fallback>
+                                <dd class="mt-2 h-12 w-32 animate-pulse rounded bg-gray-100" aria-hidden="true" />
+                            </template>
+                            <dd class="mt-2 flex items-center gap-2 text-5xl font-bold tabular-nums leading-none tracking-tight">
+                                <template v-if="benchmarkDelta === null">
+                                    <span class="text-gray-400">—</span>
+                                </template>
+                                <template v-else>
+                                    <ArrowTrendingUpIcon
+                                        v-if="benchmarkDelta >= 0"
+                                        class="h-7 w-7 shrink-0 text-emerald-700"
+                                        aria-hidden="true"
+                                    />
+                                    <ArrowTrendingDownIcon
+                                        v-else
+                                        class="h-7 w-7 shrink-0 text-red-700"
+                                        aria-hidden="true"
+                                    />
+                                    <span :class="benchmarkDelta >= 0 ? 'text-emerald-700' : 'text-red-700'">
+                                        {{ benchmarkDelta >= 0 ? '+' : '' }}{{ (benchmarkDelta * 100).toFixed(2) }}%
+                                    </span>
+                                </template>
+                            </dd>
+                        </Deferred>
+                        <dd class="mt-3 text-[11px] text-gray-500">alpha</dd>
+                    </div>
+                </dl>
             </div>
 
-            <!-- Key Metrics (IMMEDIATE — from summaryMetrics) -->
-            <div class="grid grid-cols-1 gap-6 lg:grid-cols-2">
-                <!-- Performance -->
-                <div class="rounded-xl bg-white p-6 shadow-xs ring-1 ring-gray-100">
-                    <h2 class="mb-5 text-sm font-semibold uppercase tracking-wide text-gray-500">Performance</h2>
-
-                    <!-- Hero numbers -->
-                    <div class="mb-5 grid grid-cols-3 gap-4">
-                        <div class="rounded-lg bg-gray-50 p-3 text-center">
-                            <div class="text-xs text-gray-500">CAGR</div>
-                            <div class="mt-1 text-xl font-bold" :class="summaryMetrics.cagr >= 0 ? 'text-green-700' : 'text-red-700'">{{ formatPercent(summaryMetrics.cagr) }}</div>
+            <!-- SCORECARD + ACTIVITY STRIP (card) -->
+            <div class="relative overflow-hidden rounded-2xl bg-white shadow-sm ring-1 ring-gray-200/70">
+                <!-- SCORECARD: two column list (Risk | Quality) with soft tonal accents -->
+                <div class="grid grid-cols-1 lg:grid-cols-2 lg:divide-x lg:divide-gray-200/60">
+                    <!-- Risk column -->
+                    <div class="relative overflow-hidden bg-linear-to-br from-rose-50/70 via-white to-white px-8 py-6">
+                        <div class="pointer-events-none absolute -left-12 -top-12 h-32 w-32 rounded-full bg-rose-200/30 blur-3xl" aria-hidden="true" />
+                        <div class="relative mb-3 flex items-center gap-2 border-b border-rose-200/50 pb-3">
+                            <span class="flex h-6 w-6 items-center justify-center rounded-md bg-rose-100 ring-1 ring-rose-200/70">
+                                <ShieldExclamationIcon class="h-3.5 w-3.5 text-rose-600" aria-hidden="true" />
+                            </span>
+                            <h3 class="text-xs font-bold uppercase tracking-[0.14em] text-rose-700">Risk</h3>
                         </div>
-                        <div class="rounded-lg bg-gray-50 p-3 text-center">
-                            <div class="text-xs text-gray-500">Total Return</div>
-                            <div class="mt-1 text-xl font-bold" :class="totalReturn >= 0 ? 'text-green-700' : 'text-red-700'">{{ formatPercent(totalReturn) }}</div>
-                        </div>
-                        <div class="rounded-lg bg-gray-50 p-3 text-center">
-                            <div class="text-xs text-gray-500">Max Drawdown</div>
-                            <div class="mt-1 text-xl font-bold text-red-700">{{ formatPercent(summaryMetrics.max_drawdown) }}</div>
-                        </div>
+                        <dl class="relative divide-y divide-rose-100/60">
+                            <div class="flex items-baseline justify-between gap-4 py-3">
+                                <dt class="text-sm font-medium text-gray-600">Max drawdown</dt>
+                                <dd class="text-right">
+                                    <div class="text-xl font-bold tabular-nums text-red-700">
+                                        {{ formatPercent(summaryMetrics.max_drawdown) }}
+                                    </div>
+                                    <div v-if="summaryMetrics.max_drawdown_start_date" class="mt-0.5 text-[11px] font-medium text-rose-600/70">
+                                        {{ formatDrawdownPeriod(summaryMetrics.max_drawdown_start_date, summaryMetrics.max_drawdown_end_date) }}
+                                    </div>
+                                </dd>
+                            </div>
+                            <div class="flex items-baseline justify-between gap-4 py-3">
+                                <dt class="text-sm font-medium text-gray-600">Sharpe ratio</dt>
+                                <dd class="text-xl font-bold tabular-nums" :class="sharpeValueClass">
+                                    {{ summaryMetrics.sharpe_ratio !== null ? Number(summaryMetrics.sharpe_ratio).toFixed(2) : '—' }}
+                                </dd>
+                            </div>
+                            <div class="flex items-baseline justify-between gap-4 py-3">
+                                <dt class="text-sm font-medium text-gray-600">Ulcer index</dt>
+                                <dd class="text-xl font-bold tabular-nums text-slate-900">
+                                    {{ summaryMetrics.ulcer_index !== null ? Number(summaryMetrics.ulcer_index).toFixed(2) : '—' }}
+                                </dd>
+                            </div>
+                        </dl>
                     </div>
 
-                    <!-- Detail rows -->
-                    <dl class="space-y-3 border-t border-gray-100 pt-4">
-                        <div v-if="summaryMetrics.sharpe_ratio !== null" class="flex items-center justify-between">
-                            <dt class="text-sm text-gray-500">Sharpe Ratio</dt>
-                            <dd class="text-sm font-semibold" :class="Number(summaryMetrics.sharpe_ratio) >= 1 ? 'text-green-700' : Number(summaryMetrics.sharpe_ratio) >= 0 ? 'text-gray-900' : 'text-red-700'">{{ Number(summaryMetrics.sharpe_ratio).toFixed(2) }}</dd>
+                    <!-- Quality column -->
+                    <div class="relative overflow-hidden border-t border-gray-200/60 bg-linear-to-br from-sky-50/70 via-white to-white px-8 py-6 lg:border-t-0">
+                        <div class="pointer-events-none absolute -right-12 -top-12 h-32 w-32 rounded-full bg-sky-200/30 blur-3xl" aria-hidden="true" />
+                        <div class="relative mb-3 flex items-center gap-2 border-b border-sky-200/50 pb-3">
+                            <span class="flex h-6 w-6 items-center justify-center rounded-md bg-sky-100 ring-1 ring-sky-200/70">
+                                <SparklesIcon class="h-3.5 w-3.5 text-sky-600" aria-hidden="true" />
+                            </span>
+                            <h3 class="text-xs font-bold uppercase tracking-[0.14em] text-sky-700">Quality</h3>
                         </div>
-                        <div v-if="summaryMetrics.max_drawdown_start_date" class="flex items-center justify-between">
-                            <dt class="text-sm text-gray-500">Drawdown Period</dt>
-                            <dd class="text-sm text-gray-900">{{ formatDate(summaryMetrics.max_drawdown_start_date) }} to {{ formatDate(summaryMetrics.max_drawdown_end_date) }}</dd>
-                        </div>
-                        <div class="flex items-center justify-between">
-                            <dt class="text-sm text-gray-500">Initial Investment</dt>
-                            <dd class="text-sm font-medium text-gray-900">{{ formatCurrencyShort(backtest.initial_capital) }}</dd>
-                        </div>
-                        <div class="flex items-center justify-between">
-                            <dt class="text-sm text-gray-500">Final Value</dt>
-                            <dd class="text-sm font-semibold text-green-700">{{ formatCurrencyShort(summaryMetrics.final_value) }}</dd>
-                        </div>
-                    </dl>
+                        <dl class="relative divide-y divide-sky-100/60">
+                            <div class="flex items-baseline justify-between gap-4 py-3">
+                                <dt class="text-sm font-medium text-gray-600">Win rate</dt>
+                                <dd class="text-right">
+                                    <div class="text-xl font-bold tabular-nums" :class="winRateValueClass">
+                                        {{ summaryMetrics.winners_percentage !== null ? Number(summaryMetrics.winners_percentage).toFixed(1) + '%' : '—' }}
+                                    </div>
+                                    <div v-if="winnersLosersLabel" class="mt-0.5 text-[11px] font-medium text-sky-600/70">
+                                        {{ winnersLosersLabel }}
+                                    </div>
+                                </dd>
+                            </div>
+                            <div class="flex items-baseline justify-between gap-4 py-3">
+                                <dt class="text-sm font-medium text-gray-600">Profit factor</dt>
+                                <dd class="text-xl font-bold tabular-nums" :class="profitFactorValueClass">
+                                    {{ summaryMetrics.profit_factor !== null ? Number(summaryMetrics.profit_factor).toFixed(2) + '×' : '—' }}
+                                </dd>
+                            </div>
+                            <div class="flex items-baseline justify-between gap-4 py-3">
+                                <dt class="text-sm font-medium text-gray-600">K-ratio</dt>
+                                <dd class="text-xl font-bold tabular-nums" :class="kRatioValueClass">
+                                    {{ summaryMetrics.k_ratio !== null ? Number(summaryMetrics.k_ratio).toFixed(2) : '—' }}
+                                </dd>
+                            </div>
+                        </dl>
+                    </div>
                 </div>
 
-                <!-- Costs & Activity -->
-                <div class="rounded-xl bg-white p-6 shadow-xs ring-1 ring-gray-100">
-                    <h2 class="mb-5 text-sm font-semibold uppercase tracking-wide text-gray-500">Costs & Activity</h2>
-
-                    <!-- Hero numbers -->
-                    <div class="mb-5 grid grid-cols-3 gap-4">
-                        <div class="rounded-lg bg-gray-50 p-3 text-center">
-                            <div class="text-xs text-gray-500">Charges</div>
-                            <div class="mt-1 text-lg font-bold text-amber-700">{{ formatCurrencyShort(summaryMetrics.total_charges_paid) }}</div>
-                        </div>
-                        <div class="rounded-lg bg-gray-50 p-3 text-center">
-                            <div class="text-xs text-gray-500">Trades</div>
-                            <div class="mt-1 text-lg font-bold text-gray-900">{{ summaryMetrics.total_trades }}</div>
-                        </div>
-                        <div class="rounded-lg bg-gray-50 p-3 text-center">
-                            <div class="text-xs text-gray-500">Avg Cash %</div>
-                            <div class="mt-1 text-lg font-bold text-blue-700">{{ cashStats.avg.toFixed(1) }}%</div>
-                        </div>
-                    </div>
-
-                    <!-- Detail rows -->
-                    <dl class="space-y-3 border-t border-gray-100 pt-4">
-                        <div v-if="summaryMetrics.winners_percentage !== null" class="flex items-center justify-between">
-                            <dt class="text-sm text-gray-500">Winners %</dt>
-                            <dd class="text-sm font-semibold" :class="Number(summaryMetrics.winners_percentage) >= 50 ? 'text-green-700' : 'text-red-700'">{{ Number(summaryMetrics.winners_percentage).toFixed(1) }}%</dd>
-                        </div>
-                        <div v-if="summaryMetrics.profit_factor !== null" class="flex items-center justify-between">
-                            <dt class="group relative text-sm text-gray-500">Profit Factor<span class="ml-1 inline-flex h-4 w-4 cursor-help items-center justify-center rounded-full bg-gray-200 text-[10px] font-bold text-gray-500">i</span><div class="invisible absolute bottom-full left-0 z-10 mb-2 w-64 rounded-lg border border-gray-200 bg-white p-3 text-xs leading-relaxed text-gray-600 shadow-md group-hover:visible">Ratio of total profits to total losses across all stocks traded. Above 1x means profits exceed losses. Higher is better.</div></dt>
-                            <dd class="text-sm font-semibold" :class="Number(summaryMetrics.profit_factor) >= 1 ? 'text-green-700' : 'text-red-700'">{{ Number(summaryMetrics.profit_factor).toFixed(2) }}x</dd>
-                        </div>
-                        <div v-if="summaryMetrics.ulcer_index !== null" class="flex items-center justify-between">
-                            <dt class="group relative text-sm text-gray-500">
-                                Ulcer Index
-                                <span class="ml-1 inline-flex h-4 w-4 cursor-help items-center justify-center rounded-full bg-gray-200 text-[10px] font-bold text-gray-500">i</span>
-                                <div class="invisible absolute bottom-full left-0 z-10 mb-2 w-64 rounded-lg border border-gray-200 bg-white p-3 text-xs leading-relaxed text-gray-600 shadow-md group-hover:visible">
-                                    Measures downside volatility. It's the average depth of drawdowns over time. Lower is better — a value of 0 means no drawdowns occurred.
-                                </div>
-                            </dt>
-                            <dd class="text-sm font-semibold text-gray-900">{{ Number(summaryMetrics.ulcer_index).toFixed(2) }}</dd>
-                        </div>
-                        <div v-if="summaryMetrics.k_ratio !== null" class="flex items-center justify-between">
-                            <dt class="group relative text-sm text-gray-500">
-                                K-Ratio
-                                <span class="ml-1 inline-flex h-4 w-4 cursor-help items-center justify-center rounded-full bg-gray-200 text-[10px] font-bold text-gray-500">i</span>
-                                <div class="invisible absolute bottom-full left-0 z-10 mb-2 w-64 rounded-lg border border-gray-200 bg-white p-3 text-xs leading-relaxed text-gray-600 shadow-md group-hover:visible">
-                                    Measures how consistently the portfolio grows. A higher value means smoother, more linear equity growth. Negative values indicate erratic or declining returns.
-                                </div>
-                            </dt>
-                            <dd class="text-sm font-semibold" :class="Number(summaryMetrics.k_ratio) > 0 ? 'text-green-700' : 'text-red-700'">{{ Number(summaryMetrics.k_ratio).toFixed(2) }}</dd>
-                        </div>
-                        <div v-if="trades && trades.length > 0" class="flex items-center justify-between border-t border-gray-100 pt-3">
-                            <dt class="text-sm text-gray-500">Buy / Sell</dt>
-                            <dd class="text-sm text-gray-900">
-                                <span class="font-medium text-green-700">{{ buyCount }} buys</span>
-                                <span class="mx-1 text-gray-300">/</span>
-                                <span class="font-medium text-red-700">{{ sellCount }} sells</span>
-                            </dd>
-                        </div>
-                        <div class="flex items-center justify-between">
-                            <dt class="text-sm text-gray-500">Backtest Period</dt>
-                            <dd class="text-sm text-gray-900">{{ backtestPeriod }}</dd>
-                        </div>
-                        <div class="flex items-center justify-between">
-                            <dt class="text-sm text-gray-500">Duration</dt>
-                            <dd class="text-sm text-gray-900">{{ backtestYears }} years</dd>
-                        </div>
-                        <div class="flex items-center justify-between">
-                            <dt class="text-sm text-gray-500">Rebalance</dt>
-                            <dd class="text-sm font-medium text-gray-900 capitalize">{{ backtest.rebalance_frequency }}</dd>
-                        </div>
-                    </dl>
+                <!-- ACTIVITY STRIP -->
+                <div class="relative flex flex-wrap items-center gap-x-4 gap-y-2 border-t border-gray-100 bg-gray-50/60 px-6 py-3 text-xs text-gray-500">
+                    <span>
+                        <span class="font-semibold text-gray-800">{{ summaryMetrics.total_trades }}</span>
+                        trades
+                        <span v-if="trades && trades.length > 0" class="text-gray-400">({{ buyCount }} buys · {{ sellCount }} sells)</span>
+                    </span>
+                    <span class="text-gray-300" aria-hidden="true">·</span>
+                    <span>
+                        <span class="font-semibold text-amber-700">{{ formatCurrencyShort(summaryMetrics.total_charges_paid) }}</span>
+                        charges
+                    </span>
+                    <template v-if="dailySnapshots && dailySnapshots.length > 0">
+                        <span class="text-gray-300" aria-hidden="true">·</span>
+                        <span>
+                            <span class="font-semibold text-gray-800">{{ cashStats.avg.toFixed(1) }}%</span>
+                            avg cash
+                        </span>
+                    </template>
                 </div>
             </div>
 
@@ -374,7 +433,7 @@
                             <tr class="border-b border-gray-200">
                                 <th class="pb-2 text-left font-medium text-gray-500">Period</th>
                                 <th class="pb-2 text-right font-medium text-gray-500">Min</th>
-                                <th class="pb-2 text-right font-medium text-gray-500">Avg</th>
+                                <th class="pb-2 text-right font-medium text-gray-500">Median</th>
                                 <th class="pb-2 text-right font-medium text-gray-500">Max</th>
                             </tr>
                         </thead>
@@ -384,8 +443,8 @@
                                 <td class="py-2.5 text-right" :class="rollingReturnColor(rollingStats(period.key).min)">
                                     {{ formatPercent(rollingStats(period.key).min) }}
                                 </td>
-                                <td class="py-2.5 text-right" :class="rollingReturnColor(rollingStats(period.key).avg)">
-                                    {{ formatPercent(rollingStats(period.key).avg) }}
+                                <td class="py-2.5 text-right" :class="rollingReturnColor(rollingStats(period.key).median)">
+                                    {{ formatPercent(rollingStats(period.key).median) }}
                                 </td>
                                 <td class="py-2.5 text-right" :class="rollingReturnColor(rollingStats(period.key).max)">
                                     {{ formatPercent(rollingStats(period.key).max) }}
@@ -478,10 +537,12 @@
 
 <script setup lang="ts">
 import { Deferred, Head, Link, router } from '@inertiajs/vue3';
+import { ArrowTrendingDownIcon, ArrowTrendingUpIcon, ShieldExclamationIcon, SparklesIcon } from '@heroicons/vue/20/solid';
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue';
 import PageHeader from '@/Components/PageHeader.vue';
 import ErrorAlert from '@/Components/Alerts/ErrorAlert.vue';
 import InfoAlert from '@/Components/Alerts/InfoAlert.vue';
+import BacktestEquitySparkline from '@/Pages/Backtests/partials/BacktestEquitySparkline.vue';
 import BacktestNavChart from '@/Pages/Backtests/partials/BacktestNavChart.vue';
 import CashAllocationChart from '@/Pages/Backtests/partials/CashAllocationChart.vue';
 import DrawdownChart from '@/Pages/Backtests/partials/DrawdownChart.vue';
@@ -502,6 +563,7 @@ const props = defineProps<{
     backtest: Backtest;
     summaryMetrics: BacktestSummaryMetric | null;
     dailySnapshots: BacktestDailySnapshot[];
+    defaultBenchmark: BenchmarkPoint[];
     trades: BacktestTrade[];
     benchmarkOptions: SelectOption[];
 }>();
@@ -514,9 +576,6 @@ onMounted(() => {
     if (props.backtest.status === 'running' || props.backtest.status === 'pending') {
         startPolling();
     }
-    if (props.backtest.status === 'completed') {
-        fetchBenchmark(selectedBenchmark.value);
-    }
 });
 
 onUnmounted(() => stopPolling());
@@ -525,9 +584,7 @@ watch(() => props.backtest.status, (newStatus, oldStatus) => {
     if (newStatus === 'completed' && oldStatus !== 'completed') {
         // Job just finished — full reload triggers deferred prop loading for charts/trades
         stopPolling();
-        router.reload({
-            onFinish: () => fetchBenchmark(selectedBenchmark.value),
-        });
+        router.reload();
     } else if (newStatus === 'running' || newStatus === 'pending') {
         if (!pollInterval) {
             startPolling();
@@ -569,7 +626,24 @@ async function fetchBenchmark(slug: string): Promise<void> {
     }
 }
 
-watch(selectedBenchmark, (slug) => fetchBenchmark(slug));
+// Seed benchmarkData from the preloaded defaultBenchmark so the NAV chart doesn't need a redundant fetch.
+watch(
+    () => props.defaultBenchmark,
+    (value) => {
+        if (selectedBenchmark.value === 'nifty-50' && Array.isArray(value) && value.length > 0) {
+            benchmarkData.value = value;
+        }
+    },
+    { immediate: true },
+);
+
+watch(selectedBenchmark, (slug) => {
+    if (slug === 'nifty-50' && Array.isArray(props.defaultBenchmark) && props.defaultBenchmark.length > 0) {
+        benchmarkData.value = props.defaultBenchmark;
+        return;
+    }
+    fetchBenchmark(slug);
+});
 
 const benchmarkMetrics = computed(() => {
     if (benchmarkData.value.length < 2 || !props.dailySnapshots || props.dailySnapshots.length < 2) {
@@ -644,9 +718,10 @@ const progressStageLabel = computed(() => {
     return 'Finalizing metrics';
 });
 
-const totalReturn = computed(() =>
-    props.summaryMetrics ? (props.summaryMetrics.final_value - props.backtest.initial_capital) / props.backtest.initial_capital : 0,
-);
+const growthMultiplier = computed(() => {
+    if (!props.summaryMetrics || props.backtest.initial_capital === 0) return '0.0';
+    return (props.summaryMetrics.final_value / props.backtest.initial_capital).toFixed(1);
+});
 
 const backtestPeriod = computed(() => {
     if (!props.dailySnapshots || props.dailySnapshots.length < 2) return '';
@@ -672,6 +747,75 @@ const cashStats = computed(() => {
     return { min: Math.min(...pcts), avg: pcts.reduce((a, b) => a + b, 0) / pcts.length, max: Math.max(...pcts) };
 });
 
+// --- Computed: benchmark delta for hero chip (always Nifty 50) ---
+
+const benchmarkDelta = computed<number | null>(() => {
+    const bench = props.defaultBenchmark;
+    if (!Array.isArray(bench) || bench.length < 2 || !props.summaryMetrics) return null;
+    const first = bench[0];
+    const last = bench[bench.length - 1];
+    if (!first || !last || first.nav <= 0) return null;
+    const years = (new Date(last.date).getTime() - new Date(first.date).getTime()) / (365.25 * 24 * 60 * 60 * 1000);
+    if (years <= 0) return null;
+    const benchmarkCagr = Math.pow(last.nav / first.nav, 1 / years) - 1;
+    return props.summaryMetrics.cagr - benchmarkCagr;
+});
+
+// --- Scorecard value classes (existing red/green logic, extracted for readability) ---
+
+const sharpeValueClass = computed<string>(() => {
+    const v = props.summaryMetrics?.sharpe_ratio;
+    if (v === null || v === undefined) return 'text-gray-400';
+    const n = Number(v);
+    if (n >= 1) return 'text-emerald-700';
+    if (n >= 0) return 'text-slate-900';
+    return 'text-red-700';
+});
+
+const winRateValueClass = computed<string>(() => {
+    const v = props.summaryMetrics?.winners_percentage;
+    if (v === null || v === undefined) return 'text-gray-400';
+    return Number(v) >= 50 ? 'text-emerald-700' : 'text-red-700';
+});
+
+const profitFactorValueClass = computed<string>(() => {
+    const v = props.summaryMetrics?.profit_factor;
+    if (v === null || v === undefined) return 'text-gray-400';
+    return Number(v) >= 1 ? 'text-amber-700' : 'text-red-700';
+});
+
+const kRatioValueClass = computed<string>(() => {
+    const v = props.summaryMetrics?.k_ratio;
+    if (v === null || v === undefined) return 'text-gray-400';
+    return Number(v) > 0 ? 'text-indigo-700' : 'text-red-700';
+});
+
+const winnersLosersLabel = computed<string | null>(() => {
+    const pct = props.summaryMetrics?.winners_percentage;
+    const total = props.summaryMetrics?.total_trades;
+    if (pct === null || pct === undefined || !total) return null;
+    const winners = Math.round((Number(pct) / 100) * total);
+    return `${winners} winners of ${total}`;
+});
+
+const totalReturn = computed<number>(() =>
+    props.summaryMetrics ? (props.summaryMetrics.final_value - props.backtest.initial_capital) / props.backtest.initial_capital : 0,
+);
+
+// --- Helpers ---
+
+function formatDrawdownPeriod(startIso: string, endIso: string | null): string {
+    if (!endIso) return formatDate(startIso);
+    const start = new Date(startIso);
+    const end = new Date(endIso);
+    if (start.getFullYear() === end.getFullYear()) {
+        const startStr = start.toLocaleDateString('en-IN', { day: '2-digit', month: 'short' });
+        const endStr = end.toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' });
+        return `${startStr} — ${endStr}`;
+    }
+    return `${formatDate(startIso)} — ${formatDate(endIso)}`;
+}
+
 // --- Computed: rolling returns ---
 
 const rollingPeriods = computed(() => {
@@ -684,14 +828,16 @@ const rollingPeriods = computed(() => {
 
 const hasRollingReturns = computed(() => rollingPeriods.value.length > 0);
 
-function rollingStats(period: 'one_year' | 'three_year' | 'five_year'): { min: number; avg: number; max: number } {
+function rollingStats(period: 'one_year' | 'three_year' | 'five_year'): { min: number; median: number; max: number } {
     const data = props.summaryMetrics?.[`rolling_returns_${period}`];
-    if (!data || data.length === 0) return { min: 0, avg: 0, max: 0 };
-    const returns = data.map((d) => d.return);
+    if (!data || data.length === 0) return { min: 0, median: 0, max: 0 };
+    const sorted = data.map((d) => d.return).sort((a, b) => a - b);
+    const mid = Math.floor(sorted.length / 2);
+    const median = sorted.length % 2 === 0 ? (sorted[mid - 1] + sorted[mid]) / 2 : sorted[mid];
     return {
-        min: Math.min(...returns),
-        avg: returns.reduce((sum, r) => sum + r, 0) / returns.length,
-        max: Math.max(...returns),
+        min: sorted[0],
+        median,
+        max: sorted[sorted.length - 1],
     };
 }
 

@@ -9,7 +9,8 @@ class CalculateTransactionCostsAction
      */
     public function execute(float $grossAmount, string $type): array
     {
-        $stt = $grossAmount * 0.001;
+        // STT applies only on the sell side for equity delivery trades.
+        $stt = ($type === 'sell') ? $grossAmount * 0.001 : 0;
         $transactionCharges = $grossAmount * 0.0000307;
         $sebiCharges = $grossAmount * 0.0000001;
         $gst = ($sebiCharges + $transactionCharges) * 0.18;

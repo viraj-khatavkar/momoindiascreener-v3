@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Actions\Backtest\LoadBenchmarkSeriesAction;
 use App\Actions\CreateDefaultBacktestAction;
 use App\Enums\ApplyFiltersOnOptionEnum;
 use App\Enums\BacktestCashCallEnum;
@@ -45,7 +46,7 @@ class BacktestsController extends Controller
         return redirect()->to('/backtests/'.$backtest->getKey().'/edit');
     }
 
-    public function show(Request $request, Backtest $backtest)
+    public function show(Request $request, Backtest $backtest, LoadBenchmarkSeriesAction $loadBenchmark)
     {
         if ($request->user()->cannot('view', $backtest)) {
             abort(404);
@@ -58,6 +59,9 @@ class BacktestsController extends Controller
             'summaryMetrics' => fn () => $backtest->summaryMetrics,
             'dailySnapshots' => $isCompleted
                 ? Inertia::defer(fn () => $backtest->dailySnapshots()->orderBy('date')->get(), 'charts')
+                : [],
+            'defaultBenchmark' => $isCompleted
+                ? Inertia::defer(fn () => $loadBenchmark->execute($backtest, 'nifty-50'), 'charts')
                 : [],
             'trades' => $isCompleted
                 ? Inertia::defer(fn () => $backtest->trades()->orderBy('date')->orderBy('trade_type')->get(), 'trades')

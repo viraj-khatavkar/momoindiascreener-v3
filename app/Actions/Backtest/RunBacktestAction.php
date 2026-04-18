@@ -17,7 +17,8 @@ class RunBacktestAction
 
     private string $startDate;
 
-    private const BUY_COST_RATE = 0.001187;
+    // No STT on buy for delivery; stamp 0.015% + txn 0.00307% + SEBI 0.00001% + GST on (txn+SEBI).
+    private const BUY_COST_RATE = 0.000187;
 
     private array $holdings = [];
 
@@ -87,11 +88,6 @@ class RunBacktestAction
             $dateStr = $date->format('Y-m-d');
             $dayIndex++;
 
-            // Apply daily interest on cash balance
-            if ($this->cash > 0 && $this->dailyCashReturnRate > 0) {
-                $this->cash += $this->cash * $this->dailyCashReturnRate;
-            }
-
             // Step A: Mark-to-market FIRST (loads today's prices for held stocks)
             $this->markToMarket($date);
 
@@ -100,6 +96,11 @@ class RunBacktestAction
             if (isset($this->rebalanceDates[$dateStr])) {
                 $filterDate = $this->rebalanceDates[$dateStr];
                 $this->rebalance($backtest, $date, $filterDate);
+            }
+
+            // Accrue interest on end-of-day cash (overnight carry, post-rebalance).
+            if ($this->cash > 0 && $this->dailyCashReturnRate > 0) {
+                $this->cash += $this->cash * $this->dailyCashReturnRate;
             }
 
             $portfolioValue = $this->calculatePortfolioValue();

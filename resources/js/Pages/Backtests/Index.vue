@@ -541,15 +541,6 @@ function activeFilters(bt: BacktestWithMetrics): string[] {
         else if (to) filters.push('Price < ' + to);
     }
 
-    // Market Cap Range
-    if (bt.marketcap_from > 0 || bt.marketcap_to > 0) {
-        const from = bt.marketcap_from > 0 ? formatCompactNumber(bt.marketcap_from) : '';
-        const to = bt.marketcap_to > 0 ? formatCompactNumber(bt.marketcap_to) : '';
-        if (from && to) filters.push('MCap ' + from + '–' + to);
-        else if (from) filters.push('MCap > ' + from);
-        else if (to) filters.push('MCap < ' + to);
-    }
-
     // Min return
     if (bt.minimum_return_one_year > 0) {
         filters.push('Min Return 1Y > ' + bt.minimum_return_one_year + '%');
