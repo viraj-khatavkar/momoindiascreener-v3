@@ -13,7 +13,11 @@ import { Head } from '@inertiajs/vue3';
 import PageHeader from '@/Components/PageHeader.vue';
 
 const amaLinks = [
-    { url: 'https://youtu.be/Yg2tSATUn4k', title: 'January 2026 AMA' },
+
+    { url: 'https://www.youtube.com/watch?v=ALN3enQRkf0', title: 'April 2026 AMA' },
+    { url: 'https://www.youtube.com/watch?v=qLp0GNAeJvg', title: 'March 2026 AMA' },
+    { url: 'https://www.youtube.com/watch?v=Pf2YnxWNBz8', title: 'February 2026 AMA' },
+    { url: 'https://www.youtube.com/watch?v=Yg2tSATUn4k', title: 'January 2026 AMA' },
     { url: 'https://www.youtube.com/watch?v=Fyy-1lADpww', title: 'November 2025 AMA' },
     { url: 'https://www.youtube.com/watch?v=jx74Bjml6Tk', title: 'October 2025 AMA' },
     { url: 'https://www.youtube.com/watch?v=hCKb2dXinfs', title: 'September 2025 AMA' },

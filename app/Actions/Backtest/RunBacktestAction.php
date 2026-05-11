@@ -20,6 +20,12 @@ class RunBacktestAction
     // No STT on buy for delivery; stamp 0.015% + txn 0.00307% + SEBI 0.00001% + GST on (txn+SEBI).
     private const BUY_COST_RATE = 0.000187;
 
+    // Circuit hits land at one of these close-to-close return values (in %).
+    private const CIRCUIT_PERCENTAGES = [
+        4.99, 5.00, 9.99, 10.00, 19.99, 20.00,
+        -4.99, -5.00, -9.99, -10.00, -19.99, -20.00,
+    ];
+
     private array $holdings = [];
 
     private float $cash;
@@ -37,6 +43,9 @@ class RunBacktestAction
     private array $snapshotBatch = [];
 
     private array $tradeBatch = [];
+
+    /** @var array<string, true> Symbols in circuit on the current execution day (set semantics). */
+    private array $circuitSymbols = [];
 
     private float $dailyCashReturnRate = 0;
 
@@ -60,6 +69,7 @@ class RunBacktestAction
         $this->rebalanceDates = [];
         $this->snapshotBatch = [];
         $this->tradeBatch = [];
+        $this->circuitSymbols = [];
 
         $annualRate = (float) $backtest->cash_return_rate;
         $this->dailyCashReturnRate = pow(1 + $annualRate / 100, 1.0 / 252) - 1;
@@ -275,6 +285,10 @@ class RunBacktestAction
         }
         $rankedBySymbol = $rankedStocks->keyBy('symbol');
 
+        // Circuit set is keyed on the execution date, so the rule still honors
+        // execute_next_trading_day (filters use $filterDate, trades use $executionDateStr).
+        $this->loadCircuitSymbols($backtest, $executionDateStr, $rankedStocks);
+
         // Cash call DMA check uses decision date (not execution date)
         $indexClose = $this->indexData[$filterDate] ?? 0;
         $indexDma = $this->dmaData[$filterDate] ?? null;
@@ -356,10 +370,12 @@ class RunBacktestAction
             return;
         }
 
-        // Determine buy candidates
+        // Determine buy candidates. Circuit-hit stocks are filtered out before the
+        // slot cap so the next-ranked candidate slides in to take their place.
         $remainingSlots = $backtest->max_stocks_to_hold - count($this->holdings);
         $buyCandidates = $rankedStocks
             ->filter(fn ($stock) => ! isset($this->holdings[$stock->symbol]))
+            ->filter(fn ($stock) => ! isset($this->circuitSymbols[$stock->symbol]))
             ->take(max($remainingSlots, 0));
 
         if ($needsRebalancing) {
@@ -644,6 +660,34 @@ class RunBacktestAction
         return $reasons;
     }
 
+    private function loadCircuitSymbols(Backtest $backtest, string $executionDateStr, $rankedStocks): void
+    {
+        $this->circuitSymbols = [];
+
+        if (! $backtest->skip_circuit_trades) {
+            return;
+        }
+
+        $symbols = array_values(array_unique(array_merge(
+            array_keys($this->holdings),
+            $rankedStocks->pluck('symbol')->all(),
+            ['GOLDBEES'],
+        )));
+
+        if (empty($symbols)) {
+            return;
+        }
+
+        $hits = BacktestNseInstrumentPrice::query()
+            ->where('date', $executionDateStr)
+            ->whereIn('symbol', $symbols)
+            ->whereIn('t_percent', self::CIRCUIT_PERCENTAGES)
+            ->pluck('symbol')
+            ->all();
+
+        $this->circuitSymbols = array_flip($hits);
+    }
+
     private function applyHoldAboveDmaOverride(Backtest $backtest, Carbon $date, array $symbolsToSell): array
     {
         $dateStr = $date->format('Y-m-d');
@@ -776,6 +820,10 @@ class RunBacktestAction
             return;
         }
 
+        if (isset($this->circuitSymbols[$symbol])) {
+            return;
+        }
+
         $holding = $this->holdings[$symbol];
         $sellPrice = $holding['last_known_price'];
         $grossAmount = $quantity * $sellPrice;
@@ -818,6 +866,10 @@ class RunBacktestAction
     private function executeBuy(Backtest $backtest, Carbon $date, $stock, float $budget, string $reason): void
     {
         if ($budget <= 0 || $this->cash <= 0) {
+            return;
+        }
+
+        if (isset($this->circuitSymbols[$stock->symbol])) {
             return;
         }
 

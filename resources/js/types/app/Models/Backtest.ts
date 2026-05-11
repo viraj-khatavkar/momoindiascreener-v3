@@ -9,6 +9,7 @@ export interface Backtest {
     apply_hold_above_dma: boolean;
     hold_above_dma_period: number;
     execute_next_trading_day: boolean;
+    skip_circuit_trades: boolean;
     rebalance_frequency: 'weekly' | 'monthly';
     rebalance_day: number;
     weightage: 'equal_weight' | 'equal_weight_rebalanced' | 'inverse_volatility';

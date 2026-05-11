@@ -32,6 +32,7 @@ class StoreBacktestRequest extends FormRequest
             'apply_hold_above_dma' => ['required', 'boolean'],
             'hold_above_dma_period' => ['required_if:apply_hold_above_dma,true', 'nullable', 'integer', 'in:20,50,100,200'],
             'execute_next_trading_day' => ['required', 'boolean'],
+            'skip_circuit_trades' => ['required', 'boolean'],
             'rebalance_frequency' => ['required', Rule::enum(BacktestRebalanceFrequencyEnum::class)],
             'rebalance_day' => ['required', 'integer', 'min:1', $this->input('rebalance_frequency') === 'weekly' ? 'max:5' : 'max:28'],
             'weightage' => ['required', Rule::enum(BacktestWeightageEnum::class)],

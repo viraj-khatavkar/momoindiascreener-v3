@@ -31,6 +31,7 @@ class BacktestFactory extends Factory
             'apply_hold_above_dma' => false,
             'hold_above_dma_period' => 200,
             'execute_next_trading_day' => false,
+            'skip_circuit_trades' => true,
             'rebalance_frequency' => BacktestRebalanceFrequencyEnum::Monthly->value,
             'rebalance_day' => 1,
             'weightage' => BacktestWeightageEnum::EqualWeight->value,

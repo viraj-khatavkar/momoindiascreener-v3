@@ -49,6 +49,10 @@
                         <Toggle v-model="form.execute_next_trading_day" label="Execute Next Trading Day" />
                         <p class="mt-1 text-xs text-gray-500">Decide on rebalance day, execute trades at next day's close</p>
                     </div>
+                    <div>
+                        <Toggle v-model="form.skip_circuit_trades" label="Skip Circuit-Hit Trades" />
+                        <p class="mt-1 text-xs text-gray-500">If a stock closes at ±5%, ±10%, or ±20% on the execution day, skip its buy/sell. Exits retry on the next rebalance; entries slide to the next-ranked stock.</p>
+                    </div>
                     <SelectInput
                         v-model="form.rebalance_frequency"
                         label="Rebalance Frequency"
@@ -771,6 +775,7 @@ const form = useForm({
     apply_hold_above_dma: props.backtest.apply_hold_above_dma,
     hold_above_dma_period: props.backtest.hold_above_dma_period,
     execute_next_trading_day: props.backtest.execute_next_trading_day,
+    skip_circuit_trades: props.backtest.skip_circuit_trades,
     rebalance_frequency: props.backtest.rebalance_frequency,
     rebalance_day: props.backtest.rebalance_day,
     weightage: props.backtest.weightage,

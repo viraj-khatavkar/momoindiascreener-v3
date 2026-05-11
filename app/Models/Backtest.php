@@ -31,6 +31,7 @@ class Backtest extends Model
             'apply_filters_on' => ApplyFiltersOnOptionEnum::class,
             'apply_hold_above_dma' => 'boolean',
             'execute_next_trading_day' => 'boolean',
+            'skip_circuit_trades' => 'boolean',
             'apply_ma' => 'boolean',
             'above_ma_200' => 'boolean',
             'above_ma_100' => 'boolean',
