@@ -730,3 +730,64 @@ it('does not flag stocks just outside circuit thresholds', function (float $tPer
     'just past lower 10%' => -10.01, 'just under lower 9.99' => -9.98,
     'just past lower 20%' => -20.01, 'just under lower 19.99' => -19.98,
 ]);
+
+// ==========================================================================
+// PER-TRADE-CYCLE STOCK PERFORMANCE
+// ==========================================================================
+
+it('records entry date, exit date, and holding days for a still-held position', function () {
+    $dates = tradingDates(10);
+    seedIndexRange('2010-01-01', end($dates), 5000);
+
+    foreach ($dates as $i => $date) {
+        seedInstrument($date, 'A', 100 + $i, ['sharpe_return_one_year' => 5.0]);
+        seedInstrument($date, 'B', 200 + $i, ['sharpe_return_one_year' => 4.0]);
+    }
+
+    $user = User::factory()->create(['is_paid' => true]);
+    $bt = makeBacktest($user, ['max_stocks_to_hold' => 2]);
+    run($bt);
+
+    $perf = $bt->summaryMetrics?->stock_performance ?? [];
+    $a = collect($perf)->firstWhere('symbol', 'A');
+
+    expect($a)->not->toBeNull()
+        ->and($a['entry_date'])->toBe($dates[0])
+        ->and($a['exit_date'])->toBeNull()
+        ->and($a['still_held'])->toBeTrue()
+        ->and($a['holding_days'])->toBeGreaterThan(0);
+});
+
+it('produces a separate trade cycle for each buy-sell round-trip on the same stock', function () {
+    $dates = tradingDates(20);
+    seedIndexRange('2010-01-01', end($dates), 5000);
+
+    // A starts top-ranked, drops out by day 8 (sold), then recovers by day 13 (re-bought).
+    // Expected: two distinct positions for A.
+    foreach ($dates as $i => $date) {
+        $aSharpe = match (true) {
+            $i < 8 => 5.0,
+            $i < 13 => 0.1,
+            default => 5.5,
+        };
+        seedInstrument($date, 'A', 100, ['sharpe_return_one_year' => $aSharpe]);
+        seedInstrument($date, 'B', 200, ['sharpe_return_one_year' => 4.0]);
+        seedInstrument($date, 'C', 150, ['sharpe_return_one_year' => 3.0]);
+        seedInstrument($date, 'D', 250, ['sharpe_return_one_year' => 2.0]);
+    }
+
+    $user = User::factory()->create(['is_paid' => true]);
+    $bt = makeBacktest($user, ['max_stocks_to_hold' => 2, 'worst_rank_held' => 2]);
+    run($bt);
+
+    $perf = $bt->summaryMetrics?->stock_performance ?? [];
+    $aPositions = collect($perf)->where('symbol', 'A')->values();
+
+    expect($aPositions)->toHaveCount(2);
+
+    $closed = $aPositions->firstWhere('still_held', false);
+    expect($closed)->not->toBeNull()
+        ->and($closed['entry_date'])->toBe($dates[0])
+        ->and($closed['exit_date'])->not->toBeNull()
+        ->and($closed['holding_days'])->toBeGreaterThan(0);
+});

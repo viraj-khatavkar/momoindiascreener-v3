@@ -19,6 +19,9 @@ export interface BacktestSummaryMetric {
     stock_performance: Array<{
         symbol: string;
         name: string;
+        entry_date: string;
+        exit_date: string | null;
+        holding_days: number;
         buy_value: number;
         sell_value: number;
         unrealized_value: number;

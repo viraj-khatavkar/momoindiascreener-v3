@@ -6,6 +6,7 @@ use App\Models\Backtest;
 use App\Models\BacktestNseInstrumentPrice;
 use App\Models\BacktestSummaryMetric;
 use App\Models\BacktestTrade;
+use Illuminate\Support\Carbon;
 
 class CalculateBacktestMetricsAction
 {
@@ -158,49 +159,60 @@ class CalculateBacktestMetricsAction
         return $returns;
     }
 
+    /**
+     * Per-trade-cycle (position) performance. A position opens when a stock's
+     * holding goes from 0 to >0 and closes when it returns to 0. Multiple
+     * buys/partial sells within a cycle are aggregated into the same position;
+     * a stock that is fully exited and later re-entered produces two positions.
+     */
     private function calculateStockPerformance(Backtest $backtest, $lastDate): array
     {
         $trades = BacktestTrade::where('backtest_id', $backtest->id)
             ->orderBy('date')
+            ->orderBy('id')
             ->get();
 
-        $stocks = [];
+        $openPositions = [];
+        $positions = [];
 
         foreach ($trades as $trade) {
             $symbol = $trade->symbol;
 
-            if (! isset($stocks[$symbol])) {
-                $stocks[$symbol] = [
-                    'symbol' => $symbol,
-                    'name' => $trade->name ?? $symbol,
-                    'buy_qty' => 0,
-                    'sell_qty' => 0,
-                    'buy_value' => 0,
-                    'sell_value' => 0,
-                    'charges' => 0,
-                ];
-            }
-
-            $stocks[$symbol]['charges'] += (float) $trade->total_charges;
-
             if ($trade->trade_type === 'buy') {
-                $stocks[$symbol]['buy_qty'] += $trade->quantity;
-                $stocks[$symbol]['buy_value'] += (float) $trade->gross_amount;
-            } else {
-                $stocks[$symbol]['sell_qty'] += $trade->quantity;
-                $stocks[$symbol]['sell_value'] += (float) $trade->gross_amount;
+                if (! isset($openPositions[$symbol])) {
+                    $openPositions[$symbol] = [
+                        'symbol' => $symbol,
+                        'name' => $trade->name ?? $symbol,
+                        'entry_date_obj' => $trade->date,
+                        'qty' => 0,
+                        'buy_value' => 0.0,
+                        'sell_value' => 0.0,
+                        'charges' => 0.0,
+                    ];
+                }
+
+                $openPositions[$symbol]['qty'] += $trade->quantity;
+                $openPositions[$symbol]['buy_value'] += (float) $trade->gross_amount;
+                $openPositions[$symbol]['charges'] += (float) $trade->total_charges;
+
+                continue;
+            }
+
+            if (! isset($openPositions[$symbol])) {
+                continue;
+            }
+
+            $openPositions[$symbol]['qty'] -= $trade->quantity;
+            $openPositions[$symbol]['sell_value'] += (float) $trade->gross_amount;
+            $openPositions[$symbol]['charges'] += (float) $trade->total_charges;
+
+            if ($openPositions[$symbol]['qty'] <= 0) {
+                $positions[] = $this->finalizePosition($openPositions[$symbol], $trade->date, 0.0, false);
+                unset($openPositions[$symbol]);
             }
         }
 
-        // For stocks still held at end, get their last closing price for unrealized P&L
-        $heldSymbols = [];
-        foreach ($stocks as $symbol => $data) {
-            $remaining = $data['buy_qty'] - $data['sell_qty'];
-            if ($remaining > 0) {
-                $heldSymbols[] = $symbol;
-            }
-        }
-
+        $heldSymbols = array_keys($openPositions);
         $lastPrices = [];
         if (! empty($heldSymbols)) {
             $lastPrices = BacktestNseInstrumentPrice::query()
@@ -211,33 +223,41 @@ class CalculateBacktestMetricsAction
                 ->toArray();
         }
 
-        // Calculate P&L for each stock
-        $performance = [];
-        foreach ($stocks as $symbol => $data) {
-            $remainingQty = $data['buy_qty'] - $data['sell_qty'];
-            $unrealizedValue = $remainingQty > 0 ? $remainingQty * ($lastPrices[$symbol] ?? 0) : 0;
-
-            $totalPnl = $data['sell_value'] + $unrealizedValue - $data['buy_value'];
-            $netPnl = $totalPnl - $data['charges'];
-            $pnlPct = $data['buy_value'] > 0 ? ($netPnl / $data['buy_value']) * 100 : 0;
-
-            $performance[] = [
-                'symbol' => $symbol,
-                'name' => $data['name'],
-                'buy_value' => round($data['buy_value'], 2),
-                'sell_value' => round($data['sell_value'], 2),
-                'unrealized_value' => round($unrealizedValue, 2),
-                'charges' => round($data['charges'], 2),
-                'net_pnl' => round($netPnl, 2),
-                'pnl_pct' => round($pnlPct, 2),
-                'still_held' => $remainingQty > 0,
-            ];
+        foreach ($openPositions as $symbol => $position) {
+            $unrealized = $position['qty'] * ($lastPrices[$symbol] ?? 0);
+            $positions[] = $this->finalizePosition($position, $lastDate, $unrealized, true);
         }
 
-        // Sort by net_pnl descending
-        usort($performance, fn ($a, $b) => $b['net_pnl'] <=> $a['net_pnl']);
+        usort($positions, fn ($a, $b) => $b['net_pnl'] <=> $a['net_pnl']);
 
-        return $performance;
+        return $positions;
+    }
+
+    /**
+     * @param  array{symbol: string, name: string, entry_date_obj: Carbon, qty: int|float, buy_value: float, sell_value: float, charges: float}  $position
+     * @return array{symbol: string, name: string, entry_date: string, exit_date: string|null, holding_days: int, buy_value: float, sell_value: float, unrealized_value: float, charges: float, net_pnl: float, pnl_pct: float, still_held: bool}
+     */
+    private function finalizePosition(array $position, $exitDate, float $unrealizedValue, bool $stillHeld): array
+    {
+        $totalProceeds = $position['sell_value'] + $unrealizedValue;
+        $netPnl = $totalProceeds - $position['buy_value'] - $position['charges'];
+        $pnlPct = $position['buy_value'] > 0 ? ($netPnl / $position['buy_value']) * 100 : 0.0;
+        $holdingDays = (int) $position['entry_date_obj']->diffInDays($exitDate);
+
+        return [
+            'symbol' => $position['symbol'],
+            'name' => $position['name'],
+            'entry_date' => $position['entry_date_obj']->format('Y-m-d'),
+            'exit_date' => $stillHeld ? null : $exitDate->format('Y-m-d'),
+            'holding_days' => $holdingDays,
+            'buy_value' => round($position['buy_value'], 2),
+            'sell_value' => round($position['sell_value'], 2),
+            'unrealized_value' => round($unrealizedValue, 2),
+            'charges' => round($position['charges'], 2),
+            'net_pnl' => round($netPnl, 2),
+            'pnl_pct' => round($pnlPct, 2),
+            'still_held' => $stillHeld,
+        ];
     }
 
     /**
@@ -277,7 +297,7 @@ class CalculateBacktestMetricsAction
     }
 
     /**
-     * Winners % = stocks with positive P&L / total stocks traded
+     * Winners % = closed/held trade cycles with positive P&L / total trade cycles
      */
     private function calculateWinnersPercentage(array $stockPerformance): ?float
     {
@@ -390,8 +410,7 @@ class CalculateBacktestMetricsAction
     }
 
     /**
-     * Profit Factor = gross profits / gross losses
-     * Sum of winning stocks' P&L / abs(sum of losing stocks' P&L)
+     * Profit Factor = gross profits / gross losses across trade cycles
      */
     private function calculateProfitFactor(array $stockPerformance): ?float
     {

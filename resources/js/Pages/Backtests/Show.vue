@@ -463,53 +463,73 @@
                 <!-- Top 20 Gainers -->
                 <div class="rounded-xl bg-white p-6 shadow-xs ring-1 ring-gray-100">
                     <h2 class="mb-4 text-sm font-semibold uppercase tracking-wide text-green-700">Top 20 Gainers</h2>
-                    <table class="w-full text-sm">
-                        <thead>
-                            <tr class="border-b border-gray-200">
-                                <th class="pb-2 text-left font-medium text-gray-500">Symbol</th>
-                                <th class="pb-2 text-right font-medium text-gray-500">Invested</th>
-                                <th class="pb-2 text-right font-medium text-gray-500">P&L</th>
-                                <th class="pb-2 text-right font-medium text-gray-500">Return</th>
-                            </tr>
-                        </thead>
-                        <tbody class="divide-y divide-gray-100">
-                            <tr v-for="stock in topGainers" :key="stock.symbol">
-                                <td class="py-2 text-gray-900">
-                                    {{ stock.symbol }}
-                                    <span v-if="stock.still_held" class="ml-1 text-xs text-blue-500">(held)</span>
-                                </td>
-                                <td class="py-2 text-right text-gray-700">{{ formatCurrencyShort(stock.buy_value) }}</td>
-                                <td class="py-2 text-right font-semibold text-green-700">{{ formatCurrencyShort(stock.net_pnl) }}</td>
-                                <td class="py-2 text-right font-semibold text-green-700">+{{ stock.pnl_pct.toFixed(1) }}%</td>
-                            </tr>
-                        </tbody>
-                    </table>
+                    <ul class="divide-y divide-gray-100">
+                        <li
+                            v-for="(position, index) in topGainers"
+                            :key="`g-${index}-${position.symbol}-${position.entry_date}`"
+                            class="flex items-start justify-between gap-3 py-2.5 text-sm"
+                        >
+                            <div class="min-w-0 flex-1">
+                                <div class="flex items-center gap-1.5">
+                                    <span class="truncate font-medium text-gray-900">{{ position.symbol }}</span>
+                                    <span
+                                        v-if="position.still_held"
+                                        class="rounded-full bg-blue-50 px-1.5 py-0.5 text-[10px] font-medium text-blue-600"
+                                    >held</span>
+                                </div>
+                                <div class="mt-0.5 text-xs text-gray-500">
+                                    {{ formatShortDate(position.entry_date) }}
+                                    <span class="text-gray-300">→</span>
+                                    {{ position.exit_date ? formatShortDate(position.exit_date) : 'now' }}
+                                    <span class="mx-1 text-gray-300">·</span>
+                                    <span class="font-medium text-gray-600">{{ formatHoldingPeriod(position.holding_days) }}</span>
+                                </div>
+                                <div class="mt-0.5 text-[11px] text-gray-400">
+                                    {{ formatCurrencyShort(position.buy_value) }} invested
+                                </div>
+                            </div>
+                            <div class="shrink-0 text-right">
+                                <div class="font-semibold tabular-nums text-green-700">+{{ position.pnl_pct.toFixed(1) }}%</div>
+                                <div class="mt-0.5 text-xs tabular-nums text-green-600">{{ formatCurrencyShort(position.net_pnl) }}</div>
+                            </div>
+                        </li>
+                    </ul>
                 </div>
 
                 <!-- Top 20 Losers -->
                 <div class="rounded-xl bg-white p-6 shadow-xs ring-1 ring-gray-100">
                     <h2 class="mb-4 text-sm font-semibold uppercase tracking-wide text-red-700">Top 20 Losers</h2>
-                    <table class="w-full text-sm">
-                        <thead>
-                            <tr class="border-b border-gray-200">
-                                <th class="pb-2 text-left font-medium text-gray-500">Symbol</th>
-                                <th class="pb-2 text-right font-medium text-gray-500">Invested</th>
-                                <th class="pb-2 text-right font-medium text-gray-500">P&L</th>
-                                <th class="pb-2 text-right font-medium text-gray-500">Return</th>
-                            </tr>
-                        </thead>
-                        <tbody class="divide-y divide-gray-100">
-                            <tr v-for="stock in topLosers" :key="stock.symbol">
-                                <td class="py-2 text-gray-900">
-                                    {{ stock.symbol }}
-                                    <span v-if="stock.still_held" class="ml-1 text-xs text-blue-500">(held)</span>
-                                </td>
-                                <td class="py-2 text-right text-gray-700">{{ formatCurrencyShort(stock.buy_value) }}</td>
-                                <td class="py-2 text-right font-semibold text-red-700">{{ formatCurrencyShort(stock.net_pnl) }}</td>
-                                <td class="py-2 text-right font-semibold text-red-700">{{ stock.pnl_pct.toFixed(1) }}%</td>
-                            </tr>
-                        </tbody>
-                    </table>
+                    <ul class="divide-y divide-gray-100">
+                        <li
+                            v-for="(position, index) in topLosers"
+                            :key="`l-${index}-${position.symbol}-${position.entry_date}`"
+                            class="flex items-start justify-between gap-3 py-2.5 text-sm"
+                        >
+                            <div class="min-w-0 flex-1">
+                                <div class="flex items-center gap-1.5">
+                                    <span class="truncate font-medium text-gray-900">{{ position.symbol }}</span>
+                                    <span
+                                        v-if="position.still_held"
+                                        class="rounded-full bg-blue-50 px-1.5 py-0.5 text-[10px] font-medium text-blue-600"
+                                    >held</span>
+                                </div>
+                                <div class="mt-0.5 text-xs text-gray-500">
+                                    {{ formatShortDate(position.entry_date) }}
+                                    <span class="text-gray-300">→</span>
+                                    {{ position.exit_date ? formatShortDate(position.exit_date) : 'now' }}
+                                    <span class="mx-1 text-gray-300">·</span>
+                                    <span class="font-medium text-gray-600">{{ formatHoldingPeriod(position.holding_days) }}</span>
+                                </div>
+                                <div class="mt-0.5 text-[11px] text-gray-400">
+                                    {{ formatCurrencyShort(position.buy_value) }} invested
+                                </div>
+                            </div>
+                            <div class="shrink-0 text-right">
+                                <div class="font-semibold tabular-nums text-red-700">{{ position.pnl_pct.toFixed(1) }}%</div>
+                                <div class="mt-0.5 text-xs tabular-nums text-red-600">{{ formatCurrencyShort(position.net_pnl) }}</div>
+                            </div>
+                        </li>
+                    </ul>
                 </div>
             </div>
 
@@ -683,6 +703,19 @@ function formatDate(value: string): string {
 
 function formatPercent(value: number): string {
     return (value * 100).toFixed(2) + '%';
+}
+
+function formatShortDate(value: string): string {
+    return new Date(value).toLocaleDateString('en-IN', { month: 'short', year: '2-digit' });
+}
+
+function formatHoldingPeriod(days: number): string {
+    if (days < 1) return '<1d';
+    if (days < 30) return `${days}d`;
+    if (days < 365) return `${Math.max(1, Math.round(days / 30))}mo`;
+    const years = Math.floor(days / 365);
+    const months = Math.round((days % 365) / 30);
+    return months === 0 ? `${years}y` : `${years}y ${months}mo`;
 }
 
 function formatCurrencyShort(value: number): string {
@@ -873,13 +906,13 @@ const yearlyBreakdown = computed(() => {
 const topGainers = computed(() => {
     const perf = props.summaryMetrics?.stock_performance;
     if (!perf) return [];
-    return perf.filter((s) => s.net_pnl > 0).slice(0, 20);
+    return [...perf].filter((s) => s.net_pnl > 0).sort((a, b) => b.pnl_pct - a.pnl_pct).slice(0, 20);
 });
 
 const topLosers = computed(() => {
     const perf = props.summaryMetrics?.stock_performance;
     if (!perf) return [];
-    return [...perf].filter((s) => s.net_pnl < 0).sort((a, b) => a.net_pnl - b.net_pnl).slice(0, 20);
+    return [...perf].filter((s) => s.net_pnl < 0).sort((a, b) => a.pnl_pct - b.pnl_pct).slice(0, 20);
 });
 
 const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
