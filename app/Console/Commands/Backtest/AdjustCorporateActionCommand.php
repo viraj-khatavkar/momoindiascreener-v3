@@ -2,6 +2,7 @@
 
 namespace App\Console\Commands\Backtest;
 
+use App\Models\BacktestNseCorporateAction;
 use App\Models\BacktestNseInstrumentPrice;
 use Illuminate\Console\Command;
 
@@ -19,7 +20,7 @@ class AdjustCorporateActionCommand extends Command
      *
      * @var string
      */
-    protected $description = 'Command description ';
+    protected $description = 'Adjusts historic prices for corporate actions with a price adjustment factor';
 
     /**
      * Execute the console command.
@@ -36,9 +37,10 @@ class AdjustCorporateActionCommand extends Command
             return Command::FAILURE;
         }
 
-        $corporateActions = BacktestNseInstrumentPrice::query()
+        $corporateActions = BacktestNseCorporateAction::query()
             ->where('date', $date)
             ->whereNotNull('price_adjustment_factor')
+            ->whereNull('price_adjustment_applied_at')
             ->get();
 
         foreach ($corporateActions as $corporateAction) {
@@ -71,6 +73,9 @@ class AdjustCorporateActionCommand extends Command
                 $backtestNseInstrumentPrice->high_all_time = $backtestNseInstrumentPrice->high_all_time / $corporateAction->price_adjustment_factor;
                 $backtestNseInstrumentPrice->save();
             }
+
+            $corporateAction->price_adjustment_applied_at = now();
+            $corporateAction->save();
         }
     }
 }

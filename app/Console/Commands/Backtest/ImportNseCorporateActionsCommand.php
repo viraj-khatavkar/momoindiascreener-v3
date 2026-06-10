@@ -4,6 +4,7 @@ namespace App\Console\Commands\Backtest;
 
 use App\Actions\ReadCsvAction;
 use App\Enums\CorporateActionTypeEnum;
+use App\Models\BacktestNseCorporateAction;
 use App\Models\BacktestNseInstrumentPrice;
 use Carbon\Carbon;
 use Illuminate\Console\Command;
@@ -24,7 +25,7 @@ class ImportNseCorporateActionsCommand extends Command
      *
      * @var string
      */
-    protected $description = 'Command description';
+    protected $description = 'Imports corporate actions from the NSE file into backtest_nse_corporate_actions';
 
     /**
      * Execute the console command.
@@ -63,30 +64,37 @@ class ImportNseCorporateActionsCommand extends Command
                 continue;
             }
 
+            $hasPriceRecordForDate = BacktestNseInstrumentPrice::query()
+                ->where('symbol', $corporateAction['symbol'])
+                ->where('date', $date)
+                ->exists();
+
+            if (! $hasPriceRecordForDate) {
+                $this->components->warn('No price record for '.$corporateAction['symbol'].' on '.$date);
+            }
+
+            $dividend = null;
+
             if ($corporateAction['type'] == CorporateActionTypeEnum::DIVIDEND) {
                 $string = Str::of($corporateAction['sentence'])->afterLast('DIV');
                 $floatNumber = filter_var($string, FILTER_SANITIZE_NUMBER_FLOAT, FILTER_FLAG_ALLOW_FRACTION);
-                $finalDivNumeric = Str::of($floatNumber)->trim('-.')->trim('-.');
-
-                BacktestNseInstrumentPrice::query()
-                    ->where('symbol', $corporateAction['symbol'])
-                    ->where('date', $date)
-                    ->update([
-                        'dividend' => $finalDivNumeric,
-                    ]);
+                $dividend = (string) Str::of($floatNumber)->trim('-.')->trim('-.');
             }
 
-            BacktestNseInstrumentPrice::query()
-                ->where('symbol', $corporateAction['symbol'])
-                ->where('date', $date)
-                ->update([
-                    'corporate_actions' => [$corporateAction['sentence']],
-                ]);
+            BacktestNseCorporateAction::updateOrCreate([
+                'symbol' => $corporateAction['symbol'],
+                'date' => $date,
+                'type' => $corporateAction['type'],
+                'ratio' => $corporateAction['ratio'],
+            ], [
+                'series' => $corporateAction['series'],
+                'description' => $corporateAction['sentence'],
+                'dividend' => $dividend,
+            ]);
         }
 
-        $corporateActionsForToday = BacktestNseInstrumentPrice::query()
+        $corporateActionsForToday = BacktestNseCorporateAction::query()
             ->where('date', $date)
-            ->whereNotNull('corporate_actions')
             ->get();
 
         foreach ($corporateActionsForToday as $corporateAction) {
@@ -144,11 +152,6 @@ class ImportNseCorporateActionsCommand extends Command
         });
 
         return $rows->toArray();
-    }
-
-    protected function fetchCorporateActionsFromServerFile($date): array
-    {
-        return [];
     }
 
     public function parseSentenceForBonus($sentence)

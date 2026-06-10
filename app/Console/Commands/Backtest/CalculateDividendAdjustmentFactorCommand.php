@@ -2,6 +2,7 @@
 
 namespace App\Console\Commands\Backtest;
 
+use App\Models\BacktestNseCorporateAction;
 use App\Models\BacktestNseInstrumentPrice;
 use Illuminate\Console\Command;
 
@@ -19,7 +20,7 @@ class CalculateDividendAdjustmentFactorCommand extends Command
      *
      * @var string
      */
-    protected $description = 'Command description';
+    protected $description = 'Calculates the dividend adjustment factor for corporate actions with a dividend';
 
     /**
      * Execute the console command.
@@ -36,26 +37,38 @@ class CalculateDividendAdjustmentFactorCommand extends Command
             return Command::FAILURE;
         }
 
-        $dividends = BacktestNseInstrumentPrice::query()
+        $dividendActions = BacktestNseCorporateAction::query()
             ->where('date', $date)
             ->whereNotNull('dividend')
             ->get();
 
-        foreach ($dividends as $dividend) {
-            $this->info('Calculating dividend adjustment factor for '.$dividend->symbol);
+        foreach ($dividendActions as $dividendAction) {
+            $this->info('Calculating dividend adjustment factor for '.$dividendAction->symbol);
 
             if ($dryRun) {
                 continue;
             }
 
+            if (! is_null($dividendAction->dividend_adjustment_applied_at)) {
+                $this->warn('Dividend adjustment already applied for '.$dividendAction->symbol.', skipping');
+
+                continue;
+            }
+
             $oneDayBeforePrice = BacktestNseInstrumentPrice::query()
-                ->where('symbol', $dividend->symbol)
-                ->where('date', '<', $dividend->date)
+                ->where('symbol', $dividendAction->symbol)
+                ->where('date', '<', $dividendAction->date)
                 ->orderBy('date', 'desc')
                 ->first();
 
-            $dividend->dividend_adjustment_factor = ($oneDayBeforePrice->close_adjusted - $dividend->dividend) / $oneDayBeforePrice->close_adjusted;
-            $dividend->save();
+            if (is_null($oneDayBeforePrice)) {
+                $this->warn('No earlier price record for '.$dividendAction->symbol.', skipping');
+
+                continue;
+            }
+
+            $dividendAction->dividend_adjustment_factor = ($oneDayBeforePrice->close_adjusted - $dividendAction->dividend) / $oneDayBeforePrice->close_adjusted;
+            $dividendAction->save();
         }
     }
 }

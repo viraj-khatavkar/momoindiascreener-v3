@@ -12,7 +12,6 @@ class BacktestNseInstrumentPrice extends Model
     {
         return [
             'date' => 'date',
-            'corporate_actions' => 'array',
             'is_delisted' => 'boolean',
             'is_nifty_50' => 'boolean',
             'is_nifty_next_50' => 'boolean',

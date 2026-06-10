@@ -25,7 +25,6 @@ function seedInstrument(string $date, string $symbol, float $adjustedPrice, arra
         'volume_adjusted' => 1000000, 'volume_shares_adjusted' => 100000,
         'volume_raw' => 1000000, 'volume_shares_raw' => 100000,
         't_percent' => 1, 't_percent_raw' => 1, 'marketcap' => 500000, 'price_to_earnings' => 20,
-        'price_adjustment_factor' => '0.1', 'dividend_adjustment_factor' => '1', 'dividend' => '0',
         'variance_one_year' => 0.01, 'variance_nine_months' => 0.01, 'variance_six_months' => 0.01,
         'variance_three_months' => 0.01, 'variance_one_months' => 0.01,
         'standard_deviation_one_year' => 0.1, 'standard_deviation_nine_months' => 0.1,

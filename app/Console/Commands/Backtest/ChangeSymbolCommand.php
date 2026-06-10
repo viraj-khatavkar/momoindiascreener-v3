@@ -2,6 +2,7 @@
 
 namespace App\Console\Commands\Backtest;
 
+use App\Models\BacktestNseCorporateAction;
 use App\Models\BacktestNseInstrumentPrice;
 use Illuminate\Console\Command;
 
@@ -43,6 +44,10 @@ class ChangeSymbolCommand extends Command
         }
 
         BacktestNseInstrumentPrice::query()
+            ->where('symbol', $oldSymbol)
+            ->update(['symbol' => $newSymbol]);
+
+        BacktestNseCorporateAction::query()
             ->where('symbol', $oldSymbol)
             ->update(['symbol' => $newSymbol]);
 

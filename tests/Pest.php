@@ -1,5 +1,6 @@
 <?php
 
+use App\Models\BacktestNseCorporateAction;
 use App\Models\BacktestNseInstrumentPrice;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
@@ -81,6 +82,21 @@ function createBacktestPriceRow(string $symbol, string $date, array $attributes 
         'volume_shares_raw' => 0,
         't_percent' => 0,
         't_percent_raw' => 0,
+    ], $attributes));
+}
+
+/**
+ * Create a backtest_nse_corporate_actions row. Pass $attributes to set the type,
+ * description, dividend, adjustment factors or applied timestamps.
+ *
+ * @param  array<string, mixed>  $attributes
+ */
+function createCorporateAction(string $symbol, string $date, array $attributes = []): BacktestNseCorporateAction
+{
+    return BacktestNseCorporateAction::create(array_merge([
+        'date' => $date,
+        'symbol' => $symbol,
+        'series' => 'EQ',
     ], $attributes));
 }
 

@@ -406,6 +406,12 @@ const adminNavigation = computed(() => [
         current: page.url.startsWith('/admin/nse-files'),
     },
     {
+        name: 'Corporate Actions',
+        href: '/admin/corporate-actions',
+        initial: 'C',
+        current: page.url.startsWith('/admin/corporate-actions'),
+    },
+    {
         name: 'Blogs',
         href: '/admin/blogs',
         initial: 'B',

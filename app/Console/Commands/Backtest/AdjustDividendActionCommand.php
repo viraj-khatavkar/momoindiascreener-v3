@@ -2,6 +2,7 @@
 
 namespace App\Console\Commands\Backtest;
 
+use App\Models\BacktestNseCorporateAction;
 use App\Models\BacktestNseInstrumentPrice;
 use Illuminate\Console\Command;
 
@@ -19,7 +20,7 @@ class AdjustDividendActionCommand extends Command
      *
      * @var string
      */
-    protected $description = 'Command description ';
+    protected $description = 'Adjusts historic prices for corporate actions with a dividend adjustment factor';
 
     /**
      * Execute the console command.
@@ -36,9 +37,10 @@ class AdjustDividendActionCommand extends Command
             return Command::FAILURE;
         }
 
-        $dividendActions = BacktestNseInstrumentPrice::query()
+        $dividendActions = BacktestNseCorporateAction::query()
             ->where('date', $date)
             ->whereNotNull('dividend_adjustment_factor')
+            ->whereNull('dividend_adjustment_applied_at')
             ->get();
 
         foreach ($dividendActions as $dividendAction) {
@@ -71,6 +73,9 @@ class AdjustDividendActionCommand extends Command
                 $backtestNseInstrumentPrice->high_all_time = $backtestNseInstrumentPrice->high_all_time * $dividendAction->dividend_adjustment_factor;
                 $backtestNseInstrumentPrice->save();
             }
+
+            $dividendAction->dividend_adjustment_applied_at = now();
+            $dividendAction->save();
         }
     }
 }

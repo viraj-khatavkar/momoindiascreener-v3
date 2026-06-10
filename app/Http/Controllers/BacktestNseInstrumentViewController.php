@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Http\Resources\BacktestNseInstrumentViewResource;
+use App\Models\BacktestNseCorporateAction;
 use App\Models\BacktestNseInstrumentPrice;
 use Inertia\Inertia;
 
@@ -27,37 +28,33 @@ class BacktestNseInstrumentViewController extends Controller
                 ->orderBy('date', 'asc')
                 ->get()
                 ->toArray(), 'chart'),
-            'dividends' => Inertia::defer(fn () => BacktestNseInstrumentPrice::query()
+            'dividends' => Inertia::defer(fn () => BacktestNseCorporateAction::query()
                 ->where('symbol', $symbol)
-                ->whereNotNull('corporate_actions')
+                ->whereNotNull('description')
                 ->whereNotNull('dividend_adjustment_factor')
-                ->select('date', 'corporate_actions', 'dividend')
+                ->select('date', 'description', 'dividend')
                 ->orderBy('date', 'desc')
                 ->get()
-                ->flatMap(function ($record) {
-                    return collect($record->corporate_actions)->map(function ($action) use ($record) {
-                        return [
-                            'date' => $record->date->format('Y-m-d'),
-                            'description' => $action,
-                            'dividend' => $record->dividend,
-                        ];
-                    });
+                ->map(function ($action) {
+                    return [
+                        'date' => $action->date->format('Y-m-d'),
+                        'description' => $action->description,
+                        'dividend' => $action->dividend,
+                    ];
                 })
                 ->toArray(), 'extras'),
-            'corporateActions' => Inertia::defer(fn () => BacktestNseInstrumentPrice::query()
+            'corporateActions' => Inertia::defer(fn () => BacktestNseCorporateAction::query()
                 ->where('symbol', $symbol)
-                ->whereNotNull('corporate_actions')
+                ->whereNotNull('description')
                 ->whereNotNull('price_adjustment_factor')
-                ->select('date', 'corporate_actions')
+                ->select('date', 'description')
                 ->orderBy('date', 'desc')
                 ->get()
-                ->flatMap(function ($record) {
-                    return collect($record->corporate_actions)->map(function ($action) use ($record) {
-                        return [
-                            'date' => $record->date->format('Y-m-d'),
-                            'description' => $action,
-                        ];
-                    });
+                ->map(function ($action) {
+                    return [
+                        'date' => $action->date->format('Y-m-d'),
+                        'description' => $action->description,
+                    ];
                 })
                 ->toArray(), 'extras'),
         ]);
