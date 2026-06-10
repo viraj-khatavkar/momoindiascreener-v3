@@ -1,5 +1,6 @@
 <?php
 
+use App\Models\BacktestNseInstrumentPrice;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
 
@@ -53,4 +54,40 @@ function loginAs($email, $password = 'password')
         ->fill('password', $password)
         ->press('Sign In')
         ->assertPathIs('/');
+}
+
+/**
+ * Create a backtest_nse_instrument_prices row with the required NOT NULL price
+ * columns zeroed. Pass $attributes to set flags (is_nifty_*) or analytics columns.
+ *
+ * @param  array<string, mixed>  $attributes
+ */
+function createBacktestPriceRow(string $symbol, string $date, array $attributes = []): BacktestNseInstrumentPrice
+{
+    return BacktestNseInstrumentPrice::create(array_merge([
+        'date' => $date,
+        'symbol' => $symbol,
+        'open_adjusted' => 0,
+        'high_adjusted' => 0,
+        'low_adjusted' => 0,
+        'close_adjusted' => 0,
+        'volume_adjusted' => 0,
+        'volume_shares_adjusted' => 0,
+        'open_raw' => 0,
+        'high_raw' => 0,
+        'low_raw' => 0,
+        'close_raw' => 0,
+        'volume_raw' => 0,
+        'volume_shares_raw' => 0,
+        't_percent' => 0,
+        't_percent_raw' => 0,
+    ], $attributes));
+}
+
+function isIndexFlagged(string $symbol, string $date, string $column): bool
+{
+    return (bool) BacktestNseInstrumentPrice::query()
+        ->where('symbol', $symbol)
+        ->where('date', $date)
+        ->value($column);
 }

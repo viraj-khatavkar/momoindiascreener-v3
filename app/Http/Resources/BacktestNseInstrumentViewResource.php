@@ -2,12 +2,13 @@
 
 namespace App\Http\Resources;
 
+use App\Models\BacktestNseInstrumentPrice;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
 use Illuminate\Support\Number;
 
 /**
- * @mixin \App\Models\BacktestNseInstrumentPrice
+ * @mixin BacktestNseInstrumentPrice
  */
 class BacktestNseInstrumentViewResource extends JsonResource
 {
@@ -78,8 +79,11 @@ class BacktestNseInstrumentViewResource extends JsonResource
                 $this->is_nifty_100 ? 'Nifty 100' : null,
                 $this->is_nifty_200 ? 'Nifty 200' : null,
                 $this->is_nifty_midcap_100 ? 'Nifty Midcap 100' : null,
+                $this->is_nifty_midcap_150 ? 'Nifty Midcap 150' : null,
                 $this->is_nifty_500 ? 'Nifty 500' : null,
                 $this->is_nifty_smallcap_250 ? 'Nifty Smallcap 250' : null,
+                $this->is_nifty_largemidcap_250 ? 'Nifty LargeMidcap 250' : null,
+                $this->is_nifty_midsmallcap_400 ? 'Nifty MidSmallcap 400' : null,
                 $this->is_nifty_allcap ? 'Nifty Allcap' : null,
             ])),
         ];

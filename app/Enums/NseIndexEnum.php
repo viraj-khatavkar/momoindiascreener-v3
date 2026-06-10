@@ -15,8 +15,11 @@ enum NseIndexEnum: string implements ResolveDisplayableValueListForEnum
     case NIFTY_100 = 'nifty_100';
     case NIFTY_200 = 'nifty_200';
     case NIFTY_MIDCAP_100 = 'nifty_midcap_100';
+    case NIFTY_MIDCAP_150 = 'nifty_midcap_150';
     case NIFTY_500 = 'nifty_500';
     case NIFTY_SMALLCAP_250 = 'nifty_smallcap_250';
+    case NIFTY_LARGEMIDCAP_250 = 'nifty_largemidcap_250';
+    case NIFTY_MIDSMALLCAP_400 = 'nifty_midsmallcap_400';
     case NIFTY_ALLCAP = 'nifty_allcap';
     case NIFTY_ETF = 'etf';
 
@@ -44,8 +47,11 @@ enum NseIndexEnum: string implements ResolveDisplayableValueListForEnum
             self::NIFTY_100 => 100,
             self::NIFTY_200 => 200,
             self::NIFTY_MIDCAP_100 => 100,
+            self::NIFTY_MIDCAP_150 => 150,
             self::NIFTY_500 => 500,
             self::NIFTY_SMALLCAP_250 => 250,
+            self::NIFTY_LARGEMIDCAP_250 => 250,
+            self::NIFTY_MIDSMALLCAP_400 => 400,
             self::NIFTY_ALLCAP => 2000,
             self::NIFTY_ETF => 220,
         };

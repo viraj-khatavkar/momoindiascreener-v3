@@ -85,6 +85,22 @@ class ImportConstituentsCommand extends Command
         $this->info(
             'nifty 500: '.BacktestNseInstrumentPrice::where('is_nifty_500', true)->where('date', $date)->count()
         );
+        $this->info(
+            'nifty midcap 150: '.BacktestNseInstrumentPrice::where('is_nifty_midcap_150', true)->where('date', $date)
+                ->count()
+        );
+        $this->info(
+            'nifty smallcap 250: '.BacktestNseInstrumentPrice::where('is_nifty_smallcap_250', true)->where('date', $date)
+                ->count()
+        );
+        $this->info(
+            'nifty largemidcap 250: '.BacktestNseInstrumentPrice::where('is_nifty_largemidcap_250', true)->where('date', $date)
+                ->count()
+        );
+        $this->info(
+            'nifty midsmallcap 400: '.BacktestNseInstrumentPrice::where('is_nifty_midsmallcap_400', true)->where('date', $date)
+                ->count()
+        );
     }
 
     protected function fetchConstituents(): array
@@ -98,7 +114,11 @@ class ImportConstituentsCommand extends Command
             'nifty_100' => $backtestNseIndexConstituents->filter(fn ($backtestNseIndexConstituent) => $backtestNseIndexConstituent->index === 'nifty_100')->toArray(),
             'nifty_200' => $backtestNseIndexConstituents->filter(fn ($backtestNseIndexConstituent) => $backtestNseIndexConstituent->index === 'nifty_200')->toArray(),
             'nifty_midcap_100' => $backtestNseIndexConstituents->filter(fn ($backtestNseIndexConstituent) => $backtestNseIndexConstituent->index === 'nifty_midcap_100')->toArray(),
+            'nifty_midcap_150' => $backtestNseIndexConstituents->filter(fn ($backtestNseIndexConstituent) => $backtestNseIndexConstituent->index === 'nifty_midcap_150')->toArray(),
             'nifty_500' => $backtestNseIndexConstituents->filter(fn ($backtestNseIndexConstituent) => $backtestNseIndexConstituent->index === 'nifty_500')->toArray(),
+            'nifty_smallcap_250' => $backtestNseIndexConstituents->filter(fn ($backtestNseIndexConstituent) => $backtestNseIndexConstituent->index === 'nifty_smallcap_250')->toArray(),
+            'nifty_largemidcap_250' => $backtestNseIndexConstituents->filter(fn ($backtestNseIndexConstituent) => $backtestNseIndexConstituent->index === 'nifty_largemidcap_250')->toArray(),
+            'nifty_midsmallcap_400' => $backtestNseIndexConstituents->filter(fn ($backtestNseIndexConstituent) => $backtestNseIndexConstituent->index === 'nifty_midsmallcap_400')->toArray(),
         ];
     }
 }

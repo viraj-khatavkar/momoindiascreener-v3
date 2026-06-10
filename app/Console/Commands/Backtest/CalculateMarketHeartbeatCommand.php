@@ -40,7 +40,11 @@ class CalculateMarketHeartbeatCommand extends Command
             'nifty-50',
             'nifty-next-50',
             'nifty-100',
+            'nifty-midcap-150',
             'nifty-500',
+            'nifty-smallcap-250',
+            'nifty-largemidcap-250',
+            'nifty-midsmallcap-400',
             'nifty-allcap',
         ];
 

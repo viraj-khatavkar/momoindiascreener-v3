@@ -74,8 +74,11 @@ class ScreenCsvController extends Controller
                 'is_nifty_100' => $result->is_nifty_100,
                 'is_nifty_200' => $result->is_nifty_200,
                 'is_nifty_midcap_100' => $result->is_nifty_midcap_100,
+                'is_nifty_midcap_150' => $result->is_nifty_midcap_150,
                 'is_nifty_500' => $result->is_nifty_500,
                 'is_nifty_smallcap_250' => $result->is_nifty_smallcap_250,
+                'is_nifty_largemidcap_250' => $result->is_nifty_largemidcap_250,
+                'is_nifty_midsmallcap_400' => $result->is_nifty_midsmallcap_400,
                 'is_nifty_allcap' => $result->is_nifty_allcap,
                 'is_etf' => $result->is_etf,
             ];

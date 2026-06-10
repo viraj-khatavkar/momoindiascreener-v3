@@ -8,15 +8,18 @@
 import { onUnmounted, ref, watch } from 'vue';
 import { AreaSeries, ColorType, CrosshairMode, createChart } from 'lightweight-charts';
 import type { IChartApi, ISeriesApi, SeriesType, Time } from 'lightweight-charts';
+import type { ChartSyncGroup } from '@/utils/chartSyncGroup';
 import type { BacktestDailySnapshot } from '@/types/app/Models/BacktestDailySnapshot';
 
 const props = defineProps<{
     dailySnapshots: BacktestDailySnapshot[];
+    syncGroup?: ChartSyncGroup;
 }>();
 
 const chartContainer = ref<HTMLDivElement>();
 let chart: IChartApi | null = null;
 let series: ISeriesApi<SeriesType> | null = null;
+let unregisterSync: (() => void) | null = null;
 
 function initChart(container: HTMLDivElement): void {
     chart = createChart(container, {
@@ -52,6 +55,10 @@ function initChart(container: HTMLDivElement): void {
 
     setData();
     chart.timeScale().fitContent();
+
+    if (props.syncGroup) {
+        unregisterSync = props.syncGroup.register(chart, series);
+    }
 }
 
 function setData(): void {
@@ -73,6 +80,8 @@ function setData(): void {
 
 function destroyChart(): void {
     if (chart) {
+        unregisterSync?.();
+        unregisterSync = null;
         chart.remove();
         chart = null;
         series = null;

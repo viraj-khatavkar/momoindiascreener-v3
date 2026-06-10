@@ -6,7 +6,7 @@
 
 <script setup lang="ts">
 import { onUnmounted, ref, watch } from 'vue';
-import { LineSeries, ColorType, CrosshairMode, createChart } from 'lightweight-charts';
+import { LineSeries, ColorType, CrosshairMode, LineStyle, createChart } from 'lightweight-charts';
 import type { IChartApi, ISeriesApi, SeriesType, Time } from 'lightweight-charts';
 
 const props = defineProps<{
@@ -74,6 +74,18 @@ function initChart(container: HTMLDivElement): void {
     }
 
     setData();
+
+    // Zero reference line — rolling returns oscillate around it
+    const anchorSeries = oneYearSeries ?? threeYearSeries ?? fiveYearSeries;
+    anchorSeries?.createPriceLine({
+        price: 0,
+        color: '#9ca3af',
+        lineWidth: 1,
+        lineStyle: LineStyle.Dashed,
+        axisLabelVisible: false,
+        title: '',
+    });
+
     chart.timeScale().fitContent();
 }
 

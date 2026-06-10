@@ -45,8 +45,13 @@ class RefreshNseIndexConstituentsCommand extends Command
             'nifty_50',
             'nifty_next_50',
             'nifty_100',
+            'nifty_200',
             'nifty_midcap_100',
+            'nifty_midcap_150',
             'nifty_500',
+            'nifty_smallcap_250',
+            'nifty_largemidcap_250',
+            'nifty_midsmallcap_400',
         ];
 
         foreach ($indices as $index) {
@@ -64,10 +69,8 @@ class RefreshNseIndexConstituentsCommand extends Command
             BacktestNseIndexConstituent::insert($instruments);
         }
 
-        $this->info('nifty 50: '.BacktestNseIndexConstituent::where('index', 'nifty_50')->count());
-        $this->info('nifty next 50: '.BacktestNseIndexConstituent::where('index', 'nifty_next_50')->count());
-        $this->info('nifty 100: '.BacktestNseIndexConstituent::where('index', 'nifty_100')->count());
-        $this->info('nifty midcap 100: '.BacktestNseIndexConstituent::where('index', 'nifty_midcap_100')->count());
-        $this->info('nifty 500: '.BacktestNseIndexConstituent::where('index', 'nifty_500')->count());
+        foreach ($indices as $index) {
+            $this->info($index.': '.BacktestNseIndexConstituent::where('index', $index)->count());
+        }
     }
 }

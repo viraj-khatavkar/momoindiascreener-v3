@@ -6,17 +6,23 @@
 
 <script setup lang="ts">
 import { onUnmounted, ref, watch } from 'vue';
-import { AreaSeries, ColorType, CrosshairMode, createChart } from 'lightweight-charts';
-import type { IChartApi, ISeriesApi, SeriesType, Time } from 'lightweight-charts';
+import { AreaSeries, ColorType, CrosshairMode, createChart, createSeriesMarkers } from 'lightweight-charts';
+import type { IChartApi, ISeriesApi, ISeriesMarkersPluginApi, SeriesMarker, SeriesType, Time } from 'lightweight-charts';
+import type { ChartSyncGroup } from '@/utils/chartSyncGroup';
 import type { BacktestDailySnapshot } from '@/types/app/Models/BacktestDailySnapshot';
 
 const props = defineProps<{
     dailySnapshots: BacktestDailySnapshot[];
+    syncGroup?: ChartSyncGroup;
+    maxDrawdownStartDate?: string | null;
+    maxDrawdownEndDate?: string | null;
 }>();
 
 const chartContainer = ref<HTMLDivElement>();
 let chart: IChartApi | null = null;
 let series: ISeriesApi<SeriesType> | null = null;
+let markersApi: ISeriesMarkersPluginApi<Time> | null = null;
+let unregisterSync: (() => void) | null = null;
 
 function initChart(container: HTMLDivElement): void {
     chart = createChart(container, {
@@ -51,7 +57,12 @@ function initChart(container: HTMLDivElement): void {
     });
 
     setData();
+    setMarkers();
     chart.timeScale().fitContent();
+
+    if (props.syncGroup) {
+        unregisterSync = props.syncGroup.register(chart, series);
+    }
 }
 
 function setData(): void {
@@ -71,8 +82,51 @@ function setData(): void {
     series.setData(data);
 }
 
+function setMarkers(): void {
+    if (!series) return;
+
+    const snapshotDates = new Set(props.dailySnapshots.map((s) => s.date.substring(0, 10)));
+    const start = props.maxDrawdownStartDate?.substring(0, 10);
+    const end = props.maxDrawdownEndDate?.substring(0, 10);
+
+    const markers: SeriesMarker<Time>[] = [];
+
+    if (start && snapshotDates.has(start)) {
+        markers.push({
+            time: start as unknown as Time,
+            position: 'aboveBar',
+            color: '#64748b',
+            shape: 'arrowDown',
+            text: 'Peak',
+        });
+    }
+
+    if (end && snapshotDates.has(end)) {
+        markers.push({
+            time: end as unknown as Time,
+            position: 'belowBar',
+            color: '#dc2626',
+            shape: 'arrowUp',
+            text: 'Max DD',
+        });
+    }
+
+    if (markersApi) {
+        markersApi.setMarkers(markers);
+    } else if (markers.length > 0) {
+        markersApi = createSeriesMarkers(series, markers);
+    }
+}
+
 function destroyChart(): void {
-    if (chart) { chart.remove(); chart = null; series = null; }
+    if (chart) {
+        unregisterSync?.();
+        unregisterSync = null;
+        markersApi = null;
+        chart.remove();
+        chart = null;
+        series = null;
+    }
 }
 
 watch(chartContainer, (el) => {
@@ -81,7 +135,7 @@ watch(chartContainer, (el) => {
 });
 
 watch(() => props.dailySnapshots, () => {
-    if (chart) { setData(); chart.timeScale().fitContent(); }
+    if (chart) { setData(); setMarkers(); chart.timeScale().fitContent(); }
 });
 
 onUnmounted(destroyChart);
