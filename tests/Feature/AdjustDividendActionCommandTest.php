@@ -48,6 +48,23 @@ it('multiplies all prior history by the dividend adjustment factor', function ()
     expect($action->fresh()->dividend_adjustment_applied_at)->not->toBeNull();
 });
 
+it('leaves null analytics columns null', function () {
+    $past = createBacktestPriceRow('TCS', '2020-01-24', ['close_adjusted' => 100]);
+
+    createCorporateAction('TCS', '2020-01-27', [
+        'dividend' => '2',
+        'dividend_adjustment_factor' => '0.5',
+    ]);
+
+    $this->artisan('backtest:adjust-dividends', ['--date' => '2020-01-27'])->assertSuccessful();
+
+    $fresh = $past->fresh();
+
+    expect((float) $fresh->close_adjusted)->toBe(50.0)
+        ->and($fresh->ma_200)->toBeNull()
+        ->and($fresh->high_all_time)->toBeNull();
+});
+
 it('does not adjust the same action twice', function () {
     $past = createBacktestPriceRow('TCS', '2020-01-24', array_fill_keys(dividendAdjustableColumns(), 100));
 

@@ -5,9 +5,22 @@ namespace App\Console\Commands\Backtest;
 use App\Models\BacktestNseCorporateAction;
 use App\Models\BacktestNseInstrumentPrice;
 use Illuminate\Console\Command;
+use Illuminate\Support\Facades\DB;
 
 class AdjustDividendActionCommand extends Command
 {
+    /**
+     * The price columns rewritten by the adjustment.
+     *
+     * @var list<string>
+     */
+    private const ADJUSTED_COLUMNS = [
+        'open_adjusted', 'high_adjusted', 'low_adjusted', 'close_adjusted',
+        'ma_200', 'ma_100', 'ma_50', 'ma_20',
+        'ema_200', 'ema_100', 'ema_50', 'ema_20',
+        'high_one_year', 'high_all_time',
+    ];
+
     /**
      * The name and signature of the console command.
      *
@@ -50,29 +63,14 @@ class AdjustDividendActionCommand extends Command
                 continue;
             }
 
-            $backtestNseInstrumentPrices = BacktestNseInstrumentPrice::query()
+            $factor = (float) $dividendAction->dividend_adjustment_factor;
+
+            BacktestNseInstrumentPrice::query()
                 ->where('symbol', $dividendAction->symbol)
                 ->where('date', '<', $dividendAction->date)
-                ->orderBy('date', 'desc')
-                ->get();
-
-            foreach ($backtestNseInstrumentPrices as $backtestNseInstrumentPrice) {
-                $backtestNseInstrumentPrice->open_adjusted = $backtestNseInstrumentPrice->open_adjusted * $dividendAction->dividend_adjustment_factor;
-                $backtestNseInstrumentPrice->high_adjusted = $backtestNseInstrumentPrice->high_adjusted * $dividendAction->dividend_adjustment_factor;
-                $backtestNseInstrumentPrice->low_adjusted = $backtestNseInstrumentPrice->low_adjusted * $dividendAction->dividend_adjustment_factor;
-                $backtestNseInstrumentPrice->close_adjusted = $backtestNseInstrumentPrice->close_adjusted * $dividendAction->dividend_adjustment_factor;
-                $backtestNseInstrumentPrice->ma_200 = $backtestNseInstrumentPrice->ma_200 * $dividendAction->dividend_adjustment_factor;
-                $backtestNseInstrumentPrice->ma_100 = $backtestNseInstrumentPrice->ma_100 * $dividendAction->dividend_adjustment_factor;
-                $backtestNseInstrumentPrice->ma_50 = $backtestNseInstrumentPrice->ma_50 * $dividendAction->dividend_adjustment_factor;
-                $backtestNseInstrumentPrice->ma_20 = $backtestNseInstrumentPrice->ma_20 * $dividendAction->dividend_adjustment_factor;
-                $backtestNseInstrumentPrice->ema_200 = $backtestNseInstrumentPrice->ema_200 * $dividendAction->dividend_adjustment_factor;
-                $backtestNseInstrumentPrice->ema_100 = $backtestNseInstrumentPrice->ema_100 * $dividendAction->dividend_adjustment_factor;
-                $backtestNseInstrumentPrice->ema_50 = $backtestNseInstrumentPrice->ema_50 * $dividendAction->dividend_adjustment_factor;
-                $backtestNseInstrumentPrice->ema_20 = $backtestNseInstrumentPrice->ema_20 * $dividendAction->dividend_adjustment_factor;
-                $backtestNseInstrumentPrice->high_one_year = $backtestNseInstrumentPrice->high_one_year * $dividendAction->dividend_adjustment_factor;
-                $backtestNseInstrumentPrice->high_all_time = $backtestNseInstrumentPrice->high_all_time * $dividendAction->dividend_adjustment_factor;
-                $backtestNseInstrumentPrice->save();
-            }
+                ->update(collect(self::ADJUSTED_COLUMNS)->mapWithKeys(
+                    fn (string $column) => [$column => DB::raw("{$column} * {$factor}")]
+                )->all());
 
             $dividendAction->dividend_adjustment_applied_at = now();
             $dividendAction->save();

@@ -5,9 +5,22 @@ namespace App\Console\Commands\Backtest;
 use App\Models\BacktestNseCorporateAction;
 use App\Models\BacktestNseInstrumentPrice;
 use Illuminate\Console\Command;
+use Illuminate\Support\Facades\DB;
 
 class AdjustCorporateActionCommand extends Command
 {
+    /**
+     * The price columns rewritten by the adjustment.
+     *
+     * @var list<string>
+     */
+    private const ADJUSTED_COLUMNS = [
+        'open_adjusted', 'high_adjusted', 'low_adjusted', 'close_adjusted',
+        'ma_200', 'ma_100', 'ma_50', 'ma_20',
+        'ema_200', 'ema_100', 'ema_50', 'ema_20',
+        'high_one_year', 'high_all_time',
+    ];
+
     /**
      * The name and signature of the console command.
      *
@@ -50,29 +63,14 @@ class AdjustCorporateActionCommand extends Command
                 continue;
             }
 
-            $backtestNseInstrumentPrices = BacktestNseInstrumentPrice::query()
+            $factor = (float) $corporateAction->price_adjustment_factor;
+
+            BacktestNseInstrumentPrice::query()
                 ->where('symbol', $corporateAction->symbol)
                 ->where('date', '<', $corporateAction->date)
-                ->orderBy('date', 'desc')
-                ->get();
-
-            foreach ($backtestNseInstrumentPrices as $backtestNseInstrumentPrice) {
-                $backtestNseInstrumentPrice->open_adjusted = $backtestNseInstrumentPrice->open_adjusted / $corporateAction->price_adjustment_factor;
-                $backtestNseInstrumentPrice->high_adjusted = $backtestNseInstrumentPrice->high_adjusted / $corporateAction->price_adjustment_factor;
-                $backtestNseInstrumentPrice->low_adjusted = $backtestNseInstrumentPrice->low_adjusted / $corporateAction->price_adjustment_factor;
-                $backtestNseInstrumentPrice->close_adjusted = $backtestNseInstrumentPrice->close_adjusted / $corporateAction->price_adjustment_factor;
-                $backtestNseInstrumentPrice->ma_200 = $backtestNseInstrumentPrice->ma_200 / $corporateAction->price_adjustment_factor;
-                $backtestNseInstrumentPrice->ma_100 = $backtestNseInstrumentPrice->ma_100 / $corporateAction->price_adjustment_factor;
-                $backtestNseInstrumentPrice->ma_50 = $backtestNseInstrumentPrice->ma_50 / $corporateAction->price_adjustment_factor;
-                $backtestNseInstrumentPrice->ma_20 = $backtestNseInstrumentPrice->ma_20 / $corporateAction->price_adjustment_factor;
-                $backtestNseInstrumentPrice->ema_200 = $backtestNseInstrumentPrice->ema_200 / $corporateAction->price_adjustment_factor;
-                $backtestNseInstrumentPrice->ema_100 = $backtestNseInstrumentPrice->ema_100 / $corporateAction->price_adjustment_factor;
-                $backtestNseInstrumentPrice->ema_50 = $backtestNseInstrumentPrice->ema_50 / $corporateAction->price_adjustment_factor;
-                $backtestNseInstrumentPrice->ema_20 = $backtestNseInstrumentPrice->ema_20 / $corporateAction->price_adjustment_factor;
-                $backtestNseInstrumentPrice->high_one_year = $backtestNseInstrumentPrice->high_one_year / $corporateAction->price_adjustment_factor;
-                $backtestNseInstrumentPrice->high_all_time = $backtestNseInstrumentPrice->high_all_time / $corporateAction->price_adjustment_factor;
-                $backtestNseInstrumentPrice->save();
-            }
+                ->update(collect(self::ADJUSTED_COLUMNS)->mapWithKeys(
+                    fn (string $column) => [$column => DB::raw("{$column} / {$factor}")]
+                )->all());
 
             $corporateAction->price_adjustment_applied_at = now();
             $corporateAction->save();
