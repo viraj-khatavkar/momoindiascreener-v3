@@ -28,11 +28,23 @@ it('computes market heartbeat for the new indices', function () {
         'close_adjusted' => 100, 'ma_200' => 50, 'ma_100' => 50, 'ma_50' => 50, 'ma_20' => 50,
         'absolute_return_one_year' => 25, 'away_from_high_all_time' => -5, 't_percent' => 1,
     ]);
+    createBacktestPriceRow('N200UP', $date, [
+        'is_nifty_200' => true,
+        'close_adjusted' => 100, 'ma_200' => 50, 'ma_100' => 50, 'ma_50' => 50, 'ma_20' => 50,
+        'absolute_return_one_year' => 25, 'away_from_high_all_time' => -5, 't_percent' => 1,
+    ]);
+    createBacktestPriceRow('MID100UP', $date, [
+        'is_nifty_midcap_100' => true,
+        'close_adjusted' => 100, 'ma_200' => 50, 'ma_100' => 50, 'ma_50' => 50, 'ma_20' => 50,
+        'absolute_return_one_year' => 25, 'away_from_high_all_time' => -5, 't_percent' => 1,
+    ]);
 
     $this->artisan('backtest:calculate-market-heartbeat', ['--date' => $date])->assertSuccessful();
 
     $smallcap = MarketHeartbeat::where('index', 'nifty-smallcap-250')->where('date', $date)->first();
     $midcap = MarketHeartbeat::where('index', 'nifty-midcap-150')->where('date', $date)->first();
+    $nifty200 = MarketHeartbeat::where('index', 'nifty-200')->where('date', $date)->first();
+    $midcap100 = MarketHeartbeat::where('index', 'nifty-midcap-100')->where('date', $date)->first();
 
     expect($smallcap)->not->toBeNull()
         ->and((float) $smallcap->percentage_above_ma_200)->toBe(50.0)
@@ -40,5 +52,9 @@ it('computes market heartbeat for the new indices', function () {
         ->and((int) $smallcap->declines)->toBe(1)
         ->and($midcap)->not->toBeNull()
         ->and((float) $midcap->percentage_above_ma_200)->toBe(100.0)
-        ->and((int) $midcap->advances)->toBe(1);
+        ->and((int) $midcap->advances)->toBe(1)
+        ->and($nifty200)->not->toBeNull()
+        ->and((float) $nifty200->percentage_above_ma_200)->toBe(100.0)
+        ->and($midcap100)->not->toBeNull()
+        ->and((float) $midcap100->percentage_above_ma_200)->toBe(100.0);
 });

@@ -53,6 +53,34 @@ it('serves dividends and corporate actions from the corporate actions table', fu
         );
 });
 
+it('serves a historical instrument that is absent on the latest market date', function () {
+    createBacktestPriceRow('TCS', '2020-01-27', ['is_nifty_allcap' => true]);
+
+    createBacktestPriceRow('GITANJALI', '2019-03-29', [
+        'close_adjusted' => 20,
+        'beta' => 1.0,
+        'median_volume_one_year' => 50000000,
+        'marketcap' => 500000,
+    ]);
+
+    createBacktestPriceRow('GITANJALI', '2019-04-01', [
+        'name' => 'Gitanjali Gems',
+        'close_adjusted' => 25,
+        'beta' => 1.0,
+        'median_volume_one_year' => 50000000,
+        'marketcap' => 500000,
+    ]);
+
+    $this->get('/instruments/GITANJALI')
+        ->assertSuccessful()
+        ->assertInertia(fn (Assert $page) => $page
+            ->component('InstrumentView')
+            ->where('instrument.symbol', 'GITANJALI')
+            ->where('instrument.name', 'Gitanjali Gems')
+            ->where('instrument.close_adjusted', '25.00')
+        );
+});
+
 it('returns 404 for an unknown symbol', function () {
     createBacktestPriceRow('TCS', '2020-01-27', ['is_nifty_allcap' => true]);
 

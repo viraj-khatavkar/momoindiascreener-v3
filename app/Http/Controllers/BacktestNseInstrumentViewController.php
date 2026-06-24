@@ -11,11 +11,9 @@ class BacktestNseInstrumentViewController extends Controller
 {
     public function __invoke(string $symbol)
     {
-        $latestDate = $this->getLatestDate();
-
         $instrument = BacktestNseInstrumentPrice::query()
             ->where('symbol', $symbol)
-            ->where('date', $latestDate)
+            ->latest('date')
             ->firstOrFail();
 
         return inertia('InstrumentView', [
@@ -134,15 +132,5 @@ class BacktestNseInstrumentViewController extends Controller
         }
 
         return $cons;
-    }
-
-    protected function getLatestDate(): mixed
-    {
-        return BacktestNseInstrumentPrice::query()
-            ->where('is_nifty_allcap', true)
-            ->orderBy('date', 'desc')
-            ->limit(1)
-            ->first()
-            ->date;
     }
 }
