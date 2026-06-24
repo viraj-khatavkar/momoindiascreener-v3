@@ -4,6 +4,7 @@ use App\Actions\Backtest\ApplyBacktestFiltersAction;
 use App\Actions\Backtest\CalculateBacktestMetricsAction;
 use App\Actions\Backtest\CalculateTransactionCostsAction;
 use App\Actions\Backtest\RunBacktestAction;
+use App\Enums\CorporateActionTypeEnum;
 use App\Models\Backtest;
 use App\Models\BacktestNseInstrumentPrice;
 use App\Models\NseIndex;
@@ -345,6 +346,162 @@ it('buys at next days price when execute next trading day is enabled', function 
     expect(round((float) $sameDayBuy->price, 2))->toBe(100.00)
         ->and(round((float) $nextDayBuy->price, 2))->toBe(200.00)
         ->and($nextDayBuy->date->format('Y-m-d'))->toBe($dates[1]);
+});
+
+// ==========================================================================
+// DEMERGER EXITS
+// ==========================================================================
+
+it('exits a held demerger stock one trading day before ex-date outside scheduled rebalance and buys a replacement', function () {
+    $dates = tradingDates(10);
+    seedIndexRange('2010-01-01', end($dates), 5000);
+
+    foreach ($dates as $date) {
+        seedInstrument($date, 'A', 100, ['sharpe_return_one_year' => 5.0]);
+        seedInstrument($date, 'B', 200, ['sharpe_return_one_year' => 4.0]);
+        seedInstrument($date, 'C', 150, ['sharpe_return_one_year' => 3.0]);
+        seedInstrument($date, 'D', 250, ['sharpe_return_one_year' => 2.0]);
+    }
+
+    createCorporateAction('A', $dates[5], [
+        'type' => CorporateActionTypeEnum::DEMERGER,
+        'description' => 'Corporate Action: EQ A DEMERGER',
+        'ratio' => 'DEMERGER',
+    ]);
+
+    $user = User::factory()->create(['is_paid' => true]);
+    $bt = makeBacktest($user);
+    run($bt);
+
+    $aSell = $bt->trades()
+        ->where('symbol', 'A')
+        ->where('trade_type', 'sell')
+        ->where('date', $dates[4])
+        ->first();
+
+    $dBuy = $bt->trades()
+        ->where('symbol', 'D')
+        ->where('trade_type', 'buy')
+        ->where('date', $dates[4])
+        ->first();
+
+    expect($aSell)->not->toBeNull()
+        ->and($aSell->reason)->toContain('Demerger ex-date on '.$dates[5])
+        ->and($dBuy)->not->toBeNull()
+        ->and($dBuy->reason)->toBe('Replacement after demerger exit');
+});
+
+it('forces the demerger exit when the held stock is in a stale circuit set', function () {
+    $dates = tradingDates(10);
+    seedIndexRange('2010-01-01', end($dates), 5000);
+
+    foreach ($dates as $date) {
+        $aTPercent = $date === $dates[3] ? 5.00 : 1.0;
+        seedInstrument($date, 'A', 100, ['sharpe_return_one_year' => 5.0, 't_percent' => $aTPercent]);
+        seedInstrument($date, 'B', 200, ['sharpe_return_one_year' => 4.0]);
+        seedInstrument($date, 'C', 150, ['sharpe_return_one_year' => 3.0]);
+        seedInstrument($date, 'D', 250, ['sharpe_return_one_year' => 2.0]);
+    }
+
+    createCorporateAction('A', $dates[5], [
+        'type' => CorporateActionTypeEnum::DEMERGER,
+        'description' => 'Corporate Action: EQ A DEMERGER',
+        'ratio' => 'DEMERGER',
+    ]);
+
+    $user = User::factory()->create(['is_paid' => true]);
+    $bt = makeBacktest($user);
+    run($bt);
+
+    expect($bt->trades()->where('symbol', 'A')->where('trade_type', 'sell')->where('date', $dates[4])->count())->toBe(1)
+        ->and($bt->trades()->where('symbol', 'D')->where('trade_type', 'buy')->where('date', $dates[4])->count())->toBe(1);
+});
+
+it('does not exit a demerger stock that is not held before the ex-date', function () {
+    $dates = tradingDates(10);
+    seedIndexRange('2010-01-01', end($dates), 5000);
+
+    foreach ($dates as $date) {
+        seedInstrument($date, 'A', 100, ['sharpe_return_one_year' => 5.0]);
+        seedInstrument($date, 'B', 200, ['sharpe_return_one_year' => 4.0]);
+        seedInstrument($date, 'C', 150, ['sharpe_return_one_year' => 3.0]);
+        seedInstrument($date, 'D', 250, ['sharpe_return_one_year' => 2.0]);
+    }
+
+    createCorporateAction('D', $dates[5], [
+        'type' => CorporateActionTypeEnum::DEMERGER,
+        'description' => 'Corporate Action: EQ D DEMERGER',
+        'ratio' => 'DEMERGER',
+    ]);
+
+    $user = User::factory()->create(['is_paid' => true]);
+    $bt = makeBacktest($user);
+    run($bt);
+
+    expect($bt->trades()->where('date', $dates[4])->count())->toBe(0)
+        ->and($bt->trades()->where('symbol', 'D')->count())->toBe(0);
+});
+
+it('blocks same-day re-entry when a demerger exit happens on a rebalance day', function () {
+    $dates = tradingDates(10);
+    seedIndexRange('2010-01-01', end($dates), 5000);
+
+    foreach ($dates as $date) {
+        seedInstrument($date, 'A', 100, ['sharpe_return_one_year' => 5.0]);
+        seedInstrument($date, 'B', 200, ['sharpe_return_one_year' => 4.0]);
+        seedInstrument($date, 'C', 150, ['sharpe_return_one_year' => 3.0]);
+        seedInstrument($date, 'D', 250, ['sharpe_return_one_year' => 2.0]);
+    }
+
+    createCorporateAction('A', $dates[4], [
+        'type' => CorporateActionTypeEnum::DEMERGER,
+        'description' => 'Corporate Action: EQ A DEMERGER',
+        'ratio' => 'DEMERGER',
+    ]);
+
+    $user = User::factory()->create(['is_paid' => true]);
+    $bt = makeBacktest($user);
+    run($bt);
+
+    $dayBeforeExDateBuys = $bt->trades()
+        ->where('date', $dates[3])
+        ->where('trade_type', 'buy')
+        ->pluck('symbol')
+        ->all();
+
+    expect($bt->trades()->where('symbol', 'A')->where('trade_type', 'sell')->where('date', $dates[3])->count())->toBe(1)
+        ->and($bt->trades()->where('symbol', 'A')->where('trade_type', 'buy')->count())->toBe(1)
+        ->and($dayBeforeExDateBuys)->toContain('D')
+        ->and($dayBeforeExDateBuys)->not->toContain('A');
+});
+
+it('lets a same-day cash call rebalance consume demerger exit proceeds without buying a replacement first', function () {
+    $dates = tradingDates(20);
+    seedIndexRange('2010-01-01', $dates[7], 6000);
+    seedIndexRange($dates[8], end($dates), 3000);
+
+    foreach ($dates as $date) {
+        seedInstrument($date, 'A', 100, ['sharpe_return_one_year' => 5.0]);
+        seedInstrument($date, 'B', 200, ['sharpe_return_one_year' => 4.0]);
+        seedInstrument($date, 'C', 150, ['sharpe_return_one_year' => 3.0]);
+        seedInstrument($date, 'D', 250, ['sharpe_return_one_year' => 2.0]);
+    }
+
+    createCorporateAction('A', $dates[9], [
+        'type' => CorporateActionTypeEnum::DEMERGER,
+        'description' => 'Corporate Action: EQ A DEMERGER',
+        'ratio' => 'DEMERGER',
+    ]);
+
+    $user = User::factory()->create(['is_paid' => true]);
+    $bt = makeBacktest($user, ['cash_call' => 'full_cash_below_index_dma', 'cash_call_dma_period' => 20]);
+    run($bt);
+
+    $day8Trades = $bt->trades()->where('date', $dates[8])->get();
+
+    expect($day8Trades->where('symbol', 'A')->where('trade_type', 'sell')->count())->toBe(1)
+        ->and($day8Trades->where('symbol', 'D')->count())->toBe(0)
+        ->and($bt->dailySnapshots()->where('date', $dates[8])->first()->holdings_count)->toBe(0);
 });
 
 // ==========================================================================

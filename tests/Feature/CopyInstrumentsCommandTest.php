@@ -78,6 +78,25 @@ it('does not insert symbols that are already present', function () {
         ->toBe(['RELIANCE', 'TCS']);
 });
 
+it('refreshes etf indexes even when every symbol for the date already exists', function () {
+    BacktestNseInstrument::create([
+        'symbol' => 'NIFTYBEES',
+        'etf_index' => 'stale-index',
+    ]);
+
+    createBacktestPrice('NIFTYBEES', '2019-12-20');
+
+    putEtfCsv('2019-12-20', [['NIFTYBEES', 'NIFTY 50']]);
+
+    $this->artisan('backtest:copy-instruments', ['--date' => '2019-12-20'])
+        ->expectsOutputToContain('0 instruments copied. 1 already present.')
+        ->expectsOutputToContain('1 etf_index values populated')
+        ->assertSuccessful();
+
+    expect(BacktestNseInstrument::count())->toBe(1)
+        ->and(BacktestNseInstrument::where('symbol', 'NIFTYBEES')->value('etf_index'))->toBe('nifty-50');
+});
+
 it('is idempotent across repeated runs for the same date', function () {
     createBacktestPrice('RELIANCE', '2019-12-20');
     createBacktestPrice('TCS', '2019-12-20');

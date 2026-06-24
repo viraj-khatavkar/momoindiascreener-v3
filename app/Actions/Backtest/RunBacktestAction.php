@@ -4,12 +4,15 @@ namespace App\Actions\Backtest;
 
 use App\Enums\BacktestCashCallEnum;
 use App\Enums\BacktestWeightageEnum;
+use App\Enums\CorporateActionTypeEnum;
 use App\Models\Backtest;
 use App\Models\BacktestDailySnapshot;
+use App\Models\BacktestNseCorporateAction;
 use App\Models\BacktestNseInstrumentPrice;
 use App\Models\BacktestTrade;
 use App\Models\NseIndex;
 use Carbon\Carbon;
+use Illuminate\Support\Collection;
 
 class RunBacktestAction
 {
@@ -47,6 +50,9 @@ class RunBacktestAction
     /** @var array<string, true> Symbols in circuit on the current execution day (set semantics). */
     private array $circuitSymbols = [];
 
+    /** @var array<string, array<string, string>> Corporate-action ex-dates keyed by exit date and symbol. */
+    private array $demergerExDatesByExitDate = [];
+
     private float $dailyCashReturnRate = 0;
 
     private int $dmaPeriod = 50;
@@ -70,6 +76,7 @@ class RunBacktestAction
         $this->snapshotBatch = [];
         $this->tradeBatch = [];
         $this->circuitSymbols = [];
+        $this->demergerExDatesByExitDate = [];
 
         $annualRate = (float) $backtest->cash_return_rate;
         $this->dailyCashReturnRate = pow(1 + $annualRate / 100, 1.0 / 252) - 1;
@@ -84,6 +91,7 @@ class RunBacktestAction
         $this->loadIndexData($backtest->cash_call_index);
         $this->computeDma($this->dmaPeriod);
         $this->computeRebalanceDates($backtest, $tradingDates);
+        $this->loadDemergerExitDates($tradingDates);
 
         // When execute_next_trading_day is enabled, shift execution to next trading day
         // rebalanceDates stores: executionDate => decisionDate (filterDate)
@@ -101,11 +109,14 @@ class RunBacktestAction
             // Step A: Mark-to-market FIRST (loads today's prices for held stocks)
             $this->markToMarket($date);
 
+            $isRebalanceDate = isset($this->rebalanceDates[$dateStr]);
+            $blockedBuySymbols = $this->handleDemergerExits($backtest, $date, $isRebalanceDate);
+
             // Step B: Rebalance (if applicable)
             // rebalanceDates[executionDate] = decisionDate (filter date)
-            if (isset($this->rebalanceDates[$dateStr])) {
+            if ($isRebalanceDate) {
                 $filterDate = $this->rebalanceDates[$dateStr];
-                $this->rebalance($backtest, $date, $filterDate);
+                $this->rebalance($backtest, $date, $filterDate, $blockedBuySymbols);
             }
 
             // Accrue interest on end-of-day cash (overnight carry, post-rebalance).
@@ -257,7 +268,44 @@ class RunBacktestAction
         return $shifted;
     }
 
-    private function rebalance(Backtest $backtest, Carbon $date, ?string $filterDate = null): void
+    private function loadDemergerExitDates(Collection $tradingDates): void
+    {
+        if ($tradingDates->count() < 2) {
+            return;
+        }
+
+        $exitDateByExDate = [];
+        $tradingDateStrings = $tradingDates
+            ->map(fn (Carbon $date) => $date->format('Y-m-d'))
+            ->values();
+
+        foreach ($tradingDateStrings as $index => $tradingDate) {
+            $nextTradingDate = $tradingDateStrings->get($index + 1);
+
+            if ($nextTradingDate === null) {
+                continue;
+            }
+
+            $exitDateByExDate[$nextTradingDate] = $tradingDate;
+        }
+
+        BacktestNseCorporateAction::query()
+            ->whereBetween('date', [$tradingDateStrings->get(1), $tradingDateStrings->last()])
+            ->where('type', CorporateActionTypeEnum::DEMERGER->value)
+            ->get(['date', 'symbol'])
+            ->each(function (BacktestNseCorporateAction $corporateAction) use ($exitDateByExDate): void {
+                $exDate = $corporateAction->date->format('Y-m-d');
+                $exitDate = $exitDateByExDate[$exDate] ?? null;
+
+                if ($exitDate === null) {
+                    return;
+                }
+
+                $this->demergerExDatesByExitDate[$exitDate][$corporateAction->symbol] = $exDate;
+            });
+    }
+
+    private function rebalance(Backtest $backtest, Carbon $date, ?string $filterDate = null, array $blockedBuySymbols = []): void
     {
         $filterDate = $filterDate ?? $date->format('Y-m-d');
         $executionDateStr = $date->format('Y-m-d');
@@ -375,6 +423,7 @@ class RunBacktestAction
         $remainingSlots = $backtest->max_stocks_to_hold - count($this->holdings);
         $buyCandidates = $rankedStocks
             ->filter(fn ($stock) => ! isset($this->holdings[$stock->symbol]))
+            ->filter(fn ($stock) => ! in_array($stock->symbol, $blockedBuySymbols, true))
             ->filter(fn ($stock) => ! isset($this->circuitSymbols[$stock->symbol]))
             ->take(max($remainingSlots, 0));
 
@@ -402,6 +451,89 @@ class RunBacktestAction
 
         foreach ($buyCandidates as $stock) {
             $this->executeBuy($backtest, $date, $stock, $perStockBudget, 'New entry');
+        }
+    }
+
+    private function handleDemergerExits(Backtest $backtest, Carbon $date, bool $isRebalanceDate): array
+    {
+        if (empty($this->holdings)) {
+            return [];
+        }
+
+        $dateStr = $date->format('Y-m-d');
+        $demergerExDates = $this->demergerExDatesByExitDate[$dateStr] ?? [];
+        $demergerSymbols = array_keys($demergerExDates);
+
+        if (empty($demergerSymbols)) {
+            return [];
+        }
+
+        $demergerSymbols = array_values(array_filter(
+            $demergerSymbols,
+            fn (string $symbol): bool => isset($this->holdings[$symbol]),
+        ));
+
+        if (empty($demergerSymbols)) {
+            return [];
+        }
+
+        $cashBeforeExits = $this->cash;
+        $exitedSymbols = [];
+
+        foreach ($demergerSymbols as $symbol) {
+            $quantity = $this->holdings[$symbol]['quantity'];
+            $this->executeSell($backtest, $date, $symbol, $quantity, 'Demerger ex-date on '.$demergerExDates[$symbol].' - exiting one trading day before ex-date', force: true);
+
+            if (! isset($this->holdings[$symbol])) {
+                $exitedSymbols[] = $symbol;
+            }
+        }
+
+        if (empty($exitedSymbols)) {
+            return [];
+        }
+
+        if ($isRebalanceDate) {
+            return $exitedSymbols;
+        }
+
+        $replacementBudget = $this->cash - $cashBeforeExits;
+        if ($replacementBudget <= 0) {
+            return $exitedSymbols;
+        }
+
+        $rankedStocks = $this->filtersAction->execute($backtest, $dateStr);
+        $previousCircuitSymbols = $this->circuitSymbols;
+
+        try {
+            $this->loadCircuitSymbols($backtest, $dateStr, $rankedStocks);
+
+            $remainingSlots = $backtest->max_stocks_to_hold - count($this->holdings);
+            $replacementCount = min(count($exitedSymbols), max($remainingSlots, 0));
+
+            if ($replacementCount <= 0) {
+                return $exitedSymbols;
+            }
+
+            $replacementCandidates = $rankedStocks
+                ->filter(fn ($stock) => ! isset($this->holdings[$stock->symbol]))
+                ->filter(fn ($stock) => ! in_array($stock->symbol, $exitedSymbols, true))
+                ->filter(fn ($stock) => ! isset($this->circuitSymbols[$stock->symbol]))
+                ->take($replacementCount);
+
+            if ($replacementCandidates->isEmpty()) {
+                return $exitedSymbols;
+            }
+
+            $perStockBudget = $replacementBudget / $replacementCandidates->count();
+
+            foreach ($replacementCandidates as $stock) {
+                $this->executeBuy($backtest, $date, $stock, $perStockBudget, 'Replacement after demerger exit');
+            }
+
+            return $exitedSymbols;
+        } finally {
+            $this->circuitSymbols = $previousCircuitSymbols;
         }
     }
 
@@ -814,13 +946,13 @@ class RunBacktestAction
         $this->executeBuy($backtest, $date, $goldData, $this->cash, 'Index below '.$this->dmaPeriod.' DMA - allocating exits to gold');
     }
 
-    private function executeSell(Backtest $backtest, Carbon $date, string $symbol, int $quantity, string $reason): void
+    private function executeSell(Backtest $backtest, Carbon $date, string $symbol, int $quantity, string $reason, bool $force = false): void
     {
         if (! isset($this->holdings[$symbol]) || $quantity <= 0) {
             return;
         }
 
-        if (isset($this->circuitSymbols[$symbol])) {
+        if (! $force && isset($this->circuitSymbols[$symbol])) {
             return;
         }
 
