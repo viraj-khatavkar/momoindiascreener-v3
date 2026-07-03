@@ -57,7 +57,7 @@ export const indicatorCatalog: IndicatorConfig[] = [
         category: 'overlay',
         libraryId: 'sma',
         params: { len: 100 },
-        plots: [{ plotKey: 'plot0', label: 'SMA 100', color: '#ef4444', seriesKind: 'line', lineWidth: 1 }],
+        plots: [{ plotKey: 'plot0', label: 'SMA 100', color: '#d97706', seriesKind: 'line', lineWidth: 1 }],
     },
     {
         id: 'sma-200',
@@ -65,7 +65,7 @@ export const indicatorCatalog: IndicatorConfig[] = [
         category: 'overlay',
         libraryId: 'sma',
         params: { len: 200 },
-        plots: [{ plotKey: 'plot0', label: 'SMA 200', color: '#10b981', seriesKind: 'line', lineWidth: 2 }],
+        plots: [{ plotKey: 'plot0', label: 'SMA 200', color: '#b45309', seriesKind: 'line', lineWidth: 2 }],
     },
     {
         id: 'ema-20',
@@ -73,7 +73,7 @@ export const indicatorCatalog: IndicatorConfig[] = [
         category: 'overlay',
         libraryId: 'ema',
         params: { length: 20 },
-        plots: [{ plotKey: 'plot0', label: 'EMA 20', color: '#818cf8', seriesKind: 'line', lineWidth: 1, lineStyle: 2 as LineStyle }],
+        plots: [{ plotKey: 'plot0', label: 'EMA 20', color: '#06b6d4', seriesKind: 'line', lineWidth: 1, lineStyle: 2 as LineStyle }],
     },
     {
         id: 'ema-50',
@@ -81,7 +81,7 @@ export const indicatorCatalog: IndicatorConfig[] = [
         category: 'overlay',
         libraryId: 'ema',
         params: { length: 50 },
-        plots: [{ plotKey: 'plot0', label: 'EMA 50', color: '#a78bfa', seriesKind: 'line', lineWidth: 1, lineStyle: 2 as LineStyle }],
+        plots: [{ plotKey: 'plot0', label: 'EMA 50', color: '#0891b2', seriesKind: 'line', lineWidth: 1, lineStyle: 2 as LineStyle }],
     },
     {
         id: 'ema-100',
@@ -89,7 +89,7 @@ export const indicatorCatalog: IndicatorConfig[] = [
         category: 'overlay',
         libraryId: 'ema',
         params: { length: 100 },
-        plots: [{ plotKey: 'plot0', label: 'EMA 100', color: '#c084fc', seriesKind: 'line', lineWidth: 1, lineStyle: 2 as LineStyle }],
+        plots: [{ plotKey: 'plot0', label: 'EMA 100', color: '#38bdf8', seriesKind: 'line', lineWidth: 1, lineStyle: 2 as LineStyle }],
     },
     {
         id: 'ema-200',
@@ -97,7 +97,7 @@ export const indicatorCatalog: IndicatorConfig[] = [
         category: 'overlay',
         libraryId: 'ema',
         params: { length: 200 },
-        plots: [{ plotKey: 'plot0', label: 'EMA 200', color: '#06b6d4', seriesKind: 'line', lineWidth: 2, lineStyle: 2 as LineStyle }],
+        plots: [{ plotKey: 'plot0', label: 'EMA 200', color: '#0284c7', seriesKind: 'line', lineWidth: 2, lineStyle: 2 as LineStyle }],
     },
 ];
 

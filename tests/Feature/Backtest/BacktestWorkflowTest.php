@@ -103,6 +103,32 @@ it('saves settings without queueing a run', function () {
     Queue::assertNothingPushed();
 });
 
+it('does not touch settings_changed_at when only the name changes', function () {
+    Queue::fake();
+    $user = User::factory()->create(['is_paid' => true]);
+    $backtest = Backtest::factory()->create(['user_id' => $user->id]);
+
+    $this->actingAs($user)->put(
+        '/backtests/'.$backtest->id,
+        validBacktestUpdatePayload($backtest, ['name' => 'Renamed Strategy'])
+    );
+
+    expect($backtest->refresh()->settings_changed_at)->toBeNull();
+});
+
+it('touches settings_changed_at when a strategy-affecting field changes', function () {
+    Queue::fake();
+    $user = User::factory()->create(['is_paid' => true]);
+    $backtest = Backtest::factory()->create(['user_id' => $user->id]);
+
+    $this->actingAs($user)->put(
+        '/backtests/'.$backtest->id,
+        validBacktestUpdatePayload($backtest, ['worst_rank_held' => 42])
+    );
+
+    expect($backtest->refresh()->settings_changed_at)->not->toBeNull();
+});
+
 it('saves settings, clears old results, and queues a run when the run flag is set', function () {
     Queue::fake();
     $user = User::factory()->create(['is_paid' => true]);

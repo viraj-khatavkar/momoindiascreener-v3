@@ -69,6 +69,8 @@ class CalculateBacktestMetricsAction
             'total_trades' => $totalTrades,
             'total_charges_paid' => round($totalCharges, 2),
             'final_value' => round((float) $lastSnapshot->total_value, 2),
+            'start_date' => $firstSnapshot->date->format('Y-m-d'),
+            'end_date' => $lastSnapshot->date->format('Y-m-d'),
             'rolling_returns_one_year' => $rollingReturnsOneYear,
             'rolling_returns_three_year' => $rollingReturnsThreeYear,
             'rolling_returns_five_year' => $rollingReturnsFiveYear,

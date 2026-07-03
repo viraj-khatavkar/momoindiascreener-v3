@@ -1,13 +1,31 @@
 <template>
     <div class="rounded-lg bg-slate-50 p-4 md:p-6">
-        <div ref="chartContainer" class="h-[250px]" />
+        <div class="relative h-[250px]">
+            <div
+                ref="chartContainer"
+                class="h-full"
+                role="img"
+                aria-label="Drawdown chart: percentage decline from the strategy's running peak NAV over the backtest period"
+                @dblclick="resetView"
+            />
+            <div v-if="legend" class="pointer-events-none absolute top-2 left-2 z-10 rounded bg-white/80 px-2 py-1 text-xs backdrop-blur-sm">
+                <div class="flex items-center gap-1.5">
+                    <span class="inline-block h-2 w-2 rounded-full bg-red-600" />
+                    <span class="font-medium text-gray-700">{{ legend.date }}</span>
+                    <span class="text-gray-600">Drawdown {{ legend.value }}</span>
+                </div>
+            </div>
+        </div>
+
+        <p class="mt-2 text-[11px] text-gray-400">Scroll to zoom · drag to pan · double-click to reset</p>
     </div>
 </template>
 
 <script setup lang="ts">
 import { onUnmounted, ref, watch } from 'vue';
-import { AreaSeries, ColorType, CrosshairMode, createChart, createSeriesMarkers } from 'lightweight-charts';
+import { BaselineSeries, ColorType, CrosshairMode, createChart, createSeriesMarkers } from 'lightweight-charts';
 import type { IChartApi, ISeriesApi, ISeriesMarkersPluginApi, SeriesMarker, SeriesType, Time } from 'lightweight-charts';
+import { formatDate, formatPercent } from '@/utils/format';
 import type { ChartSyncGroup } from '@/utils/chartSyncGroup';
 import type { BacktestDailySnapshot } from '@/types/app/Models/BacktestDailySnapshot';
 
@@ -19,10 +37,12 @@ const props = defineProps<{
 }>();
 
 const chartContainer = ref<HTMLDivElement>();
+const legend = ref<{ date: string; value: string } | null>(null);
 let chart: IChartApi | null = null;
 let series: ISeriesApi<SeriesType> | null = null;
 let markersApi: ISeriesMarkersPluginApi<Time> | null = null;
 let unregisterSync: (() => void) | null = null;
+let lastPoint: { time: string; value: number } | null = null;
 
 function initChart(container: HTMLDivElement): void {
     chart = createChart(container, {
@@ -46,18 +66,37 @@ function initChart(container: HTMLDivElement): void {
         },
     });
 
-    series = chart.addSeries(AreaSeries, {
-        lineColor: '#dc2626',
-        topColor: 'rgba(220, 38, 38, 0)',
-        bottomColor: 'rgba(220, 38, 38, 0.15)',
+    series = chart.addSeries(BaselineSeries, {
+        baseValue: { type: 'price', price: 0 },
+        topLineColor: 'rgba(220, 38, 38, 0)',
+        topFillColor1: 'rgba(220, 38, 38, 0)',
+        topFillColor2: 'rgba(220, 38, 38, 0)',
+        bottomLineColor: '#dc2626',
+        bottomFillColor1: 'rgba(220, 38, 38, 0.05)',
+        bottomFillColor2: 'rgba(220, 38, 38, 0.25)',
         lineWidth: 2,
         lastValueVisible: true,
         priceLineVisible: false,
         title: 'Drawdown %',
     });
 
+    chart.subscribeCrosshairMove((param) => {
+        const data = param.time !== undefined && series ? (param.seriesData.get(series) as { value?: number } | undefined) : undefined;
+
+        if (data?.value === undefined) {
+            updateLegendDefault();
+            return;
+        }
+
+        legend.value = {
+            date: formatDate(String(param.time)),
+            value: formatPercent(data.value / 100),
+        };
+    });
+
     setData();
     setMarkers();
+    updateLegendDefault();
     chart.timeScale().fitContent();
 
     if (props.syncGroup) {
@@ -80,6 +119,17 @@ function setData(): void {
     });
 
     series.setData(data);
+
+    const last = data[data.length - 1];
+    lastPoint = last ? { time: last.time as unknown as string, value: last.value } : null;
+}
+
+function updateLegendDefault(): void {
+    legend.value = lastPoint ? { date: formatDate(lastPoint.time), value: formatPercent(lastPoint.value / 100) } : null;
+}
+
+function resetView(): void {
+    chart?.timeScale().fitContent();
 }
 
 function setMarkers(): void {
@@ -126,17 +176,29 @@ function destroyChart(): void {
         chart.remove();
         chart = null;
         series = null;
+        legend.value = null;
     }
 }
 
 watch(chartContainer, (el) => {
-    if (!el) { destroyChart(); return; }
+    if (!el) {
+        destroyChart();
+        return;
+    }
     if (!chart) initChart(el);
 });
 
-watch(() => props.dailySnapshots, () => {
-    if (chart) { setData(); setMarkers(); chart.timeScale().fitContent(); }
-});
+watch(
+    () => props.dailySnapshots,
+    () => {
+        if (chart) {
+            setData();
+            setMarkers();
+            updateLegendDefault();
+            chart.timeScale().fitContent();
+        }
+    },
+);
 
 onUnmounted(destroyChart);
 </script>

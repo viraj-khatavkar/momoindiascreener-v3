@@ -91,7 +91,10 @@ class RunBacktestAction
         $this->loadIndexData($backtest->cash_call_index);
         $this->computeDma($this->dmaPeriod);
         $this->computeRebalanceDates($backtest, $tradingDates);
-        $this->loadDemergerExitDates($tradingDates);
+
+        if ($backtest->exit_before_demerger) {
+            $this->loadDemergerExitDates($tradingDates);
+        }
 
         // When execute_next_trading_day is enabled, shift execution to next trading day
         // rebalanceDates stores: executionDate => decisionDate (filterDate)
@@ -110,7 +113,9 @@ class RunBacktestAction
             $this->markToMarket($date);
 
             $isRebalanceDate = isset($this->rebalanceDates[$dateStr]);
-            $blockedBuySymbols = $this->handleDemergerExits($backtest, $date, $isRebalanceDate);
+            $demergerExitSymbols = $this->handleDemergerExits($backtest, $date, $isRebalanceDate);
+            $beExitSymbols = $this->handleBeSeriesExits($backtest, $date, $isRebalanceDate, $demergerExitSymbols);
+            $blockedBuySymbols = [...$demergerExitSymbols, ...$beExitSymbols];
 
             // Step B: Rebalance (if applicable)
             // rebalanceDates[executionDate] = decisionDate (filter date)
@@ -318,14 +323,17 @@ class RunBacktestAction
             $executionPrices = BacktestNseInstrumentPrice::query()
                 ->where('date', $executionDateStr)
                 ->whereIn('symbol', $symbols)
-                ->get(['symbol', 'close_adjusted', 'close_raw'])
+                ->get(['symbol', 'close_adjusted', 'close_raw', 'series'])
                 ->keyBy('symbol');
 
+            // Series is refreshed alongside prices so the BE entry block is
+            // anchored to the execution day, matching the circuit check.
             $rankedStocks = $rankedStocks->map(function ($stock) use ($executionPrices) {
                 $execData = $executionPrices->get($stock->symbol);
                 if ($execData) {
                     $stock->close_adjusted = $execData->close_adjusted;
                     $stock->close_raw = $execData->close_raw;
+                    $stock->series = $execData->series;
                 }
 
                 return $stock;
@@ -425,6 +433,7 @@ class RunBacktestAction
             ->filter(fn ($stock) => ! isset($this->holdings[$stock->symbol]))
             ->filter(fn ($stock) => ! in_array($stock->symbol, $blockedBuySymbols, true))
             ->filter(fn ($stock) => ! isset($this->circuitSymbols[$stock->symbol]))
+            ->filter(fn ($stock) => ! $this->isBeSeriesEntryBlocked($backtest, $stock))
             ->take(max($remainingSlots, 0));
 
         if ($needsRebalancing) {
@@ -493,15 +502,98 @@ class RunBacktestAction
             return [];
         }
 
-        if ($isRebalanceDate) {
-            return $exitedSymbols;
+        if (! $isRebalanceDate) {
+            $this->buyReplacements($backtest, $date, $exitedSymbols, $this->cash - $cashBeforeExits, 'Replacement after demerger exit');
         }
 
-        $replacementBudget = $this->cash - $cashBeforeExits;
+        return $exitedSymbols;
+    }
+
+    /**
+     * Exit holdings whose series has moved to BE (trade-to-trade) when the
+     * backtest opts in. The check runs every trading day; a circuit-hit symbol
+     * is skipped and retried the next day since its series stays BE.
+     *
+     * @param  array<int, string>  $sameDayExitedSymbols  Symbols force-exited earlier today (demergers), excluded from replacements.
+     * @return array<int, string> Exited symbols, blocked from same-day re-entry.
+     */
+    private function handleBeSeriesExits(Backtest $backtest, Carbon $date, bool $isRebalanceDate, array $sameDayExitedSymbols = []): array
+    {
+        if (! $backtest->exit_on_be_series || empty($this->holdings)) {
+            return [];
+        }
+
+        $heldSymbols = array_values(array_filter(
+            array_keys($this->holdings),
+            fn (string $symbol): bool => $symbol !== 'GOLDBEES',
+        ));
+
+        if (empty($heldSymbols)) {
+            return [];
+        }
+
+        $dateStr = $date->format('Y-m-d');
+
+        $beSymbols = BacktestNseInstrumentPrice::query()
+            ->where('date', $dateStr)
+            ->whereIn('symbol', $heldSymbols)
+            ->where('series', 'BE')
+            ->pluck('symbol')
+            ->all();
+
+        if ($backtest->skip_circuit_trades && ! empty($beSymbols)) {
+            $circuitHits = BacktestNseInstrumentPrice::query()
+                ->where('date', $dateStr)
+                ->whereIn('symbol', $beSymbols)
+                ->whereIn('t_percent', self::CIRCUIT_PERCENTAGES)
+                ->pluck('symbol')
+                ->all();
+
+            $beSymbols = array_values(array_diff($beSymbols, $circuitHits));
+        }
+
+        if (empty($beSymbols)) {
+            return [];
+        }
+
+        $cashBeforeExits = $this->cash;
+        $exitedSymbols = [];
+
+        foreach ($beSymbols as $symbol) {
+            // Today's circuit status was already checked above, so force past
+            // the stale circuit set carried over from the last rebalance.
+            $this->executeSell($backtest, $date, $symbol, $this->holdings[$symbol]['quantity'], 'Series changed to BE - exiting', force: true);
+
+            if (! isset($this->holdings[$symbol])) {
+                $exitedSymbols[] = $symbol;
+            }
+        }
+
+        if (empty($exitedSymbols)) {
+            return [];
+        }
+
+        if (! $isRebalanceDate) {
+            $this->buyReplacements($backtest, $date, $exitedSymbols, $this->cash - $cashBeforeExits, 'Replacement after BE series exit', $sameDayExitedSymbols);
+        }
+
+        return $exitedSymbols;
+    }
+
+    /**
+     * Buy next-ranked replacements for forced exits that happened outside a
+     * scheduled rebalance, spending only the cash those exits freed up.
+     *
+     * @param  array<int, string>  $exitedSymbols
+     * @param  array<int, string>  $additionalBlockedSymbols  Symbols exited by another flow today, also barred from re-entry.
+     */
+    private function buyReplacements(Backtest $backtest, Carbon $date, array $exitedSymbols, float $replacementBudget, string $reason, array $additionalBlockedSymbols = []): void
+    {
         if ($replacementBudget <= 0) {
-            return $exitedSymbols;
+            return;
         }
 
+        $dateStr = $date->format('Y-m-d');
         $rankedStocks = $this->filtersAction->execute($backtest, $dateStr);
         $previousCircuitSymbols = $this->circuitSymbols;
 
@@ -512,29 +604,39 @@ class RunBacktestAction
             $replacementCount = min(count($exitedSymbols), max($remainingSlots, 0));
 
             if ($replacementCount <= 0) {
-                return $exitedSymbols;
+                return;
             }
+
+            $blockedSymbols = [...$exitedSymbols, ...$additionalBlockedSymbols];
 
             $replacementCandidates = $rankedStocks
                 ->filter(fn ($stock) => ! isset($this->holdings[$stock->symbol]))
-                ->filter(fn ($stock) => ! in_array($stock->symbol, $exitedSymbols, true))
+                ->filter(fn ($stock) => ! in_array($stock->symbol, $blockedSymbols, true))
                 ->filter(fn ($stock) => ! isset($this->circuitSymbols[$stock->symbol]))
+                ->filter(fn ($stock) => ! $this->isBeSeriesEntryBlocked($backtest, $stock))
                 ->take($replacementCount);
 
             if ($replacementCandidates->isEmpty()) {
-                return $exitedSymbols;
+                return;
             }
 
             $perStockBudget = $replacementBudget / $replacementCandidates->count();
 
             foreach ($replacementCandidates as $stock) {
-                $this->executeBuy($backtest, $date, $stock, $perStockBudget, 'Replacement after demerger exit');
+                $this->executeBuy($backtest, $date, $stock, $perStockBudget, $reason);
             }
-
-            return $exitedSymbols;
         } finally {
             $this->circuitSymbols = $previousCircuitSymbols;
         }
+    }
+
+    /**
+     * With exit_on_be_series enabled, buying a BE stock would just be exited
+     * the next trading day, so BE stocks are blocked from entry entirely.
+     */
+    private function isBeSeriesEntryBlocked(Backtest $backtest, $stock): bool
+    {
+        return $backtest->exit_on_be_series && ($stock->series ?? null) === 'BE';
     }
 
     private function rebalanceWeights(Backtest $backtest, Carbon $date, $rankedBySymbol, $buyCandidates): void
@@ -964,6 +1066,11 @@ class RunBacktestAction
 
         $this->cash += $netAmount;
 
+        // Realized P&L against the average cost basis of the shares sold.
+        $investedValue = $holding['cost_basis'] * $quantity;
+        $realizedPnl = $netAmount - $investedValue;
+        $realizedPnlPct = $investedValue > 0 ? ($realizedPnl / $investedValue) * 100 : null;
+
         $this->tradeBatch[] = [
             'backtest_id' => $backtest->id,
             'symbol' => $symbol,
@@ -982,6 +1089,8 @@ class RunBacktestAction
             'stamp_charges' => $costs['stamp_charges'],
             'total_charges' => $costs['total_charges'],
             'net_amount' => round($netAmount, 2),
+            'realized_pnl' => round($realizedPnl, 2),
+            'realized_pnl_pct' => $realizedPnlPct !== null ? round($realizedPnlPct, 2) : null,
         ];
 
         if ($quantity >= $holding['quantity']) {
@@ -1055,6 +1164,8 @@ class RunBacktestAction
             'stamp_charges' => $costs['stamp_charges'],
             'total_charges' => $costs['total_charges'],
             'net_amount' => round($netCost, 2),
+            'realized_pnl' => null,
+            'realized_pnl_pct' => null,
         ];
 
         $symbol = $stock->symbol;

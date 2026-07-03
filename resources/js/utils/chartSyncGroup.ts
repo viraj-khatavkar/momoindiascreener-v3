@@ -44,7 +44,13 @@ export class ChartSyncGroup {
                 if (param.time !== undefined && point?.value !== undefined) {
                     // The price anchor is only used for the horizontal line; the
                     // point of syncing is the shared vertical time line.
-                    other.chart.setCrosshairPosition(point.value, param.time, other.series);
+                    // lightweight-charts throws when the target chart's visible
+                    // window contains no data for its series — skip quietly.
+                    try {
+                        other.chart.setCrosshairPosition(point.value, param.time, other.series);
+                    } catch {
+                        other.chart.clearCrosshairPosition();
+                    }
                 } else {
                     other.chart.clearCrosshairPosition();
                 }

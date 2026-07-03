@@ -32,6 +32,8 @@ class Backtest extends Model
             'apply_hold_above_dma' => 'boolean',
             'execute_next_trading_day' => 'boolean',
             'skip_circuit_trades' => 'boolean',
+            'exit_before_demerger' => 'boolean',
+            'exit_on_be_series' => 'boolean',
             'apply_ma' => 'boolean',
             'above_ma_200' => 'boolean',
             'above_ma_100' => 'boolean',
@@ -63,6 +65,11 @@ class Backtest extends Model
             'start_date' => 'date',
             'started_at' => 'datetime',
             'completed_at' => 'datetime',
+            'settings_changed_at' => 'datetime',
+            'cash_return_rate' => 'decimal:2',
+            'initial_capital' => 'decimal:2',
+            'minimum_return_one_year' => 'decimal:2',
+            'ignore_above_beta' => 'decimal:2',
         ];
     }
 

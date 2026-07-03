@@ -14,6 +14,8 @@ class BacktestSummaryMetric extends Model
         return [
             'max_drawdown_start_date' => 'date',
             'max_drawdown_end_date' => 'date',
+            'start_date' => 'date',
+            'end_date' => 'date',
             'rolling_returns_one_year' => 'array',
             'rolling_returns_three_year' => 'array',
             'rolling_returns_five_year' => 'array',

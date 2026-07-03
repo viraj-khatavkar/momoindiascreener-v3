@@ -9,6 +9,7 @@
                     type="button"
                     class="cursor-pointer px-4 py-1.5 text-sm font-medium first:rounded-l-md last:rounded-r-md"
                     :class="activeTab === tab.key ? 'bg-purple-600 text-white' : 'text-gray-700 hover:bg-gray-50'"
+                    :aria-pressed="activeTab === tab.key"
                     @click="activeTab = tab.key"
                 >
                     {{ tab.label }} ({{ tab.count }})
@@ -21,11 +22,35 @@
                     v-model="search"
                     type="text"
                     placeholder="Search symbol..."
+                    aria-label="Search trades by symbol"
                     class="w-44 rounded-md border border-gray-300 bg-white py-1.5 pl-8 pr-3 text-sm text-gray-900 placeholder:text-gray-400 focus:border-purple-500 focus:outline-none focus:ring-1 focus:ring-purple-500"
                 />
             </div>
 
+            <div v-if="reasonCategoryCounts.length > 0" class="flex flex-wrap items-center gap-1.5">
+                <button
+                    v-for="category in reasonCategoryCounts"
+                    :key="category.key"
+                    type="button"
+                    class="cursor-pointer rounded-full px-2 py-0.5 text-xs font-medium"
+                    :class="[category.chipClass, activeReasonCategory === category.key ? 'ring-2 ring-purple-500 ring-offset-1' : '']"
+                    :aria-pressed="activeReasonCategory === category.key"
+                    @click="toggleReasonCategory(category.key)"
+                >
+                    {{ category.label }} ({{ category.count }})
+                </button>
+            </div>
+
             <div class="ml-auto flex items-center gap-2 text-xs">
+                <button
+                    type="button"
+                    class="cursor-pointer font-medium text-purple-600 hover:underline"
+                    title="Toggle sort order"
+                    @click="sortOrder = sortOrder === 'desc' ? 'asc' : 'desc'"
+                >
+                    {{ sortOrder === 'desc' ? 'Newest first' : 'Oldest first' }}
+                </button>
+                <span class="text-gray-300">·</span>
                 <button
                     type="button"
                     class="cursor-pointer font-medium text-purple-600 hover:underline"
@@ -44,13 +69,29 @@
             </div>
         </div>
 
+        <!-- Year jump -->
+        <div v-if="availableYears.length > 0" class="mb-3 flex flex-wrap items-center gap-1.5">
+            <span class="text-xs font-medium text-gray-400">Jump to</span>
+            <button
+                v-for="year in availableYears"
+                :key="year"
+                type="button"
+                class="cursor-pointer rounded-full border border-gray-300 bg-white px-2.5 py-0.5 text-xs font-medium text-gray-600 hover:border-purple-400 hover:text-purple-700"
+                @click="jumpToYear(year)"
+            >
+                {{ year }}
+            </button>
+        </div>
+
         <!-- Grouped by rebalance date -->
         <div class="space-y-2">
-            <div v-for="group in filteredGroups" :key="group.date" class="rounded-lg border border-gray-200">
+            <div v-for="group in filteredGroups" :id="'tl-' + group.date" :key="group.date" class="scroll-mt-28 rounded-lg border border-gray-200">
                 <!-- Group header (clickable) -->
                 <button
                     type="button"
                     class="flex w-full cursor-pointer items-center justify-between gap-3 px-4 py-3 text-left hover:bg-gray-50"
+                    :aria-expanded="isExpanded(group.date)"
+                    :aria-controls="'tl-panel-' + group.date"
                     @click="toggleGroup(group.date)"
                 >
                     <div class="flex flex-wrap items-center gap-3">
@@ -80,7 +121,7 @@
                 </button>
 
                 <!-- Expanded trade rows -->
-                <div v-if="isExpanded(group.date)" class="overflow-x-auto border-t border-gray-200">
+                <div v-if="isExpanded(group.date)" :id="'tl-panel-' + group.date" class="overflow-x-auto border-t border-gray-200">
                     <table class="min-w-full text-sm">
                         <thead>
                             <tr class="bg-gray-50">
@@ -93,6 +134,7 @@
                                 <th class="px-3 py-2 text-right font-medium text-gray-500">Gross</th>
                                 <th class="px-3 py-2 text-right font-medium text-gray-500">Charges</th>
                                 <th class="px-3 py-2 text-right font-medium text-gray-500">Net</th>
+                                <th class="px-3 py-2 text-right font-medium text-gray-500">P&amp;L</th>
                             </tr>
                         </thead>
                         <tbody class="divide-y divide-gray-100">
@@ -114,13 +156,34 @@
                                         {{ trade.trade_type }}
                                     </span>
                                 </td>
-                                <td class="max-w-[24rem] truncate px-3 py-2 text-gray-600" :title="trade.reason">{{ trade.reason }}</td>
+                                <td class="max-w-[24rem] px-3 py-2 text-gray-600" :title="trade.reason">
+                                    <div class="flex items-center gap-2">
+                                        <span
+                                            :class="categorizeReason(trade.reason).chipClass"
+                                            class="shrink-0 rounded-full px-2 py-0.5 text-xs font-medium"
+                                        >
+                                            {{ categorizeReason(trade.reason).label }}
+                                        </span>
+                                        <span class="min-w-0 truncate">{{ trade.reason }}</span>
+                                    </div>
+                                </td>
                                 <td class="whitespace-nowrap px-3 py-2 text-right text-gray-900">{{ trade.quantity.toLocaleString('en-IN') }}</td>
                                 <td class="whitespace-nowrap px-3 py-2 text-right text-gray-900">{{ formatCurrency(trade.raw_price) }}</td>
                                 <td class="whitespace-nowrap px-3 py-2 text-right text-gray-500">{{ formatCurrency(trade.price) }}</td>
                                 <td class="whitespace-nowrap px-3 py-2 text-right text-gray-900">{{ formatCurrency(trade.gross_amount) }}</td>
                                 <td class="whitespace-nowrap px-3 py-2 text-right text-gray-500">{{ formatCurrency(trade.total_charges) }}</td>
                                 <td class="whitespace-nowrap px-3 py-2 text-right font-medium text-gray-900">{{ formatCurrency(trade.net_amount) }}</td>
+                                <td class="whitespace-nowrap px-3 py-2 text-right">
+                                    <template v-if="trade.trade_type === 'sell' && trade.realized_pnl !== null">
+                                        <div class="font-semibold tabular-nums" :class="pnlColorClass(trade.realized_pnl)">
+                                            {{ formatSignedPnl(trade.realized_pnl) }}
+                                        </div>
+                                        <div v-if="trade.realized_pnl_pct !== null" class="text-xs tabular-nums" :class="pnlColorClass(trade.realized_pnl)">
+                                            {{ formatSignedPnlPct(trade.realized_pnl_pct) }}
+                                        </div>
+                                    </template>
+                                    <span v-else class="text-gray-400">—</span>
+                                </td>
                             </tr>
                         </tbody>
                     </table>
@@ -129,15 +192,16 @@
         </div>
 
         <p v-if="filteredGroups.length === 0" class="py-8 text-center text-sm text-gray-500">
-            No trades match the selected filter.
+            {{ trades.length === 0 ? 'This run produced no trades — your filters may exclude every stock in the universe.' : 'No trades match the selected filter.' }}
         </p>
     </div>
 </template>
 
 <script setup lang="ts">
-import { computed, ref } from 'vue';
+import { computed, ref, watch } from 'vue';
 import { MagnifyingGlassIcon } from '@heroicons/vue/20/solid';
 import type { BacktestTrade } from '@/types/app/Models/BacktestTrade';
+import { formatCurrency, formatCurrencyShort, formatDate } from '@/utils/format';
 
 const props = defineProps<{
     trades: BacktestTrade[];
@@ -146,14 +210,94 @@ const props = defineProps<{
 type TabKey = 'all' | 'buy' | 'sell';
 const activeTab = ref<TabKey>('all');
 const search = ref('');
+const sortOrder = ref<'desc' | 'asc'>('desc');
+const activeReasonCategory = ref<string | null>(null);
 
 const expandedGroups = ref<Set<string>>(new Set());
 
+const searchFilteredTrades = computed((): BacktestTrade[] => {
+    const query = search.value.trim().toLowerCase();
+    if (!query) {
+        return props.trades;
+    }
+    return props.trades.filter(
+        (t) => t.symbol.toLowerCase().includes(query) || (t.name ?? '').toLowerCase().includes(query),
+    );
+});
+
 const tabs = computed(() => [
-    { key: 'all' as TabKey, label: 'All', count: props.trades.length },
-    { key: 'buy' as TabKey, label: 'Buys', count: props.trades.filter((t) => t.trade_type === 'buy').length },
-    { key: 'sell' as TabKey, label: 'Sells', count: props.trades.filter((t) => t.trade_type === 'sell').length },
+    { key: 'all' as TabKey, label: 'All', count: searchFilteredTrades.value.length },
+    { key: 'buy' as TabKey, label: 'Buys', count: searchFilteredTrades.value.filter((t) => t.trade_type === 'buy').length },
+    { key: 'sell' as TabKey, label: 'Sells', count: searchFilteredTrades.value.filter((t) => t.trade_type === 'sell').length },
 ]);
+
+const tabAndSearchFilteredTrades = computed((): BacktestTrade[] => {
+    if (activeTab.value === 'all') {
+        return searchFilteredTrades.value;
+    }
+    return searchFilteredTrades.value.filter((t) => t.trade_type === activeTab.value);
+});
+
+interface ReasonCategory {
+    key: string;
+    label: string;
+    chipClass: string;
+}
+
+const reasonCategories: ReasonCategory[] = [
+    { key: 'rank-exit', label: 'Rank exit', chipClass: 'bg-gray-100 text-gray-700' },
+    { key: 'cash-call', label: 'Cash call', chipClass: 'bg-amber-100 text-amber-700' },
+    { key: 'demerger', label: 'Demerger', chipClass: 'bg-violet-100 text-violet-700' },
+    { key: 'be-exit', label: 'BE exit', chipClass: 'bg-orange-100 text-orange-700' },
+    { key: 'gold-rotation', label: 'Gold rotation', chipClass: 'bg-yellow-100 text-yellow-800' },
+    { key: 'new-entry', label: 'New entry', chipClass: 'bg-green-50 text-green-700' },
+    { key: 'replacement', label: 'Replacement', chipClass: 'bg-blue-100 text-blue-700' },
+    { key: 'rebalance', label: 'Rebalance', chipClass: 'bg-sky-100 text-sky-700' },
+    { key: 'filter-exit', label: 'Filter exit', chipClass: 'bg-rose-100 text-rose-700' },
+];
+
+function categorizeReason(reason: string): ReasonCategory {
+    const key = ((): string => {
+        // Gold first: rank/filter exits during a gold rotation carry suffixes
+        // like '- rotating to gold' and belong to the rotation, not their prefix.
+        if (reason.toLowerCase().includes('gold') || reason.startsWith('Index recovered')) return 'gold-rotation';
+        if (reason.startsWith('Rank exceeded')) return 'rank-exit';
+        if (reason.includes('Cash call')) return 'cash-call';
+        if (reason.startsWith('Demerger ex-date')) return 'demerger';
+        if (reason.startsWith('Series changed to BE')) return 'be-exit';
+        if (reason.startsWith('New entry')) return 'new-entry';
+        if (reason.startsWith('Replacement after')) return 'replacement';
+        if (reason.startsWith('Weight rebalance adjustment')) return 'rebalance';
+        if (reason.startsWith('No volatility data')) return 'rebalance';
+        return 'filter-exit';
+    })();
+
+    return reasonCategories.find((c) => c.key === key)!;
+}
+
+const reasonCategoryCounts = computed((): Array<ReasonCategory & { count: number }> => {
+    const counts = new Map<string, number>();
+    for (const trade of tabAndSearchFilteredTrades.value) {
+        const key = categorizeReason(trade.reason).key;
+        counts.set(key, (counts.get(key) ?? 0) + 1);
+    }
+
+    return reasonCategories
+        .filter((category) => counts.has(category.key))
+        .map((category) => ({ ...category, count: counts.get(category.key)! }));
+});
+
+// If the active reason category disappears from the current tab+search selection, clear it
+// so the user is never stuck on an invisible filter.
+watch(reasonCategoryCounts, (categories) => {
+    if (activeReasonCategory.value && !categories.some((c) => c.key === activeReasonCategory.value)) {
+        activeReasonCategory.value = null;
+    }
+});
+
+function toggleReasonCategory(key: string): void {
+    activeReasonCategory.value = activeReasonCategory.value === key ? null : key;
+}
 
 interface TradeGroup {
     date: string;
@@ -166,16 +310,10 @@ interface TradeGroup {
 }
 
 const filteredGroups = computed((): TradeGroup[] => {
-    const query = search.value.trim().toLowerCase();
+    let filtered = tabAndSearchFilteredTrades.value;
 
-    let filtered = activeTab.value === 'all'
-        ? props.trades
-        : props.trades.filter((t) => t.trade_type === activeTab.value);
-
-    if (query) {
-        filtered = filtered.filter(
-            (t) => t.symbol.toLowerCase().includes(query) || (t.name ?? '').toLowerCase().includes(query),
-        );
+    if (activeReasonCategory.value) {
+        filtered = filtered.filter((t) => categorizeReason(t.reason).key === activeReasonCategory.value);
     }
 
     const grouped: Record<string, BacktestTrade[]> = {};
@@ -186,7 +324,7 @@ const filteredGroups = computed((): TradeGroup[] => {
     }
 
     return Object.keys(grouped)
-        .sort()
+        .sort((a, b) => (sortOrder.value === 'desc' ? b.localeCompare(a) : a.localeCompare(b)))
         .map((date) => {
             const buys = grouped[date].filter((t) => t.trade_type === 'buy');
             const sells = grouped[date].filter((t) => t.trade_type === 'sell');
@@ -202,6 +340,21 @@ const filteredGroups = computed((): TradeGroup[] => {
             };
         });
 });
+
+const availableYears = computed((): string[] => {
+    const years = new Set<string>();
+    for (const group of filteredGroups.value) {
+        years.add(group.date.substring(0, 4));
+    }
+    return [...years].sort((a, b) => b.localeCompare(a));
+});
+
+function jumpToYear(year: string): void {
+    const target = filteredGroups.value.find((g) => g.date.startsWith(year));
+    if (target) {
+        document.getElementById('tl-' + target.date)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
+}
 
 // While searching, every matching group is auto-expanded so results are visible.
 function isExpanded(date: string): boolean {
@@ -227,23 +380,20 @@ function expandAll(): void {
 
 function collapseAll(): void {
     expandedGroups.value = new Set();
-    search.value = '';
 }
 
-function formatDate(value: string): string {
-    return new Date(value).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' });
+function pnlColorClass(value: number | string): string {
+    return Number(value) >= 0 ? 'text-green-700' : 'text-red-700';
 }
 
-function formatCurrency(value: number): string {
-    return '₹' + Number(value).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-}
-
-function formatCurrencyShort(value: number): string {
+function formatSignedPnl(value: number | string): string {
     const v = Number(value);
-    const abs = Math.abs(v);
-    if (abs >= 10000000) return '₹' + (v / 10000000).toFixed(2) + ' Cr';
-    if (abs >= 100000) return '₹' + (v / 100000).toFixed(2) + ' L';
-    if (abs >= 1000) return '₹' + (v / 1000).toFixed(1) + ' K';
-    return '₹' + v.toLocaleString('en-IN', { maximumFractionDigits: 0 });
+    return v >= 0 ? '+' + formatCurrencyShort(v) : formatCurrencyShort(v);
+}
+
+/** realized_pnl_pct arrives as a percent (12.34), not a fraction — format directly. */
+function formatSignedPnlPct(value: number | string): string {
+    const v = Number(value);
+    return (v >= 0 ? '+' : '') + v.toFixed(2) + '%';
 }
 </script>

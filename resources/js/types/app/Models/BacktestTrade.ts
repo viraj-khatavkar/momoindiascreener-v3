@@ -17,4 +17,6 @@ export interface BacktestTrade {
     stamp_charges: number;
     total_charges: number;
     net_amount: number;
+    realized_pnl: number | string | null;
+    realized_pnl_pct: number | string | null;
 }

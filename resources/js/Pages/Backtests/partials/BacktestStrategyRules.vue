@@ -11,7 +11,7 @@
                     {{ formatSortBy(backtest.sort_by) }} {{ backtest.sort_direction === 'desc' ? '↓' : '↑' }}
                 </span>
                 <span v-if="backtest.apply_filters_on" class="rounded-md bg-purple-50 px-2 py-0.5 text-xs text-purple-700">
-                    Apply on: {{ formatSnakeCase(backtest.apply_filters_on) }}
+                    Apply on: {{ formatApplyFiltersOn(backtest.apply_filters_on) }}
                 </span>
             </div>
         </div>
@@ -30,7 +30,7 @@
                     {{ backtest.max_stocks_to_hold }} stocks
                 </span>
                 <span class="rounded-md bg-gray-100 px-2 py-0.5 text-xs text-gray-700">
-                    {{ backtest.rebalance_frequency === 'weekly' ? 'Weekly' : 'Monthly' }} day {{ backtest.rebalance_day }}
+                    {{ backtest.rebalance_frequency === 'weekly' ? 'Weekly · ' + weekdayName(backtest.rebalance_day) : 'Monthly day ' + backtest.rebalance_day }}
                 </span>
                 <span v-if="backtest.worst_rank_held > 0" class="rounded-md bg-gray-100 px-2 py-0.5 text-xs text-gray-700">
                     Worst rank {{ backtest.worst_rank_held }}
@@ -44,6 +44,12 @@
                 <span v-if="backtest.skip_circuit_trades" class="rounded-md bg-gray-100 px-2 py-0.5 text-xs text-gray-700">
                     Skip circuit trades
                 </span>
+                <span v-if="backtest.exit_before_demerger" class="rounded-md bg-gray-100 px-2 py-0.5 text-xs text-gray-700">
+                    Exit before demerger
+                </span>
+                <span v-if="backtest.exit_on_be_series" class="rounded-md bg-gray-100 px-2 py-0.5 text-xs text-gray-700">
+                    Exit on BE series
+                </span>
                 <span v-if="backtest.start_date" class="rounded-md bg-gray-100 px-2 py-0.5 text-xs text-gray-700">
                     From {{ formatStartDate(backtest.start_date) }}
                 </span>
@@ -51,10 +57,11 @@
         </div>
 
         <!-- Cash Call (only if active) -->
-        <div v-if="backtest.cash_call !== 'no_cash_call'" class="flex items-baseline gap-2">
+        <!-- Cash interest accrues on idle cash regardless of the cash-call mode -->
+        <div v-if="backtest.cash_call !== 'no_cash_call' || Number(backtest.cash_return_rate) > 0" class="flex items-baseline gap-2">
             <span class="w-16 shrink-0 text-[11px] font-semibold uppercase tracking-wider text-gray-400">Cash</span>
             <div class="flex flex-wrap gap-1.5">
-                <span class="rounded-md bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-800">
+                <span v-if="backtest.cash_call !== 'no_cash_call'" class="rounded-md bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-800">
                     {{ formatCashCall(backtest.cash_call) }}
                 </span>
                 <span
@@ -63,7 +70,7 @@
                 >
                     {{ formatIndex(backtest.cash_call_index) }} DMA {{ backtest.cash_call_dma_period }}
                 </span>
-                <span v-if="backtest.cash_return_rate > 0" class="rounded-md bg-amber-50 px-2 py-0.5 text-xs text-amber-700">
+                <span v-if="Number(backtest.cash_return_rate) > 0" class="rounded-md bg-amber-50 px-2 py-0.5 text-xs text-amber-700">
                     {{ backtest.cash_return_rate }}% p.a. return
                 </span>
             </div>
@@ -103,6 +110,7 @@
 
 <script setup lang="ts">
 import type { Backtest } from '@/types/app/Models/Backtest';
+import { formatCompactNumber, formatCurrencyShort } from '@/utils/format';
 
 defineProps<{
     backtest: Backtest;
@@ -198,6 +206,24 @@ function formatSnakeCase(value: string): string {
     return value.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
 }
 
+function weekdayName(day: number): string {
+    return ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday'][day - 1] ?? 'day ' + day;
+}
+
+function formatApplyFiltersOn(value: string): string {
+    const labels: Record<string, string> = {
+        all: 'All stocks of selected index',
+        top_decile: 'Top 10% by rank',
+        top_two_decile: 'Top 20% by rank',
+        top_three_decile: 'Top 30% by rank',
+        top_four_decile: 'Top 40% by rank',
+        top_five_decile: 'Top 50% by rank',
+        top_50: 'Top 50 stocks',
+        top_100: 'Top 100 stocks',
+    };
+    return labels[value] || formatSnakeCase(value);
+}
+
 function formatStartDate(value: string): string {
     return new Date(value).toLocaleDateString('en-IN', { month: 'short', year: 'numeric' });
 }
@@ -237,10 +263,8 @@ function activeFilters(bt: Backtest): string[] {
         if (below.length) filters.push('Below EMA ' + below.join(', '));
     }
 
-    // PE Range
-    if (bt.apply_pe) {
-        filters.push('PE ' + bt.price_to_earnings_from + '–' + bt.price_to_earnings_to);
-    }
+    // Note: apply_pe / marketcap fields exist on the model but the backtest
+    // engine never applies them, so they get no chip.
 
     // Series
     const series: string[] = [];
@@ -248,8 +272,8 @@ function activeFilters(bt: Backtest): string[] {
     if (bt.series_be) series.push('BE');
     if (series.length) filters.push('Series: ' + series.join(', '));
 
-    // Beta
-    if (bt.ignore_above_beta > 0) {
+    // Beta (100 is the "off" sentinel)
+    if (Number(bt.ignore_above_beta) < 100) {
         filters.push('Beta < ' + bt.ignore_above_beta);
     }
 
@@ -258,17 +282,41 @@ function activeFilters(bt: Backtest): string[] {
         filters.push('Vol > ' + formatCompactNumber(bt.median_volume_one_year));
     }
 
-    // Price Range
-    if (bt.price_from > 0 || bt.price_to > 0) {
-        const from = bt.price_from > 0 ? '₹' + bt.price_from : '';
-        const to = bt.price_to > 0 ? '₹' + bt.price_to : '';
-        if (from && to) filters.push('Price ' + from + '–' + to);
-        else if (from) filters.push('Price > ' + from);
-        else if (to) filters.push('Price < ' + to);
+    // Away from high (100 is the "off" sentinel)
+    if (bt.away_from_high_all_time < 100) {
+        filters.push('Within ' + bt.away_from_high_all_time + '% of ATH');
+    }
+    if (bt.away_from_high_one_year < 100) {
+        filters.push('Within ' + bt.away_from_high_one_year + '% of 1Y high');
     }
 
-    // Min return
-    if (bt.minimum_return_one_year > 0) {
+    // Positive days (0 is the "off" sentinel)
+    const positiveDays: string[] = [];
+    if (bt.positive_days_percent_one_year > 0) positiveDays.push('1Y ≥ ' + bt.positive_days_percent_one_year + '%');
+    if (bt.positive_days_percent_nine_months > 0) positiveDays.push('9M ≥ ' + bt.positive_days_percent_nine_months + '%');
+    if (bt.positive_days_percent_six_months > 0) positiveDays.push('6M ≥ ' + bt.positive_days_percent_six_months + '%');
+    if (bt.positive_days_percent_three_months > 0) positiveDays.push('3M ≥ ' + bt.positive_days_percent_three_months + '%');
+    if (bt.positive_days_percent_one_months > 0) positiveDays.push('1M ≥ ' + bt.positive_days_percent_one_months + '%');
+    if (positiveDays.length) filters.push('Positive days ' + positiveDays.join(', '));
+
+    // Circuits (300 is the "off" sentinel — anything below it is a live filter)
+    const circuits: string[] = [];
+    if (bt.circuits_one_year < 300) circuits.push('1Y ≤ ' + bt.circuits_one_year);
+    if (bt.circuits_nine_months < 300) circuits.push('9M ≤ ' + bt.circuits_nine_months);
+    if (bt.circuits_six_months < 300) circuits.push('6M ≤ ' + bt.circuits_six_months);
+    if (bt.circuits_three_months < 300) circuits.push('3M ≤ ' + bt.circuits_three_months);
+    if (bt.circuits_one_months < 300) circuits.push('1M ≤ ' + bt.circuits_one_months);
+    if (circuits.length) filters.push('Circuits ' + circuits.join(', '));
+
+    // Price Range (0 / 10000000 are the "off" sentinels)
+    const priceFrom = bt.price_from > 0;
+    const priceTo = bt.price_to > 0 && bt.price_to < 10000000;
+    if (priceFrom && priceTo) filters.push('Price ₹' + bt.price_from + '–₹' + bt.price_to);
+    else if (priceFrom) filters.push('Price > ₹' + bt.price_from);
+    else if (priceTo) filters.push('Price < ₹' + bt.price_to);
+
+    // Min return (the engine applies this filter for any value above -100)
+    if (Number(bt.minimum_return_one_year) > -100) {
         filters.push('Min Return 1Y > ' + bt.minimum_return_one_year + '%');
     }
 
@@ -288,20 +336,5 @@ function activeFilters(bt: Backtest): string[] {
 
 function numWord(n: number): string {
     return ['one', 'two', 'three', 'four', 'five'][n - 1];
-}
-
-function formatCompactNumber(value: number): string {
-    if (value >= 10000000) return (value / 10000000).toFixed(0) + 'Cr';
-    if (value >= 100000) return (value / 100000).toFixed(0) + 'L';
-    if (value >= 1000) return (value / 1000).toFixed(0) + 'K';
-    return String(value);
-}
-
-function formatCurrencyShort(value: number): string {
-    const v = Number(value);
-    const abs = Math.abs(v);
-    if (abs >= 10000000) return '₹' + (v / 10000000).toFixed(2) + ' Cr';
-    if (abs >= 100000) return '₹' + (v / 100000).toFixed(2) + ' L';
-    return '₹' + v.toLocaleString('en-IN', { maximumFractionDigits: 0 });
 }
 </script>

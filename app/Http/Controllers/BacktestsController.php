@@ -103,13 +103,25 @@ class BacktestsController extends Controller
             abort(404);
         }
 
-        $backtest->update($request->validated());
+        $backtest->fill($request->validated());
 
-        if ($request->boolean('run') && $request->user()->can('run', $backtest)) {
-            $startRun->execute($backtest);
+        // Track strategy-affecting changes only — renames must not flag results as stale.
+        if (collect($backtest->getDirty())->except(['name'])->isNotEmpty()) {
+            $backtest->settings_changed_at = now();
+        }
 
-            return redirect()->to('/backtests/'.$backtest->getKey())
-                ->with('success', 'Settings saved. Backtest queued for execution.');
+        $backtest->save();
+
+        if ($request->boolean('run')) {
+            if ($request->user()->can('run', $backtest)) {
+                $startRun->execute($backtest);
+
+                return redirect()->to('/backtests/'.$backtest->getKey())
+                    ->with('success', 'Settings saved. Backtest queued for execution.');
+            }
+
+            return redirect()->to('/backtests/'.$backtest->getKey().'?tab=settings')
+                ->with('success', 'Settings saved — a run is already in progress, so no new run was queued.');
         }
 
         return redirect()->to('/backtests/'.$backtest->getKey().'?tab=settings')

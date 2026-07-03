@@ -28,9 +28,11 @@
 
         <!-- Tabs -->
         <div class="mt-2 border-b border-gray-200">
-            <nav class="-mb-px flex gap-6" aria-label="Tabs">
+            <nav class="-mb-px flex gap-6" role="tablist" aria-label="Backtest tabs">
                 <button
                     type="button"
+                    role="tab"
+                    :aria-selected="activeTab === 'results'"
                     class="cursor-pointer border-b-2 px-1 py-3 text-sm font-medium"
                     :class="activeTab === 'results' ? 'border-purple-600 text-purple-700' : 'border-transparent text-gray-500 hover:border-gray-300 hover:text-gray-700'"
                     @click="setTab('results')"
@@ -39,6 +41,8 @@
                 </button>
                 <button
                     type="button"
+                    role="tab"
+                    :aria-selected="activeTab === 'settings'"
                     class="cursor-pointer border-b-2 px-1 py-3 text-sm font-medium"
                     :class="activeTab === 'settings' ? 'border-purple-600 text-purple-700' : 'border-transparent text-gray-500 hover:border-gray-300 hover:text-gray-700'"
                     @click="setTab('settings')"
@@ -46,6 +50,7 @@
                     <span class="inline-flex items-center gap-1.5">
                         Settings
                         <span v-if="form.isDirty" class="h-1.5 w-1.5 rounded-full bg-amber-500" title="Unsaved changes"></span>
+                        <span v-if="form.isDirty" class="sr-only">(unsaved changes)</span>
                     </span>
                 </button>
             </nav>
@@ -72,10 +77,24 @@
                 </button>
             </div>
 
-            <!-- Strategy rules -->
-            <div class="mt-6 rounded-xl bg-white p-6 shadow-xs ring-1 ring-gray-100">
-                <div class="mb-4 flex items-center justify-between">
-                    <h2 class="text-sm font-semibold uppercase tracking-wide text-gray-500">Strategy Rules</h2>
+            <!-- Strategy rules (collapsed to a single header row once completed) -->
+            <div class="mt-6 rounded-xl bg-slate-50 p-6 ring-1 ring-slate-200">
+                <div class="flex items-center justify-between" :class="showStrategyRules ? 'mb-4' : ''">
+                    <button
+                        type="button"
+                        class="flex cursor-pointer items-center gap-2 text-sm font-semibold uppercase tracking-wide text-gray-500 hover:text-gray-700"
+                        :aria-expanded="showStrategyRules"
+                        @click="showStrategyRules = !showStrategyRules"
+                    >
+                        Strategy Rules
+                        <svg
+                            class="h-4 w-4 text-gray-400 transition-transform"
+                            :class="showStrategyRules ? 'rotate-180' : ''"
+                            fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"
+                        >
+                            <path stroke-linecap="round" stroke-linejoin="round" d="m19.5 8.25-7.5 7.5-7.5-7.5" />
+                        </svg>
+                    </button>
                     <button
                         type="button"
                         class="cursor-pointer text-xs font-medium text-purple-600 hover:text-purple-700 hover:underline"
@@ -84,12 +103,20 @@
                         Edit settings →
                     </button>
                 </div>
-                <BacktestStrategyRules :backtest="backtest" />
+                <BacktestStrategyRules v-if="showStrategyRules" :backtest="backtest" />
             </div>
 
             <!-- Running state -->
             <div v-if="backtest.status === 'running'" class="mt-6">
-                <div class="relative overflow-hidden rounded-2xl bg-linear-to-br from-gray-900 to-gray-950 p-8 shadow-xl ring-1 ring-white/10">
+                <div
+                    class="relative overflow-hidden rounded-2xl bg-linear-to-br from-gray-900 to-gray-950 p-8 shadow-xl ring-1 ring-white/10"
+                    role="progressbar"
+                    :aria-valuenow="backtest.progress"
+                    aria-valuemin="0"
+                    aria-valuemax="100"
+                    aria-live="polite"
+                    :aria-label="`Backtest ${backtest.progress}% complete`"
+                >
                     <!-- Animated background grid -->
                     <div class="pointer-events-none absolute inset-0 opacity-[0.03]" style="background-image: linear-gradient(rgba(255,255,255,.1) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,.1) 1px, transparent 1px); background-size: 24px 24px;" />
 
@@ -133,20 +160,44 @@
                     <!-- Bottom detail chips -->
                     <div class="mt-5 flex items-center gap-3 text-xs">
                         <span class="rounded-full bg-white/10 px-3 py-1 font-medium text-white/50">
-                            {{ backtest.progress < 95 ? 'Simulating trades' : 'Computing metrics' }}
+                            {{ progressStageLabel }}
                         </span>
-                        <span v-if="backtest.progress > 0 && backtest.progress < 100" class="text-white/30">
-                            {{ backtest.progress }}% of trading days processed
+                        <span v-if="backtest.progress > 0 && backtest.progress < 95" class="text-white/30">
+                            {{ simulatedDaysPct }}% of trading days processed
                         </span>
                     </div>
                 </div>
             </div>
 
             <!-- Failed state -->
-            <div v-else-if="backtest.status === 'failed'" class="mt-6">
+            <div v-else-if="backtest.status === 'failed'" class="mt-6 space-y-4">
                 <ErrorAlert>
-                    {{ backtest.error_message || 'An unknown error occurred while running the backtest.' }}
+                    This run failed partway through. Your settings are unchanged — you can try running it again.
+                    If it keeps failing, contact support and mention backtest #{{ backtest.id }}.
                 </ErrorAlert>
+                <div class="flex items-center gap-4">
+                    <button
+                        type="button"
+                        :disabled="retrying"
+                        class="cursor-pointer rounded-md bg-purple-600 px-4 py-2 text-sm font-semibold text-white shadow-xs hover:bg-purple-500 disabled:cursor-not-allowed disabled:opacity-75"
+                        @click="retryRun"
+                    >
+                        {{ retrying ? 'Queuing…' : 'Retry run' }}
+                    </button>
+                    <button
+                        v-if="backtest.error_message"
+                        type="button"
+                        class="cursor-pointer text-xs font-medium text-gray-500 hover:text-gray-700 hover:underline"
+                        :aria-expanded="showErrorDetails"
+                        @click="showErrorDetails = !showErrorDetails"
+                    >
+                        {{ showErrorDetails ? 'Hide technical details' : 'Show technical details' }}
+                    </button>
+                </div>
+                <pre
+                    v-if="showErrorDetails && backtest.error_message"
+                    class="overflow-x-auto rounded-lg bg-gray-900 p-4 text-xs leading-relaxed text-gray-300"
+                >{{ backtest.error_message }}</pre>
             </div>
 
             <!-- Pending state -->
@@ -154,20 +205,30 @@
                 <InfoAlert>
                     This backtest hasn't been run yet. Review the rules above, tweak them in the
                     <button type="button" class="cursor-pointer font-semibold text-blue-700 underline" @click="setTab('settings')">Settings tab</button>,
-                    then click "Run Backtest".
+                    then click "Save &amp; Run Backtest".
                 </InfoAlert>
             </div>
 
             <!-- Completed state -->
             <div v-else-if="backtest.status === 'completed' && summaryMetrics" class="mt-6 space-y-6">
 
-                <!-- Section navigation -->
-                <nav class="sticky top-0 z-20 flex gap-1 overflow-x-auto rounded-lg border border-gray-200 bg-white/95 px-2 py-1.5 backdrop-blur" aria-label="Results sections">
+                <!-- Zero-trade run -->
+                <InfoAlert v-if="summaryMetrics.total_trades === 0">
+                    This run produced no trades — your filters may exclude every stock in the universe.
+                    Loosen the filters in the Settings tab and run again.
+                </InfoAlert>
+
+                <!-- Section navigation (sits below the sticky app header) -->
+                <nav class="sticky top-16 z-20 flex gap-1 overflow-x-auto rounded-lg border border-gray-200 bg-white/95 px-2 py-1.5 backdrop-blur" aria-label="Results sections">
                     <button
                         v-for="section in resultSections"
                         :key="section.id"
                         type="button"
-                        class="cursor-pointer whitespace-nowrap rounded-md px-3 py-1 text-xs font-medium text-gray-600 hover:bg-gray-100 hover:text-gray-900"
+                        class="cursor-pointer whitespace-nowrap rounded-md px-3 py-1 text-xs font-medium"
+                        :class="activeSection === section.id
+                            ? 'bg-purple-50 text-purple-700'
+                            : 'text-gray-600 hover:bg-gray-100 hover:text-gray-900'"
+                        :aria-current="activeSection === section.id ? 'true' : undefined"
                         @click="scrollToSection(section.id)"
                     >
                         {{ section.label }}
@@ -175,7 +236,7 @@
                 </nav>
 
                 <!-- EDITORIAL HERO: colored top rule + generous typography -->
-                <div id="bt-overview" class="scroll-mt-14">
+                <div id="bt-overview" class="scroll-mt-28">
                     <!-- Accent top rule (fades from signal color to transparent) -->
                     <div
                         class="h-[3px] w-full rounded-full"
@@ -183,56 +244,69 @@
                         aria-hidden="true"
                     />
 
+                    <!-- Simulated period -->
+                    <p v-if="backtestPeriod" class="mt-4 text-xs text-gray-500">
+                        {{ backtestPeriod }}
+                        <span class="mx-1 text-gray-300">·</span>
+                        {{ backtestYears }} years
+                    </p>
+
                     <!-- 4 primary stats -->
-                    <dl class="mt-10 grid grid-cols-2 gap-y-10 gap-x-10 pb-4 md:grid-cols-4 md:gap-x-14">
+                    <dl class="mt-8 grid grid-cols-2 gap-y-10 gap-x-10 pb-4 md:grid-cols-4 md:gap-x-14">
                         <!-- CAGR -->
                         <div>
                             <dt class="text-[11px] font-semibold uppercase tracking-[0.14em] text-gray-500">CAGR</dt>
                             <dd class="mt-2 flex items-baseline gap-1">
                                 <span
-                                    class="text-5xl font-bold tabular-nums leading-none tracking-tight"
+                                    class="text-3xl font-bold tabular-nums leading-none tracking-tight sm:text-4xl md:text-5xl"
                                     :class="summaryMetrics.cagr >= 0 ? 'text-emerald-700' : 'text-red-700'"
                                 >
                                     {{ (summaryMetrics.cagr * 100).toFixed(2) }}
                                 </span>
                                 <span class="text-2xl font-semibold text-gray-300">%</span>
                             </dd>
-                            <dd class="mt-3 text-[11px] text-gray-500">over {{ backtestYears }} years</dd>
+                            <dd v-if="backtestPeriod" class="mt-3 text-[11px] text-gray-500">over {{ backtestYears }} years</dd>
                         </div>
 
-                        <!-- Total return -->
+                        <!-- Max drawdown -->
                         <div>
-                            <dt class="text-[11px] font-semibold uppercase tracking-[0.14em] text-gray-500">Total return</dt>
-                            <dd
-                                class="mt-2 text-5xl font-bold tabular-nums leading-none tracking-tight"
-                                :class="totalReturn >= 0 ? 'text-emerald-700' : 'text-red-700'"
-                            >
-                                {{ totalReturn >= 0 ? '+' : '' }}{{ (totalReturn * 100).toFixed(2) }}%
+                            <dt class="text-[11px] font-semibold uppercase tracking-[0.14em] text-gray-500">Max drawdown</dt>
+                            <dd class="mt-2 text-3xl font-bold tabular-nums leading-none tracking-tight text-red-700 sm:text-4xl md:text-5xl">
+                                {{ formatPercent(summaryMetrics.max_drawdown) }}
                             </dd>
-                            <dd class="mt-3 text-[11px] text-gray-500">compounded</dd>
+                            <dd v-if="maxDrawdownFallLabel" class="mt-3 text-[11px] text-gray-500">
+                                {{ maxDrawdownFallLabel }}
+                            </dd>
+                            <dd v-if="maxDrawdownRecoveryLabel" class="mt-0.5 text-[11px] text-gray-500">
+                                {{ maxDrawdownRecoveryLabel }}
+                            </dd>
                         </div>
 
                         <!-- Final value -->
                         <div>
                             <dt class="text-[11px] font-semibold uppercase tracking-[0.14em] text-gray-500">Final value</dt>
-                            <dd class="mt-2 text-5xl font-bold tabular-nums leading-none tracking-tight text-gray-900">
+                            <dd class="mt-2 text-3xl font-bold tabular-nums leading-none tracking-tight text-gray-900 sm:text-4xl md:text-5xl">
                                 {{ formatCurrencyShort(summaryMetrics.final_value) }}
                             </dd>
                             <dd class="mt-3 text-[11px] text-gray-500">
                                 from {{ formatCurrencyShort(backtest.initial_capital) }}
                                 <span class="mx-1 text-gray-300">·</span>
-                                <span class="font-semibold text-gray-700">{{ growthMultiplier }}× growth</span>
+                                <span class="font-semibold" :class="totalReturn >= 0 ? 'text-emerald-700' : 'text-red-700'">
+                                    {{ formatPercent(totalReturn, true) }} total
+                                </span>
+                                <span class="mx-1 text-gray-300">·</span>
+                                <span class="font-semibold text-gray-700">{{ growthMultiplier }}×</span>
                             </dd>
                         </div>
 
-                        <!-- vs Nifty 50 (alpha) -->
+                        <!-- CAGR vs Nifty 50 -->
                         <div>
-                            <dt class="text-[11px] font-semibold uppercase tracking-[0.14em] text-gray-500">vs Nifty 50</dt>
+                            <dt class="text-[11px] font-semibold uppercase tracking-[0.14em] text-gray-500">CAGR vs Nifty 50</dt>
                             <Deferred data="defaultBenchmark">
                                 <template #fallback>
                                     <dd class="mt-2 h-12 w-32 animate-pulse rounded bg-gray-100" aria-hidden="true" />
                                 </template>
-                                <dd class="mt-2 flex items-center gap-2 text-5xl font-bold tabular-nums leading-none tracking-tight">
+                                <dd class="mt-2 flex items-center gap-2 text-3xl font-bold tabular-nums leading-none tracking-tight sm:text-4xl md:text-5xl">
                                     <template v-if="benchmarkDelta === null">
                                         <span class="text-gray-400">—</span>
                                     </template>
@@ -253,7 +327,12 @@
                                     </template>
                                 </dd>
                             </Deferred>
-                            <dd class="mt-3 text-[11px] text-gray-500">alpha</dd>
+                            <dd class="mt-3 text-[11px] text-gray-500">
+                                <template v-if="heroBenchmarkCagr !== null">
+                                    Nifty 50: {{ formatPercent(heroBenchmarkCagr) }} CAGR
+                                </template>
+                                <template v-else>annualized outperformance</template>
+                            </dd>
                         </div>
                     </dl>
                 </div>
@@ -273,36 +352,48 @@
                             </div>
                             <dl class="relative divide-y divide-rose-100/60">
                                 <div class="flex items-baseline justify-between gap-4 py-3">
-                                    <dt class="text-sm font-medium text-gray-600">Max drawdown</dt>
+                                    <dt class="text-sm font-medium text-gray-600" title="Largest peak-to-trough fall in NAV; lower magnitude is better">Max drawdown</dt>
                                     <dd class="text-right">
                                         <div class="text-xl font-bold tabular-nums text-red-700">
                                             {{ formatPercent(summaryMetrics.max_drawdown) }}
                                         </div>
-                                        <div v-if="summaryMetrics.max_drawdown_start_date" class="mt-0.5 text-[11px] font-medium text-rose-600/70">
-                                            {{ formatDrawdownPeriod(summaryMetrics.max_drawdown_start_date, summaryMetrics.max_drawdown_end_date) }}
+                                        <div v-if="maxDrawdownFallLabel" class="mt-0.5 text-[11px] font-medium text-rose-600/70">
+                                            {{ maxDrawdownFallLabel }}
+                                        </div>
+                                        <div v-if="maxDrawdownRecoveryLabel" class="mt-0.5 text-[11px] font-medium text-rose-600/70">
+                                            {{ maxDrawdownRecoveryLabel }}
+                                        </div>
+                                        <div v-if="benchmarkMaxDrawdownHero !== null" class="mt-0.5 text-[11px] text-gray-400">
+                                            Nifty 50: {{ formatPercent(benchmarkMaxDrawdownHero) }}
                                         </div>
                                     </dd>
                                 </div>
                                 <div class="flex items-baseline justify-between gap-4 py-3">
-                                    <dt class="text-sm font-medium text-gray-600">Sharpe ratio</dt>
+                                    <dt class="text-sm font-medium text-gray-600" title="Annualized standard deviation of daily returns; lower means a smoother ride">Volatility (ann.)</dt>
+                                    <dd class="text-xl font-bold tabular-nums text-slate-900">
+                                        {{ annualizedVolatility !== null ? (annualizedVolatility * 100).toFixed(1) + '%' : '—' }}
+                                    </dd>
+                                </div>
+                                <div class="flex items-baseline justify-between gap-4 py-3">
+                                    <dt class="text-sm font-medium text-gray-600" title="Excess return per unit of total volatility; ≥1 is good">Sharpe ratio</dt>
                                     <dd class="text-xl font-bold tabular-nums" :class="sharpeValueClass">
                                         {{ summaryMetrics.sharpe_ratio !== null ? Number(summaryMetrics.sharpe_ratio).toFixed(2) : '—' }}
                                     </dd>
                                 </div>
                                 <div class="flex items-baseline justify-between gap-4 py-3">
-                                    <dt class="text-sm font-medium text-gray-600">Sortino ratio</dt>
+                                    <dt class="text-sm font-medium text-gray-600" title="Excess return per unit of downside volatility only; ≥1 is good">Sortino ratio</dt>
                                     <dd class="text-xl font-bold tabular-nums" :class="sortinoValueClass">
                                         {{ sortinoRatio !== null ? sortinoRatio.toFixed(2) : '—' }}
                                     </dd>
                                 </div>
                                 <div class="flex items-baseline justify-between gap-4 py-3">
-                                    <dt class="text-sm font-medium text-gray-600">Calmar ratio</dt>
+                                    <dt class="text-sm font-medium text-gray-600" title="CAGR divided by max drawdown — return earned per unit of worst pain; ≥1 is good">Calmar ratio</dt>
                                     <dd class="text-xl font-bold tabular-nums" :class="calmarValueClass">
                                         {{ calmarRatio !== null ? calmarRatio.toFixed(2) : '—' }}
                                     </dd>
                                 </div>
                                 <div class="flex items-baseline justify-between gap-4 py-3">
-                                    <dt class="text-sm font-medium text-gray-600">Ulcer index</dt>
+                                    <dt class="text-sm font-medium text-gray-600" title="RMS depth of all drawdowns — depth and duration of pain combined; lower is better">Ulcer index</dt>
                                     <dd class="text-xl font-bold tabular-nums text-slate-900">
                                         {{ summaryMetrics.ulcer_index !== null ? Number(summaryMetrics.ulcer_index).toFixed(2) : '—' }}
                                     </dd>
@@ -321,7 +412,7 @@
                             </div>
                             <dl class="relative divide-y divide-sky-100/60">
                                 <div class="flex items-baseline justify-between gap-4 py-3">
-                                    <dt class="text-sm font-medium text-gray-600">Win rate</dt>
+                                    <dt class="text-sm font-medium text-gray-600" title="Share of trade cycles that closed (or are sitting) in profit">Win rate</dt>
                                     <dd class="text-right">
                                         <div class="text-xl font-bold tabular-nums" :class="winRateValueClass">
                                             {{ summaryMetrics.winners_percentage !== null ? Number(summaryMetrics.winners_percentage).toFixed(1) + '%' : '—' }}
@@ -332,13 +423,36 @@
                                     </dd>
                                 </div>
                                 <div class="flex items-baseline justify-between gap-4 py-3">
-                                    <dt class="text-sm font-medium text-gray-600">Profit factor</dt>
+                                    <dt class="text-sm font-medium text-gray-600" title="Gross profits ÷ gross losses across trade cycles; ≥1.5 is good, below 1 loses money">Profit factor</dt>
                                     <dd class="text-xl font-bold tabular-nums" :class="profitFactorValueClass">
                                         {{ summaryMetrics.profit_factor !== null ? Number(summaryMetrics.profit_factor).toFixed(2) + '×' : '—' }}
                                     </dd>
                                 </div>
                                 <div class="flex items-baseline justify-between gap-4 py-3">
-                                    <dt class="text-sm font-medium text-gray-600">K-ratio</dt>
+                                    <dt class="text-sm font-medium text-gray-600" title="Average P&L of winning positions vs losing positions">Avg win / loss</dt>
+                                    <dd class="text-right text-xl font-bold tabular-nums text-slate-900">
+                                        <template v-if="avgWinLoss !== null">
+                                            <span class="text-emerald-700">{{ formatCurrencyShort(avgWinLoss.win) }}</span>
+                                            <span class="mx-1 font-normal text-gray-300">/</span>
+                                            <span class="text-red-700">{{ formatCurrencyShort(avgWinLoss.loss) }}</span>
+                                        </template>
+                                        <template v-else>—</template>
+                                    </dd>
+                                </div>
+                                <div class="flex items-baseline justify-between gap-4 py-3">
+                                    <dt class="text-sm font-medium text-gray-600" title="Average net P&L per trade cycle — what a typical position earned">Expectancy</dt>
+                                    <dd class="text-xl font-bold tabular-nums" :class="expectancy !== null && expectancy >= 0 ? 'text-emerald-700' : 'text-red-700'">
+                                        {{ expectancy !== null ? formatCurrencyShort(expectancy) : '—' }}
+                                    </dd>
+                                </div>
+                                <div class="flex items-baseline justify-between gap-4 py-3">
+                                    <dt class="text-sm font-medium text-gray-600" title="Average time a position stays held — sanity check on your rebalance settings">Avg holding</dt>
+                                    <dd class="text-xl font-bold tabular-nums text-slate-900">
+                                        {{ avgHoldingDays !== null ? formatHoldingPeriod(avgHoldingDays) : '—' }}
+                                    </dd>
+                                </div>
+                                <div class="flex items-baseline justify-between gap-4 py-3">
+                                    <dt class="text-sm font-medium text-gray-600" title="Consistency of the equity curve (slope of log NAV ÷ its error); above 0 is good, higher is steadier">K-ratio</dt>
                                     <dd class="text-xl font-bold tabular-nums" :class="kRatioValueClass">
                                         {{ summaryMetrics.k_ratio !== null ? Number(summaryMetrics.k_ratio).toFixed(2) : '—' }}
                                     </dd>
@@ -358,31 +472,32 @@
                         <span>
                             <span class="font-semibold text-amber-700">{{ formatCurrencyShort(summaryMetrics.total_charges_paid) }}</span>
                             charges
-                            <span v-if="chargesPctOfFinal !== null" class="text-gray-400">({{ chargesPctOfFinal }}% of final value)</span>
+                            <span v-if="chargesPctOfCapital !== null" class="text-gray-400">({{ chargesPctOfCapital }}% of initial capital)</span>
                         </span>
                         <template v-if="dailySnapshots && dailySnapshots.length > 0">
                             <span class="text-gray-300" aria-hidden="true">·</span>
                             <span>
                                 <span class="font-semibold text-gray-800">{{ cashStats.avg.toFixed(1) }}%</span>
                                 avg cash
+                                <span class="text-gray-400">(peak {{ cashStats.max.toFixed(1) }}%)</span>
                             </span>
                         </template>
                     </div>
                 </div>
 
                 <!-- NAV Chart (DEFERRED — dailySnapshots) -->
-                <div id="bt-nav" class="scroll-mt-14">
+                <div id="bt-nav" class="scroll-mt-28">
                 <Deferred data="dailySnapshots">
                     <template #fallback>
-                        <div class="rounded-xl bg-white p-6 shadow-xs ring-1 ring-gray-100">
+                        <div class="rounded-xl bg-white p-6 shadow-xs ring-1 ring-gray-200">
                             <div class="mb-4 flex items-center justify-between">
                                 <div class="h-4 w-24 animate-pulse rounded bg-gray-200"></div>
                                 <div class="h-8 w-48 animate-pulse rounded bg-gray-100"></div>
                             </div>
-                            <div class="h-[350px] animate-pulse rounded-lg bg-gray-100"></div>
+                            <div class="h-[500px] animate-pulse rounded-lg bg-gray-100"></div>
                         </div>
                     </template>
-                    <div class="rounded-xl bg-white p-6 shadow-xs ring-1 ring-gray-100">
+                    <div class="rounded-xl bg-white p-6 shadow-xs ring-1 ring-gray-200">
                         <div class="mb-4 flex items-center justify-between">
                             <h2 class="text-sm font-semibold uppercase tracking-wide text-gray-500">NAV Chart</h2>
                             <div class="flex items-center gap-2">
@@ -399,30 +514,35 @@
                                 <span v-if="loadingBenchmark" class="text-xs text-gray-400">Loading...</span>
                                 <a
                                     :href="`/backtests/${backtest.id}/csv/nav`"
-                                    class="ml-2 text-xs font-medium text-purple-600 hover:underline"
+                                    class="ml-2 whitespace-nowrap text-xs font-medium text-purple-600 hover:underline"
                                 >
-                                    CSV
+                                    Download CSV
                                 </a>
                             </div>
                         </div>
-                        <BacktestNavChart :daily-snapshots="dailySnapshots" :benchmark-data="benchmarkData" :sync-group="chartSync" />
+                        <BacktestNavChart
+                            :daily-snapshots="dailySnapshots"
+                            :benchmark-data="benchmarkData"
+                            :benchmark-name="selectedBenchmarkName"
+                            :sync-group="chartSync"
+                        />
 
                         <!-- Benchmark comparison metrics -->
                         <div v-if="benchmarkData.length > 0" class="mt-4 flex flex-wrap gap-6 border-t border-gray-100 pt-4 text-sm">
                             <div>
-                                <span class="text-gray-500">Benchmark CAGR: </span>
-                                <span :class="benchmarkMetrics.cagr >= 0 ? 'text-green-700' : 'text-red-700'" class="font-semibold">
+                                <span class="text-gray-500">{{ selectedBenchmarkName }} CAGR: </span>
+                                <span :class="benchmarkMetrics.cagr >= 0 ? 'text-emerald-700' : 'text-red-700'" class="font-semibold">
                                     {{ formatPercent(benchmarkMetrics.cagr) }}
                                 </span>
                             </div>
                             <div>
-                                <span class="text-gray-500">Alpha: </span>
-                                <span :class="benchmarkMetrics.alpha >= 0 ? 'text-green-700' : 'text-red-700'" class="font-semibold">
+                                <span class="text-gray-500">Alpha vs {{ selectedBenchmarkName }} (CAGR): </span>
+                                <span :class="benchmarkMetrics.alpha >= 0 ? 'text-emerald-700' : 'text-red-700'" class="font-semibold">
                                     {{ formatPercent(benchmarkMetrics.alpha) }}
                                 </span>
                             </div>
                             <div>
-                                <span class="text-gray-500">Benchmark Max DD: </span>
+                                <span class="text-gray-500">{{ selectedBenchmarkName }} Max DD: </span>
                                 <span class="font-semibold text-red-700">{{ formatPercent(benchmarkMetrics.maxDrawdown) }}</span>
                             </div>
                         </div>
@@ -432,15 +552,15 @@
                 </div>
 
                 <!-- Drawdown Chart (DEFERRED — dailySnapshots, same group, already loaded) -->
-                <div id="bt-drawdown" class="scroll-mt-14">
+                <div id="bt-drawdown" class="scroll-mt-28">
                 <Deferred data="dailySnapshots">
                     <template #fallback>
-                        <div class="rounded-xl bg-white p-6 shadow-xs ring-1 ring-gray-100">
+                        <div class="rounded-xl bg-white p-6 shadow-xs ring-1 ring-gray-200">
                             <div class="mb-4 h-4 w-24 animate-pulse rounded bg-gray-200"></div>
-                            <div class="h-[200px] animate-pulse rounded-lg bg-gray-100"></div>
+                            <div class="h-[420px] animate-pulse rounded-lg bg-gray-100"></div>
                         </div>
                     </template>
-                    <div class="rounded-xl bg-white p-6 shadow-xs ring-1 ring-gray-100">
+                    <div class="rounded-xl bg-white p-6 shadow-xs ring-1 ring-gray-200">
                         <h2 class="mb-4 text-sm font-semibold uppercase tracking-wide text-gray-500">Drawdown</h2>
                         <DrawdownChart
                             :daily-snapshots="dailySnapshots"
@@ -475,6 +595,7 @@
                                             </td>
                                             <td class="whitespace-nowrap py-2 pl-4 text-right tabular-nums text-gray-600">
                                                 {{ dd.daysUnderwater.toLocaleString('en-IN') }} days
+                                                <span class="text-gray-400">({{ formatHoldingPeriod(dd.daysUnderwater) }})</span>
                                             </td>
                                         </tr>
                                     </tbody>
@@ -486,26 +607,40 @@
                 </div>
 
                 <!-- Cash Allocation Chart (DEFERRED — dailySnapshots, full width) -->
-                <div id="bt-cash" class="scroll-mt-14">
+                <div id="bt-cash" class="scroll-mt-28">
                 <Deferred data="dailySnapshots">
                     <template #fallback>
-                        <div class="rounded-xl bg-white p-6 shadow-xs ring-1 ring-gray-100">
+                        <div class="rounded-xl bg-white p-6 shadow-xs ring-1 ring-gray-200">
                             <div class="mb-4 h-4 w-48 animate-pulse rounded bg-gray-200"></div>
-                            <div class="h-[250px] animate-pulse rounded-lg bg-gray-100"></div>
+                            <div class="h-[300px] animate-pulse rounded-lg bg-gray-100"></div>
                         </div>
                     </template>
-                    <div class="rounded-xl bg-white p-6 shadow-xs ring-1 ring-gray-100">
-                        <h2 class="mb-4 text-sm font-semibold uppercase tracking-wide text-gray-500">Cash Allocation Over Time</h2>
-                        <CashAllocationChart :daily-snapshots="dailySnapshots" :sync-group="chartSync" />
+                    <div class="rounded-xl bg-white p-6 shadow-xs ring-1 ring-gray-200">
+                        <div class="flex items-center justify-between" :class="showCashChart ? 'mb-4' : ''">
+                            <h2 class="text-sm font-semibold uppercase tracking-wide text-gray-500">Cash Allocation Over Time</h2>
+                            <button
+                                v-if="cashStaysNegligible"
+                                type="button"
+                                class="cursor-pointer text-xs font-medium text-purple-600 hover:underline"
+                                @click="forceShowCashChart = !forceShowCashChart"
+                            >
+                                {{ showCashChart ? 'Hide chart' : 'Show chart anyway' }}
+                            </button>
+                        </div>
+                        <p v-if="!showCashChart" class="text-sm text-gray-500">
+                            The strategy stayed fully invested — cash never exceeded
+                            {{ cashStats.max.toFixed(1) }}% of the portfolio ({{ cashStats.avg.toFixed(1) }}% on average).
+                        </p>
+                        <CashAllocationChart v-if="showCashChart" :daily-snapshots="dailySnapshots" :sync-group="chartSync" />
                     </div>
                 </Deferred>
                 </div>
 
                 <!-- Monthly Returns Heatmap (DEFERRED — dailySnapshots) -->
-                <div id="bt-monthly" class="scroll-mt-14">
+                <div id="bt-monthly" class="scroll-mt-28">
                 <Deferred data="dailySnapshots">
                     <template #fallback>
-                        <div class="rounded-xl bg-white p-6 shadow-xs ring-1 ring-gray-100">
+                        <div class="rounded-xl bg-white p-6 shadow-xs ring-1 ring-gray-200">
                             <div class="mb-4 h-4 w-32 animate-pulse rounded bg-gray-200"></div>
                             <div class="space-y-2">
                                 <div v-for="n in 4" :key="n" class="h-8 animate-pulse rounded bg-gray-100"></div>
@@ -514,44 +649,52 @@
                     </template>
                     <div
                         v-if="monthlyReturns.length > 0"
-                        class="rounded-xl bg-white p-6 shadow-xs ring-1 ring-gray-100"
+                        class="rounded-xl bg-white p-6 shadow-xs ring-1 ring-gray-200"
                     >
-                        <h2 class="mb-4 text-sm font-semibold uppercase tracking-wide text-gray-500">Monthly Returns</h2>
+                        <div class="mb-4 flex flex-wrap items-baseline justify-between gap-2">
+                            <h2 class="text-sm font-semibold uppercase tracking-wide text-gray-500">Monthly Returns</h2>
+                            <p v-if="bestWorstYear" class="text-xs text-gray-500">
+                                Best year <span class="font-semibold text-emerald-700">{{ bestWorstYear.best.year }} {{ formatSignedPct(bestWorstYear.best.value) }}</span>
+                                <span class="mx-1 text-gray-300">·</span>
+                                Worst <span class="font-semibold text-red-700">{{ bestWorstYear.worst.year }} {{ formatSignedPct(bestWorstYear.worst.value) }}</span>
+                            </p>
+                        </div>
                         <div class="overflow-x-auto">
-                            <table class="min-w-full text-sm">
+                            <table class="min-w-full text-xs">
                                 <thead>
                                     <tr>
-                                        <th class="px-3 py-2 text-left font-medium text-gray-500">Year</th>
-                                        <th v-for="month in monthNames" :key="month" class="px-3 py-2 text-right font-medium text-gray-500">
+                                        <th class="sticky left-0 z-10 bg-white px-2 py-2 text-left font-medium text-gray-500">Year</th>
+                                        <th v-for="month in monthNames" :key="month" class="px-2 py-2 text-right font-medium text-gray-500">
                                             {{ month }}
                                         </th>
-                                        <th class="px-3 py-2 text-right font-semibold text-gray-700">Year</th>
-                                        <th class="px-3 py-2 text-right font-medium text-gray-500">Nifty 50</th>
-                                        <th class="px-3 py-2 text-right font-semibold text-gray-700">α</th>
+                                        <th class="px-2 py-2 text-right font-semibold text-gray-700">Total</th>
+                                        <th class="px-2 py-2 text-right font-medium text-gray-500">Nifty 50</th>
+                                        <th class="whitespace-nowrap px-2 py-2 text-right font-semibold text-gray-700">α vs Nifty 50</th>
                                     </tr>
                                 </thead>
                                 <tbody>
                                     <tr v-for="row in monthlyReturns" :key="row.year">
-                                        <td class="whitespace-nowrap px-3 py-2 font-medium text-gray-900">{{ row.year }}</td>
+                                        <td class="sticky left-0 z-10 whitespace-nowrap bg-white px-2 py-2 font-medium text-gray-900">{{ row.year }}</td>
                                         <td
                                             v-for="(val, idx) in row.months"
                                             :key="idx"
-                                            class="whitespace-nowrap px-3 py-2 text-right"
+                                            class="whitespace-nowrap px-2 py-2 text-right tabular-nums"
                                             :class="monthCellClass(val)"
+                                            :title="monthCellTitle(row.year, idx, val)"
                                         >
-                                            {{ val === null ? '-' : (val >= 0 ? '+' : '') + (val * 100).toFixed(1) + '%' }}
+                                            {{ val === null ? '—' : (val >= 0 ? '+' : '') + (val * 100).toFixed(1) + '%' }}
                                         </td>
                                         <td
-                                            class="whitespace-nowrap px-3 py-2 text-right font-semibold"
-                                            :class="row.yearReturn >= 0 ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'"
+                                            class="whitespace-nowrap px-2 py-2 text-right font-semibold tabular-nums"
+                                            :class="row.yearReturn >= 0 ? 'bg-emerald-100 text-emerald-800' : 'bg-red-100 text-red-800'"
                                         >
                                             {{ (row.yearReturn >= 0 ? '+' : '') + (row.yearReturn * 100).toFixed(1) + '%' }}
                                         </td>
-                                        <td class="whitespace-nowrap px-3 py-2 text-right text-gray-600">
+                                        <td class="whitespace-nowrap px-2 py-2 text-right tabular-nums text-gray-600">
                                             {{ row.benchReturn === null ? '—' : (row.benchReturn >= 0 ? '+' : '') + (row.benchReturn * 100).toFixed(1) + '%' }}
                                         </td>
                                         <td
-                                            class="whitespace-nowrap px-3 py-2 text-right font-semibold"
+                                            class="whitespace-nowrap px-2 py-2 text-right font-semibold tabular-nums"
                                             :class="row.alpha === null ? 'text-gray-300' : row.alpha >= 0 ? 'text-emerald-700' : 'text-red-700'"
                                         >
                                             {{ row.alpha === null ? '—' : (row.alpha >= 0 ? '+' : '') + (row.alpha * 100).toFixed(1) + '%' }}
@@ -566,12 +709,15 @@
                 </div>
 
                 <!-- Rolling Returns (IMMEDIATE — from summaryMetrics) -->
-                <div id="bt-rolling" class="grid scroll-mt-14 grid-cols-1 gap-6">
+                <div id="bt-rolling" class="grid scroll-mt-28 grid-cols-1 gap-6">
                     <div
                         v-if="hasRollingReturns"
-                        class="rounded-xl bg-white p-6 shadow-xs ring-1 ring-gray-100"
+                        class="rounded-xl bg-white p-6 shadow-xs ring-1 ring-gray-200"
                     >
                         <h2 class="mb-4 text-sm font-semibold uppercase tracking-wide text-gray-500">Rolling Returns (Annualized)</h2>
+                        <!-- Deliberately NOT in the shared sync group: its time axis starts
+                             ~1 year after the snapshot charts, and the group syncs
+                             index-based logical ranges which would misalign the dates. -->
                         <RollingReturnsChart
                             :one-year="summaryMetrics.rolling_returns_one_year"
                             :three-year="summaryMetrics.rolling_returns_three_year"
@@ -610,10 +756,10 @@
                 </div>
 
                 <!-- Positions: final holdings + top gainers & losers -->
-                <div id="bt-positions" class="scroll-mt-14 space-y-6">
+                <div id="bt-positions" class="scroll-mt-28 space-y-6">
 
                 <!-- Final Holdings (IMMEDIATE — from summaryMetrics) -->
-                <div v-if="finalHoldings.length > 0" class="rounded-xl bg-white p-6 shadow-xs ring-1 ring-gray-100">
+                <div v-if="finalHoldings.length > 0" class="rounded-xl bg-white p-6 shadow-xs ring-1 ring-gray-200">
                     <div class="mb-4 flex flex-wrap items-baseline justify-between gap-2">
                         <h2 class="text-sm font-semibold uppercase tracking-wide text-gray-500">
                             Final Holdings
@@ -624,13 +770,25 @@
                         <table class="min-w-full text-sm">
                             <thead>
                                 <tr class="border-b border-gray-200">
-                                    <th class="pb-2 pr-4 text-left font-medium text-gray-500">Symbol</th>
-                                    <th class="px-4 pb-2 text-left font-medium text-gray-500">Entry</th>
-                                    <th class="px-4 pb-2 text-right font-medium text-gray-500">Held</th>
-                                    <th class="px-4 pb-2 text-right font-medium text-gray-500">Invested</th>
-                                    <th class="px-4 pb-2 text-right font-medium text-gray-500">Value</th>
+                                    <th class="pb-2 pr-4 text-left font-medium text-gray-500">
+                                        <button type="button" class="cursor-pointer hover:text-gray-700" @click="setHoldingsSort('symbol')">Symbol{{ holdingsSortIndicator('symbol') }}</button>
+                                    </th>
+                                    <th class="px-4 pb-2 text-left font-medium text-gray-500">
+                                        <button type="button" class="cursor-pointer hover:text-gray-700" @click="setHoldingsSort('entry_date')">Entry{{ holdingsSortIndicator('entry_date') }}</button>
+                                    </th>
+                                    <th class="px-4 pb-2 text-right font-medium text-gray-500">
+                                        <button type="button" class="cursor-pointer hover:text-gray-700" @click="setHoldingsSort('holding_days')">Held{{ holdingsSortIndicator('holding_days') }}</button>
+                                    </th>
+                                    <th class="px-4 pb-2 text-right font-medium text-gray-500">
+                                        <button type="button" class="cursor-pointer hover:text-gray-700" @click="setHoldingsSort('buy_value')">Invested{{ holdingsSortIndicator('buy_value') }}</button>
+                                    </th>
+                                    <th class="px-4 pb-2 text-right font-medium text-gray-500">
+                                        <button type="button" class="cursor-pointer hover:text-gray-700" @click="setHoldingsSort('unrealized_value')">Value{{ holdingsSortIndicator('unrealized_value') }}</button>
+                                    </th>
                                     <th class="px-4 pb-2 text-right font-medium text-gray-500">Weight</th>
-                                    <th class="pb-2 pl-4 text-right font-medium text-gray-500">P&L</th>
+                                    <th class="pb-2 pl-4 text-right font-medium text-gray-500">
+                                        <button type="button" class="cursor-pointer hover:text-gray-700" @click="setHoldingsSort('pnl_pct')">P&L{{ holdingsSortIndicator('pnl_pct') }}</button>
+                                    </th>
                                 </tr>
                             </thead>
                             <tbody class="divide-y divide-gray-100">
@@ -644,16 +802,21 @@
                                             {{ position.symbol }}
                                         </a>
                                     </td>
-                                    <td class="whitespace-nowrap px-4 py-2 text-gray-600">{{ formatShortDate(position.entry_date) }}</td>
+                                    <td class="whitespace-nowrap px-4 py-2 text-gray-600">{{ formatMonthYear(position.entry_date) }}</td>
                                     <td class="whitespace-nowrap px-4 py-2 text-right text-gray-600">{{ formatHoldingPeriod(position.holding_days) }}</td>
                                     <td class="whitespace-nowrap px-4 py-2 text-right tabular-nums text-gray-600">{{ formatCurrencyShort(position.buy_value) }}</td>
                                     <td class="whitespace-nowrap px-4 py-2 text-right font-medium tabular-nums text-gray-900">{{ formatCurrencyShort(position.unrealized_value) }}</td>
                                     <td class="whitespace-nowrap px-4 py-2 text-right tabular-nums text-gray-700">{{ holdingWeight(position.unrealized_value) }}</td>
-                                    <td
-                                        class="whitespace-nowrap py-2 pl-4 text-right font-semibold tabular-nums"
-                                        :class="position.net_pnl >= 0 ? 'text-green-700' : 'text-red-700'"
-                                    >
-                                        {{ position.pnl_pct >= 0 ? '+' : '' }}{{ position.pnl_pct.toFixed(1) }}%
+                                    <td class="whitespace-nowrap py-2 pl-4 text-right">
+                                        <div
+                                            class="font-semibold tabular-nums"
+                                            :class="position.net_pnl >= 0 ? 'text-emerald-700' : 'text-red-700'"
+                                        >
+                                            {{ position.pnl_pct >= 0 ? '+' : '' }}{{ position.pnl_pct.toFixed(1) }}%
+                                        </div>
+                                        <div class="text-xs tabular-nums" :class="position.net_pnl >= 0 ? 'text-emerald-600' : 'text-red-600'">
+                                            {{ formatCurrencyShort(position.net_pnl) }}
+                                        </div>
                                     </td>
                                 </tr>
                             </tbody>
@@ -664,19 +827,47 @@
                                     <td class="whitespace-nowrap px-4 py-2 text-right tabular-nums text-gray-700">{{ holdingWeight(finalCash) }}</td>
                                     <td></td>
                                 </tr>
+                                <tr class="border-t border-gray-200">
+                                    <td class="py-2 pr-4 font-semibold text-gray-700" colspan="3">Total</td>
+                                    <td class="whitespace-nowrap px-4 py-2 text-right font-semibold tabular-nums text-gray-900">{{ formatCurrencyShort(holdingsTotals.invested) }}</td>
+                                    <td class="whitespace-nowrap px-4 py-2 text-right font-semibold tabular-nums text-gray-900">{{ formatCurrencyShort(summaryMetrics.final_value) }}</td>
+                                    <td class="whitespace-nowrap px-4 py-2 text-right font-semibold tabular-nums text-gray-700">100.0%</td>
+                                    <td></td>
+                                </tr>
                             </tfoot>
                         </table>
                     </div>
                 </div>
 
                 <!-- Top Gainers & Losers (IMMEDIATE — from summaryMetrics) -->
-                <div
-                    v-if="summaryMetrics.stock_performance && summaryMetrics.stock_performance.length > 0"
-                    class="grid grid-cols-1 gap-6 lg:grid-cols-2"
-                >
+                <div v-if="summaryMetrics.stock_performance && summaryMetrics.stock_performance.length > 0">
+                    <div class="mb-3 flex items-center justify-end gap-2 text-xs">
+                        <span class="text-gray-500">Rank by:</span>
+                        <div class="inline-flex rounded-md border border-gray-300 bg-white">
+                            <button
+                                type="button"
+                                class="cursor-pointer px-3 py-1 font-medium first:rounded-l-md last:rounded-r-md"
+                                :class="gainersSortMode === 'pct' ? 'bg-purple-600 text-white' : 'text-gray-700 hover:bg-gray-50'"
+                                :aria-pressed="gainersSortMode === 'pct'"
+                                @click="gainersSortMode = 'pct'"
+                            >
+                                % return
+                            </button>
+                            <button
+                                type="button"
+                                class="cursor-pointer px-3 py-1 font-medium first:rounded-l-md last:rounded-r-md"
+                                :class="gainersSortMode === 'abs' ? 'bg-purple-600 text-white' : 'text-gray-700 hover:bg-gray-50'"
+                                :aria-pressed="gainersSortMode === 'abs'"
+                                @click="gainersSortMode = 'abs'"
+                            >
+                                ₹ P&L
+                            </button>
+                        </div>
+                    </div>
+                    <div class="grid grid-cols-1 gap-6 lg:grid-cols-2">
                     <!-- Top 20 Gainers -->
-                    <div class="rounded-xl bg-white p-6 shadow-xs ring-1 ring-gray-100">
-                        <h2 class="mb-4 text-sm font-semibold uppercase tracking-wide text-green-700">Top 20 Gainers</h2>
+                    <div class="rounded-xl bg-white p-6 shadow-xs ring-1 ring-gray-200">
+                        <h2 class="mb-4 text-sm font-semibold uppercase tracking-wide text-emerald-700">Top 20 Gainers</h2>
                         <ul class="divide-y divide-gray-100">
                             <li
                                 v-for="(position, index) in topGainers"
@@ -696,9 +887,9 @@
                                         >held</span>
                                     </div>
                                     <div class="mt-0.5 text-xs text-gray-500">
-                                        {{ formatShortDate(position.entry_date) }}
+                                        {{ formatMonthYear(position.entry_date) }}
                                         <span class="text-gray-300">→</span>
-                                        {{ position.exit_date ? formatShortDate(position.exit_date) : 'now' }}
+                                        {{ position.exit_date ? formatMonthYear(position.exit_date) : 'now' }}
                                         <span class="mx-1 text-gray-300">·</span>
                                         <span class="font-medium text-gray-600">{{ formatHoldingPeriod(position.holding_days) }}</span>
                                     </div>
@@ -707,15 +898,15 @@
                                     </div>
                                 </div>
                                 <div class="shrink-0 text-right">
-                                    <div class="font-semibold tabular-nums text-green-700">+{{ position.pnl_pct.toFixed(1) }}%</div>
-                                    <div class="mt-0.5 text-xs tabular-nums text-green-600">{{ formatCurrencyShort(position.net_pnl) }}</div>
+                                    <div class="font-semibold tabular-nums text-emerald-700">+{{ position.pnl_pct.toFixed(1) }}%</div>
+                                    <div class="mt-0.5 text-xs tabular-nums text-emerald-600">{{ formatCurrencyShort(position.net_pnl) }}</div>
                                 </div>
                             </li>
                         </ul>
                     </div>
 
                     <!-- Top 20 Losers -->
-                    <div class="rounded-xl bg-white p-6 shadow-xs ring-1 ring-gray-100">
+                    <div class="rounded-xl bg-white p-6 shadow-xs ring-1 ring-gray-200">
                         <h2 class="mb-4 text-sm font-semibold uppercase tracking-wide text-red-700">Top 20 Losers</h2>
                         <ul class="divide-y divide-gray-100">
                             <li
@@ -736,9 +927,9 @@
                                         >held</span>
                                     </div>
                                     <div class="mt-0.5 text-xs text-gray-500">
-                                        {{ formatShortDate(position.entry_date) }}
+                                        {{ formatMonthYear(position.entry_date) }}
                                         <span class="text-gray-300">→</span>
-                                        {{ position.exit_date ? formatShortDate(position.exit_date) : 'now' }}
+                                        {{ position.exit_date ? formatMonthYear(position.exit_date) : 'now' }}
                                         <span class="mx-1 text-gray-300">·</span>
                                         <span class="font-medium text-gray-600">{{ formatHoldingPeriod(position.holding_days) }}</span>
                                     </div>
@@ -753,22 +944,23 @@
                             </li>
                         </ul>
                     </div>
+                    </div>
                 </div>
 
                 </div>
 
                 <!-- Trade Log (DEFERRED — trades, separate parallel group) -->
-                <div id="bt-trades" class="scroll-mt-14">
+                <div id="bt-trades" class="scroll-mt-28">
                 <Deferred data="trades">
                     <template #fallback>
-                        <div class="rounded-xl bg-white p-6 shadow-xs ring-1 ring-gray-100">
+                        <div class="rounded-xl bg-white p-6 shadow-xs ring-1 ring-gray-200">
                             <div class="mb-4 h-4 w-24 animate-pulse rounded bg-gray-200"></div>
                             <div class="space-y-2">
                                 <div v-for="n in 8" :key="n" class="h-8 animate-pulse rounded bg-gray-100"></div>
                             </div>
                         </div>
                     </template>
-                    <div class="rounded-xl bg-white p-6 shadow-xs ring-1 ring-gray-100">
+                    <div class="rounded-xl bg-white p-6 shadow-xs ring-1 ring-gray-200">
                         <div class="mb-4 flex flex-wrap items-center justify-between gap-2">
                             <h2 class="text-sm font-semibold uppercase tracking-wide text-gray-500">
                                 Trade Log
@@ -793,6 +985,7 @@
             <BacktestSettingsForm
                 :form="form"
                 :running="backtest.status === 'running'"
+                :initial-capital="backtest.initial_capital"
                 :indices="indices"
                 :sort-by-options="sortByOptions"
                 :apply-filters-on-options="applyFiltersOnOptions"
@@ -813,8 +1006,9 @@
 <script setup lang="ts">
 import { Deferred, Head, router, useForm } from '@inertiajs/vue3';
 import { ArrowTrendingDownIcon, ArrowTrendingUpIcon, PlayIcon, ShieldExclamationIcon, SparklesIcon } from '@heroicons/vue/20/solid';
-import { computed, onMounted, onUnmounted, ref, watch } from 'vue';
+import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue';
 import PageHeader from '@/Components/PageHeader.vue';
+import { formatCurrencyShort, formatDate, formatHoldingPeriod, formatMonthYear, formatPercent } from '@/utils/format';
 import ErrorAlert from '@/Components/Alerts/ErrorAlert.vue';
 import InfoAlert from '@/Components/Alerts/InfoAlert.vue';
 import BacktestNavChart from '@/Pages/Backtests/partials/BacktestNavChart.vue';
@@ -836,23 +1030,31 @@ interface BenchmarkPoint {
     nav: number;
 }
 
-const props = defineProps<{
-    backtest: Backtest;
-    summaryMetrics: BacktestSummaryMetric | null;
-    dailySnapshots: BacktestDailySnapshot[];
-    defaultBenchmark: BenchmarkPoint[];
-    trades: BacktestTrade[];
-    benchmarkOptions: SelectOption[];
-    indices: SelectOption[];
-    sortByOptions: SelectOption[];
-    applyFiltersOnOptions: SelectOption[];
-    customFilterValueOptions: SelectOption[];
-    customFilterComparatorOptions: SelectOption[];
-    rebalanceFrequencyOptions: SelectOption[];
-    weightageOptions: SelectOption[];
-    cashCallOptions: SelectOption[];
-    cashCallIndexOptions: SelectOption[];
-}>();
+const props = withDefaults(
+    defineProps<{
+        backtest: Backtest;
+        summaryMetrics: BacktestSummaryMetric | null;
+        // Deferred Inertia props — absent on the first render while their groups load.
+        dailySnapshots?: BacktestDailySnapshot[];
+        defaultBenchmark?: BenchmarkPoint[];
+        trades?: BacktestTrade[];
+        benchmarkOptions: SelectOption[];
+        indices: SelectOption[];
+        sortByOptions: SelectOption[];
+        applyFiltersOnOptions: SelectOption[];
+        customFilterValueOptions: SelectOption[];
+        customFilterComparatorOptions: SelectOption[];
+        rebalanceFrequencyOptions: SelectOption[];
+        weightageOptions: SelectOption[];
+        cashCallOptions: SelectOption[];
+        cashCallIndexOptions: SelectOption[];
+    }>(),
+    {
+        dailySnapshots: () => [],
+        defaultBenchmark: () => [],
+        trades: () => [],
+    },
+);
 
 // --- Tabs ---
 
@@ -887,6 +1089,8 @@ const form = useForm({
     hold_above_dma_period: props.backtest.hold_above_dma_period,
     execute_next_trading_day: props.backtest.execute_next_trading_day,
     skip_circuit_trades: props.backtest.skip_circuit_trades,
+    exit_before_demerger: props.backtest.exit_before_demerger,
+    exit_on_be_series: props.backtest.exit_on_be_series,
     rebalance_frequency: props.backtest.rebalance_frequency,
     rebalance_day: props.backtest.rebalance_day,
     weightage: props.backtest.weightage,
@@ -987,10 +1191,42 @@ function saveAndRun(): void {
 }
 
 function destroy(): void {
-    if (confirm('Are you sure you want to delete this backtest?')) {
+    if (confirm(`Delete "${props.backtest.name}"? This permanently removes the backtest and all of its results, trades, and snapshots.`)) {
         router.delete(`/backtests/${props.backtest.id}`);
     }
 }
+
+const retrying = ref(false);
+
+function retryRun(): void {
+    router.post(`/backtests/${props.backtest.id}/run`, {}, {
+        preserveScroll: true,
+        onStart: () => (retrying.value = true),
+        onFinish: () => (retrying.value = false),
+    });
+}
+
+// --- Collapsible cards & error details ---
+
+const showStrategyRules = ref(props.backtest.status !== 'completed');
+const showErrorDetails = ref(false);
+
+// --- Unsaved-changes guards ---
+
+function handleBeforeUnload(event: BeforeUnloadEvent): void {
+    if (form.isDirty) {
+        event.preventDefault();
+    }
+}
+
+// Block in-app navigation away from this page while the form is dirty.
+// Same-path visits (polling reloads, deferred loads, saves) pass through.
+const removeNavigationGuard = router.on('before', (event) => {
+    const visit = event.detail.visit;
+    if (form.isDirty && visit.method === 'get' && visit.url.pathname !== window.location.pathname) {
+        return confirm('You have unsaved settings changes. Leave without saving?');
+    }
+});
 
 // --- Chart synchronization (NAV / drawdown / cash share range + crosshair) ---
 
@@ -998,29 +1234,71 @@ const chartSync = new ChartSyncGroup();
 
 // --- Section navigation ---
 
-const resultSections = [
-    { id: 'bt-overview', label: 'Overview' },
-    { id: 'bt-nav', label: 'NAV' },
-    { id: 'bt-drawdown', label: 'Drawdown' },
-    { id: 'bt-cash', label: 'Cash' },
-    { id: 'bt-monthly', label: 'Monthly' },
-    { id: 'bt-rolling', label: 'Rolling' },
-    { id: 'bt-positions', label: 'Positions' },
-    { id: 'bt-trades', label: 'Trades' },
-];
+// Only sections that actually render get a nav pill.
+const resultSections = computed(() => {
+    const sections = [
+        { id: 'bt-overview', label: 'Overview' },
+        { id: 'bt-nav', label: 'NAV' },
+        { id: 'bt-drawdown', label: 'Drawdown' },
+        { id: 'bt-cash', label: 'Cash' },
+    ];
+    if (monthlyReturns.value.length > 0) sections.push({ id: 'bt-monthly', label: 'Monthly' });
+    if (hasRollingReturns.value) sections.push({ id: 'bt-rolling', label: 'Rolling' });
+    if ((props.summaryMetrics?.stock_performance?.length ?? 0) > 0) sections.push({ id: 'bt-positions', label: 'Positions' });
+    sections.push({ id: 'bt-trades', label: 'Trades' });
+
+    return sections;
+});
 
 function scrollToSection(id: string): void {
     document.getElementById(id)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
 }
 
+// --- Scrollspy ---
+
+const activeSection = ref<string>('bt-overview');
+let sectionObserver: IntersectionObserver | null = null;
+
+function setupScrollspy(): void {
+    sectionObserver?.disconnect();
+    if (props.backtest.status !== 'completed') {
+        return;
+    }
+
+    sectionObserver = new IntersectionObserver(
+        (entries) => {
+            for (const entry of entries) {
+                if (entry.isIntersecting) {
+                    activeSection.value = entry.target.id;
+                }
+            }
+        },
+        // Track the band just below the sticky app header + section nav.
+        { rootMargin: '-130px 0px -65% 0px', threshold: 0 },
+    );
+
+    for (const section of resultSections.value) {
+        const el = document.getElementById(section.id);
+        if (el) {
+            sectionObserver.observe(el);
+        }
+    }
+}
+
+// NOTE: the watch on resultSections is registered at the very end of this
+// script — watch() evaluates its source immediately, and resultSections reads
+// computeds (monthlyReturns, hasRollingReturns) declared further down.
+
 // --- Stale results detection ---
 
+// Compares the strategy-settings timestamp against the run start, so renames
+// never flag results as stale and mid-run saves correctly do.
 const settingsChangedSinceRun = computed<boolean>(() => {
-    if (props.backtest.status !== 'completed' || !props.backtest.completed_at) {
+    if (props.backtest.status !== 'completed' || !props.backtest.settings_changed_at || !props.backtest.started_at) {
         return false;
     }
 
-    return new Date(props.backtest.updated_at).getTime() > new Date(props.backtest.completed_at).getTime();
+    return new Date(props.backtest.settings_changed_at).getTime() > new Date(props.backtest.started_at).getTime();
 });
 
 // --- Polling ---
@@ -1031,9 +1309,17 @@ onMounted(() => {
     if (props.backtest.status === 'running') {
         startPolling();
     }
+
+    window.addEventListener('beforeunload', handleBeforeUnload);
+    nextTick(setupScrollspy);
 });
 
-onUnmounted(() => stopPolling());
+onUnmounted(() => {
+    stopPolling();
+    window.removeEventListener('beforeunload', handleBeforeUnload);
+    removeNavigationGuard();
+    sectionObserver?.disconnect();
+});
 
 watch(() => props.backtest.status, (newStatus, oldStatus) => {
     if (newStatus === 'completed' && oldStatus !== 'completed') {
@@ -1064,6 +1350,10 @@ function stopPolling(): void {
 const selectedBenchmark = ref<string>('nifty-50');
 const benchmarkData = ref<BenchmarkPoint[]>([]);
 const loadingBenchmark = ref(false);
+
+const selectedBenchmarkName = computed<string>(
+    () => props.benchmarkOptions.find((opt) => String(opt.id) === selectedBenchmark.value)?.name ?? 'Benchmark',
+);
 
 async function fetchBenchmark(slug: string): Promise<void> {
     if (!slug) {
@@ -1130,76 +1420,63 @@ const benchmarkMetrics = computed(() => {
     return { cagr, alpha, maxDrawdown: maxDd, totalReturn };
 });
 
-// --- Formatters ---
-
-function formatDate(value: string): string {
-    return new Date(value).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' });
-}
-
-function formatPercent(value: number): string {
-    return (value * 100).toFixed(2) + '%';
-}
-
-function formatShortDate(value: string): string {
-    return new Date(value).toLocaleDateString('en-IN', { month: 'short', year: '2-digit' });
-}
-
-function formatHoldingPeriod(days: number): string {
-    if (days < 1) return '<1d';
-    if (days < 30) return `${days}d`;
-    if (days < 365) return `${Math.max(1, Math.round(days / 30))}mo`;
-    const years = Math.floor(days / 365);
-    const months = Math.round((days % 365) / 30);
-    return months === 0 ? `${years}y` : `${years}y ${months}mo`;
-}
-
-function formatCurrencyShort(value: number): string {
-    const v = Number(value);
-    const abs = Math.abs(v);
-    if (abs >= 10000000) return '₹' + (v / 10000000).toFixed(2) + ' Cr';
-    if (abs >= 100000) return '₹' + (v / 100000).toFixed(2) + ' L';
-    return '₹' + v.toLocaleString('en-IN', { maximumFractionDigits: 0 });
-}
+// --- Formatters (shared ones come from @/utils/format) ---
 
 function statusBadgeClass(status: string): Record<string, boolean> {
     return {
         'bg-gray-100 text-gray-700': status === 'pending',
         'bg-blue-100 text-blue-700': status === 'running',
-        'bg-green-100 text-green-700': status === 'completed',
+        'bg-emerald-100 text-emerald-700': status === 'completed',
         'bg-red-100 text-red-700': status === 'failed',
     };
 }
 
 function rollingReturnColor(value: number): string {
-    return value >= 0 ? 'text-green-700' : 'text-red-700';
+    return value >= 0 ? 'text-emerald-700' : 'text-red-700';
 }
 
 // --- Computed: derived metrics ---
 
+// Honest stages: 0-95% of the progress value is trading-day simulation,
+// the final 5% is metric computation.
 const progressStageLabel = computed(() => {
     const p = props.backtest.progress;
     if (p === 0) return 'Queued';
-    if (p < 20) return 'Warming up';
-    if (p < 50) return 'Crunching numbers';
-    if (p < 80) return 'Simulating portfolio';
-    if (p < 95) return 'Almost there';
-    return 'Finalizing metrics';
+    if (p < 95) return 'Simulating trades';
+    return 'Computing metrics';
 });
 
+const simulatedDaysPct = computed(() => Math.min(100, Math.round((props.backtest.progress / 95) * 100)));
+
 const growthMultiplier = computed(() => {
-    if (!props.summaryMetrics || props.backtest.initial_capital === 0) return '0.0';
-    return (props.summaryMetrics.final_value / props.backtest.initial_capital).toFixed(1);
+    const capital = Number(props.backtest.initial_capital);
+    if (!props.summaryMetrics || !capital) return '0.0';
+    return (Number(props.summaryMetrics.final_value) / capital).toFixed(1);
+});
+
+// Period comes from the summary record (available immediately) with the
+// deferred snapshots as a fallback for runs predating the persisted dates.
+const periodBounds = computed<{ start: string; end: string } | null>(() => {
+    const m = props.summaryMetrics;
+    if (m?.start_date && m?.end_date) {
+        return { start: m.start_date, end: m.end_date };
+    }
+    if (props.dailySnapshots && props.dailySnapshots.length >= 2) {
+        return { start: props.dailySnapshots[0].date, end: props.dailySnapshots[props.dailySnapshots.length - 1].date };
+    }
+
+    return null;
 });
 
 const backtestPeriod = computed(() => {
-    if (!props.dailySnapshots || props.dailySnapshots.length < 2) return '';
-    return formatDate(props.dailySnapshots[0].date) + ' to ' + formatDate(props.dailySnapshots[props.dailySnapshots.length - 1].date);
+    if (!periodBounds.value) return '';
+    return formatDate(periodBounds.value.start) + ' → ' + formatDate(periodBounds.value.end);
 });
 
 const backtestYears = computed(() => {
-    if (!props.dailySnapshots || props.dailySnapshots.length < 2) return '0';
-    const first = new Date(props.dailySnapshots[0].date);
-    const last = new Date(props.dailySnapshots[props.dailySnapshots.length - 1].date);
+    if (!periodBounds.value) return '0';
+    const first = new Date(periodBounds.value.start);
+    const last = new Date(periodBounds.value.end);
     return ((last.getTime() - first.getTime()) / (365.25 * 24 * 60 * 60 * 1000)).toFixed(1);
 });
 
@@ -1215,18 +1492,44 @@ const cashStats = computed(() => {
     return { min: Math.min(...pcts), avg: pcts.reduce((a, b) => a + b, 0) / pcts.length, max: Math.max(...pcts) };
 });
 
-// --- Computed: benchmark delta for hero chip (always Nifty 50) ---
+// A fully-invested no-cash-call strategy renders a flat-line cash chart —
+// collapse it to a one-line summary unless the user asks for it.
+const forceShowCashChart = ref(false);
+const cashStaysNegligible = computed(() => props.backtest.cash_call === 'no_cash_call' && cashStats.value.max < 10);
+const showCashChart = computed(() => !cashStaysNegligible.value || forceShowCashChart.value);
 
-const benchmarkDelta = computed<number | null>(() => {
+// --- Computed: hero benchmark stats (always the preloaded Nifty 50 series) ---
+
+const heroBenchmarkCagr = computed<number | null>(() => {
     const bench = props.defaultBenchmark;
-    if (!Array.isArray(bench) || bench.length < 2 || !props.summaryMetrics) return null;
+    if (!Array.isArray(bench) || bench.length < 2) return null;
     const first = bench[0];
     const last = bench[bench.length - 1];
     if (!first || !last || first.nav <= 0) return null;
     const years = (new Date(last.date).getTime() - new Date(first.date).getTime()) / (365.25 * 24 * 60 * 60 * 1000);
     if (years <= 0) return null;
-    const benchmarkCagr = Math.pow(last.nav / first.nav, 1 / years) - 1;
-    return props.summaryMetrics.cagr - benchmarkCagr;
+    return Math.pow(last.nav / first.nav, 1 / years) - 1;
+});
+
+const benchmarkDelta = computed<number | null>(() => {
+    if (heroBenchmarkCagr.value === null || !props.summaryMetrics) return null;
+    return props.summaryMetrics.cagr - heroBenchmarkCagr.value;
+});
+
+const benchmarkMaxDrawdownHero = computed<number | null>(() => {
+    const bench = props.defaultBenchmark;
+    if (!Array.isArray(bench) || bench.length < 2) return null;
+    let peak = 0;
+    let maxDd = 0;
+    for (const point of bench) {
+        if (point.nav > peak) peak = point.nav;
+        if (peak > 0) {
+            const dd = (point.nav - peak) / peak;
+            if (dd < maxDd) maxDd = dd;
+        }
+    }
+
+    return maxDd;
 });
 
 // --- Scorecard value classes ---
@@ -1249,13 +1552,16 @@ const winRateValueClass = computed<string>(() => {
 const profitFactorValueClass = computed<string>(() => {
     const v = props.summaryMetrics?.profit_factor;
     if (v === null || v === undefined) return 'text-gray-400';
-    return Number(v) >= 1 ? 'text-amber-700' : 'text-red-700';
+    const n = Number(v);
+    if (n >= 1.5) return 'text-emerald-700';
+    if (n >= 1) return 'text-slate-900';
+    return 'text-red-700';
 });
 
 const kRatioValueClass = computed<string>(() => {
     const v = props.summaryMetrics?.k_ratio;
     if (v === null || v === undefined) return 'text-gray-400';
-    return Number(v) > 0 ? 'text-indigo-700' : 'text-red-700';
+    return Number(v) > 0 ? 'text-emerald-700' : 'text-red-700';
 });
 
 const winnersLosersLabel = computed<string | null>(() => {
@@ -1266,26 +1572,30 @@ const winnersLosersLabel = computed<string | null>(() => {
 });
 
 const totalReturn = computed<number>(() =>
-    props.summaryMetrics ? (props.summaryMetrics.final_value - props.backtest.initial_capital) / props.backtest.initial_capital : 0,
+    props.summaryMetrics ? (Number(props.summaryMetrics.final_value) - Number(props.backtest.initial_capital)) / Number(props.backtest.initial_capital) : 0,
 );
 
-const chargesPctOfFinal = computed<string | null>(() => {
+// Denominated against initial capital — a fixed base that doesn't shrink the
+// apparent cost as the strategy performs better.
+const chargesPctOfCapital = computed<string | null>(() => {
     const m = props.summaryMetrics;
-    if (!m || !m.final_value) return null;
-    return ((Number(m.total_charges_paid) / Number(m.final_value)) * 100).toFixed(2);
+    const capital = Number(props.backtest.initial_capital);
+    if (!m || !capital) return null;
+    return ((Number(m.total_charges_paid) / capital) * 100).toFixed(2);
 });
 
-// Calmar = CAGR / |max drawdown| — return earned per unit of worst pain
+// Calmar = CAGR / |max drawdown| — return earned per unit of worst pain.
+// max_drawdown arrives as a decimal string, so coerce before the zero guard.
 const calmarRatio = computed<number | null>(() => {
     const m = props.summaryMetrics;
-    if (!m || !m.max_drawdown) return null;
-    return m.cagr / Math.abs(Number(m.max_drawdown));
+    if (!m || Number(m.max_drawdown) === 0) return null;
+    return Number(m.cagr) / Math.abs(Number(m.max_drawdown));
 });
 
-// Sortino = (annualized return − risk-free) / downside deviation; needs daily NAVs
-const sortinoRatio = computed<number | null>(() => {
+// Daily NAV return series — shared by Sortino and volatility below.
+const dailyReturns = computed<number[]>(() => {
     const snaps = props.dailySnapshots;
-    if (!snaps || snaps.length < 3) return null;
+    if (!snaps || snaps.length < 3) return [];
 
     const returns: number[] = [];
     for (let i = 1; i < snaps.length; i++) {
@@ -1293,6 +1603,13 @@ const sortinoRatio = computed<number | null>(() => {
         const curr = Number(snaps[i].nav);
         if (prev > 0) returns.push((curr - prev) / prev);
     }
+
+    return returns;
+});
+
+// Sortino = (annualized return − risk-free) / downside deviation
+const sortinoRatio = computed<number | null>(() => {
+    const returns = dailyReturns.value;
     if (returns.length < 2) return null;
 
     const mean = returns.reduce((a, b) => a + b, 0) / returns.length;
@@ -1301,6 +1618,41 @@ const sortinoRatio = computed<number | null>(() => {
 
     const riskFree = Number(props.backtest.cash_return_rate) / 100;
     return (mean * 252 - riskFree) / downside;
+});
+
+const annualizedVolatility = computed<number | null>(() => {
+    const returns = dailyReturns.value;
+    if (returns.length < 2) return null;
+
+    const mean = returns.reduce((a, b) => a + b, 0) / returns.length;
+    const variance = returns.reduce((a, r) => a + (r - mean) ** 2, 0) / (returns.length - 1);
+    return Math.sqrt(variance) * Math.sqrt(252);
+});
+
+const avgWinLoss = computed<{ win: number; loss: number } | null>(() => {
+    const perf = props.summaryMetrics?.stock_performance;
+    if (!perf || perf.length === 0) return null;
+    const wins = perf.filter((s) => s.net_pnl > 0);
+    const losses = perf.filter((s) => s.net_pnl < 0);
+    if (wins.length === 0 || losses.length === 0) return null;
+
+    return {
+        win: wins.reduce((a, s) => a + s.net_pnl, 0) / wins.length,
+        loss: losses.reduce((a, s) => a + s.net_pnl, 0) / losses.length,
+    };
+});
+
+// Average net P&L per trade cycle — what a typical position earned.
+const expectancy = computed<number | null>(() => {
+    const perf = props.summaryMetrics?.stock_performance;
+    if (!perf || perf.length === 0) return null;
+    return perf.reduce((a, s) => a + s.net_pnl, 0) / perf.length;
+});
+
+const avgHoldingDays = computed<number | null>(() => {
+    const perf = props.summaryMetrics?.stock_performance;
+    if (!perf || perf.length === 0) return null;
+    return Math.round(perf.reduce((a, s) => a + s.holding_days, 0) / perf.length);
 });
 
 const sortinoValueClass = computed<string>(() => {
@@ -1370,13 +1722,78 @@ const topDrawdowns = computed<DrawdownEpisode[]>(() => {
     return episodes.sort((a, b) => a.depth - b.depth).slice(0, 5);
 });
 
+// The drawdown episode matching the stored max drawdown. Matched by peak date
+// with a trough-date fallback — the two detectors can disagree on the peak
+// when NAV exactly retouches a prior high. Null until snapshots load.
+const maxDrawdownEpisode = computed<DrawdownEpisode | null>(() => {
+    const start = props.summaryMetrics?.max_drawdown_start_date?.substring(0, 10);
+    const end = props.summaryMetrics?.max_drawdown_end_date?.substring(0, 10);
+    if (!start) return null;
+    return topDrawdowns.value.find((d) => d.peakDate === start)
+        ?? topDrawdowns.value.find((d) => d.troughDate === end)
+        ?? null;
+});
+
+// "Peak 23 Jan 2018 → low 19 Mar 2020 (fell over 2y 2mo)"
+const maxDrawdownFallLabel = computed<string | null>(() => {
+    const m = props.summaryMetrics;
+    if (!m?.max_drawdown_start_date || !m?.max_drawdown_end_date) return null;
+    const fallDays = diffDays(m.max_drawdown_start_date.substring(0, 10), m.max_drawdown_end_date.substring(0, 10));
+    return `Peak ${formatDate(m.max_drawdown_start_date)} → low ${formatDate(m.max_drawdown_end_date)} (fell over ${formatHoldingPeriod(fallDays)})`;
+});
+
+// "New high again on 24 Aug 2020 — 2y 7mo underwater in total"
+// or, while the drawdown is still open when the backtest ends:
+// "Still underwater at backtest end — no new high for 2y 3mo"
+const maxDrawdownRecoveryLabel = computed<string | null>(() => {
+    const episode = maxDrawdownEpisode.value;
+    if (!episode) return null;
+    if (!episode.recoveryDate) {
+        return `Still underwater at backtest end — no new high for ${formatHoldingPeriod(episode.daysUnderwater)}`;
+    }
+    return `New high again on ${formatDate(episode.recoveryDate)} — ${formatHoldingPeriod(episode.daysUnderwater)} underwater in total`;
+});
+
 // --- Final holdings (still-open positions at the end of the run) ---
+
+type HoldingsSortKey = 'symbol' | 'entry_date' | 'holding_days' | 'buy_value' | 'unrealized_value' | 'pnl_pct';
+
+const holdingsSortKey = ref<HoldingsSortKey>('unrealized_value');
+const holdingsSortDir = ref<'asc' | 'desc'>('desc');
+
+function setHoldingsSort(key: HoldingsSortKey): void {
+    if (holdingsSortKey.value === key) {
+        holdingsSortDir.value = holdingsSortDir.value === 'asc' ? 'desc' : 'asc';
+    } else {
+        holdingsSortKey.value = key;
+        holdingsSortDir.value = key === 'symbol' || key === 'entry_date' ? 'asc' : 'desc';
+    }
+}
+
+function holdingsSortIndicator(key: HoldingsSortKey): string {
+    if (holdingsSortKey.value !== key) return '';
+    return holdingsSortDir.value === 'asc' ? ' ↑' : ' ↓';
+}
 
 const finalHoldings = computed(() => {
     const perf = props.summaryMetrics?.stock_performance;
     if (!perf) return [];
-    return perf.filter((s) => s.still_held).sort((a, b) => b.unrealized_value - a.unrealized_value);
+    const key = holdingsSortKey.value;
+    const dir = holdingsSortDir.value === 'asc' ? 1 : -1;
+
+    return perf.filter((s) => s.still_held).sort((a, b) => {
+        const av = a[key];
+        const bv = b[key];
+        if (typeof av === 'string' || typeof bv === 'string') {
+            return String(av).localeCompare(String(bv)) * dir;
+        }
+        return ((av as number) - (bv as number)) * dir;
+    });
 });
+
+const holdingsTotals = computed(() => ({
+    invested: finalHoldings.value.reduce((sum, p) => sum + Number(p.buy_value), 0),
+}));
 
 const finalCash = computed<number>(() => {
     const m = props.summaryMetrics;
@@ -1388,20 +1805,6 @@ const finalCash = computed<number>(() => {
 function holdingWeight(value: number): string {
     const total = Number(props.summaryMetrics?.final_value ?? 0);
     return total > 0 ? ((value / total) * 100).toFixed(1) + '%' : '—';
-}
-
-// --- Helpers ---
-
-function formatDrawdownPeriod(startIso: string, endIso: string | null): string {
-    if (!endIso) return formatDate(startIso);
-    const start = new Date(startIso);
-    const end = new Date(endIso);
-    if (start.getFullYear() === end.getFullYear()) {
-        const startStr = start.toLocaleDateString('en-IN', { day: '2-digit', month: 'short' });
-        const endStr = end.toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' });
-        return `${startStr} — ${endStr}`;
-    }
-    return `${formatDate(startIso)} — ${formatDate(endIso)}`;
 }
 
 // --- Computed: rolling returns ---
@@ -1432,30 +1835,96 @@ function rollingStats(period: 'one_year' | 'three_year' | 'five_year'): { min: n
 
 // --- Computed: gainers/losers + monthly returns heatmap ---
 
+// '%' ranks by return on the position; '₹' ranks by the trades that actually
+// moved the equity curve (pure % overweights tiny early positions).
+const gainersSortMode = ref<'pct' | 'abs'>('pct');
+
 const topGainers = computed(() => {
     const perf = props.summaryMetrics?.stock_performance;
     if (!perf) return [];
-    return [...perf].filter((s) => s.net_pnl > 0).sort((a, b) => b.pnl_pct - a.pnl_pct).slice(0, 20);
+    return [...perf]
+        .filter((s) => s.net_pnl > 0)
+        .sort((a, b) => (gainersSortMode.value === 'pct' ? b.pnl_pct - a.pnl_pct : b.net_pnl - a.net_pnl))
+        .slice(0, 20);
 });
 
 const topLosers = computed(() => {
     const perf = props.summaryMetrics?.stock_performance;
     if (!perf) return [];
-    return [...perf].filter((s) => s.net_pnl < 0).sort((a, b) => a.pnl_pct - b.pnl_pct).slice(0, 20);
+    return [...perf]
+        .filter((s) => s.net_pnl < 0)
+        .sort((a, b) => (gainersSortMode.value === 'pct' ? a.pnl_pct - b.pnl_pct : a.net_pnl - b.net_pnl))
+        .slice(0, 20);
 });
 
 const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 
-// Color intensity buckets so a +12% month reads differently from +0.3%
+// Color intensity buckets — momentum strategies routinely print ±10-15% months,
+// so the scale extends to ±12% and near-zero months read neutral, not green.
 function monthCellClass(val: number | null): string {
     if (val === null) return 'text-gray-300';
-    if (val >= 0.06) return 'bg-green-200 text-green-900';
-    if (val >= 0.02) return 'bg-green-100 text-green-800';
-    if (val >= 0) return 'bg-green-50 text-green-700';
+    if (Math.abs(val) < 0.0025) return 'bg-gray-50 text-gray-500';
+    if (val >= 0.12) return 'bg-emerald-300 text-emerald-900';
+    if (val >= 0.06) return 'bg-emerald-200 text-emerald-900';
+    if (val >= 0.02) return 'bg-emerald-100 text-emerald-800';
+    if (val > 0) return 'bg-emerald-50 text-emerald-700';
     if (val > -0.02) return 'bg-red-50 text-red-700';
     if (val > -0.06) return 'bg-red-100 text-red-800';
-    return 'bg-red-200 text-red-900';
+    if (val > -0.12) return 'bg-red-200 text-red-900';
+    return 'bg-red-300 text-red-900';
 }
+
+function formatSignedPct(val: number): string {
+    return (val >= 0 ? '+' : '') + (val * 100).toFixed(1) + '%';
+}
+
+// Benchmark returns per calendar month ('YYYY-MM' keyed) for heatmap tooltips.
+const benchmarkMonthlyReturns = computed<Record<string, number>>(() => {
+    const bench = props.defaultBenchmark;
+    if (!Array.isArray(bench) || bench.length === 0) return {};
+
+    const byMonth: Record<string, { first: number; last: number }> = {};
+    for (const point of bench) {
+        const key = point.date.substring(0, 7);
+        if (!byMonth[key]) {
+            byMonth[key] = { first: point.nav, last: point.nav };
+        } else {
+            byMonth[key].last = point.nav;
+        }
+    }
+
+    const keys = Object.keys(byMonth).sort();
+    const out: Record<string, number> = {};
+    keys.forEach((key, idx) => {
+        const base = idx > 0 ? byMonth[keys[idx - 1]].last : byMonth[key].first;
+        if (base > 0) {
+            out[key] = (byMonth[key].last - base) / base;
+        }
+    });
+
+    return out;
+});
+
+function monthCellTitle(year: string, monthIdx: number, val: number | null): string | undefined {
+    if (val === null) return undefined;
+    const key = year + '-' + String(monthIdx + 1).padStart(2, '0');
+    const bench = benchmarkMonthlyReturns.value[key];
+    const label = monthNames[monthIdx] + ' ' + year + ': strategy ' + formatSignedPct(val);
+    return bench === undefined ? label : label + ' · Nifty 50 ' + formatSignedPct(bench);
+}
+
+const bestWorstYear = computed<{ best: { year: string; value: number }; worst: { year: string; value: number } } | null>(() => {
+    const rows = monthlyReturns.value;
+    if (rows.length < 2) return null;
+    let best = rows[0];
+    let worst = rows[0];
+    for (const row of rows) {
+        if (row.yearReturn > best.yearReturn) best = row;
+        if (row.yearReturn < worst.yearReturn) worst = row;
+    }
+
+    return { best: { year: best.year, value: best.yearReturn }, worst: { year: worst.year, value: worst.yearReturn } };
+});
 
 // Calendar-year benchmark returns from the preloaded Nifty 50 series
 const benchmarkYearlyReturns = computed<Record<string, number>>(() => {
@@ -1530,4 +1999,9 @@ const monthlyReturns = computed(() => {
         };
     });
 });
+
+// Re-arm the scrollspy whenever the set of rendered sections changes.
+// Registered last: watch() evaluates its source immediately, and resultSections
+// depends on computeds declared above (monthlyReturns, hasRollingReturns).
+watch(resultSections, () => nextTick(setupScrollspy));
 </script>

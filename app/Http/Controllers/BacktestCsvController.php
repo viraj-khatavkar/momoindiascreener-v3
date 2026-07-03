@@ -32,7 +32,7 @@ class BacktestCsvController extends Controller
         fputcsv($out, [
             'date', 'symbol', 'name', 'type', 'reason', 'quantity', 'raw_price', 'adjusted_price',
             'gross_amount', 'stt', 'transaction_charges', 'sebi_charges', 'gst', 'stamp_charges',
-            'total_charges', 'net_amount',
+            'total_charges', 'net_amount', 'realized_pnl', 'realized_pnl_pct',
         ], escape: '');
 
         foreach ($backtest->trades()->orderBy('date')->orderBy('id')->lazy() as $trade) {
@@ -53,6 +53,8 @@ class BacktestCsvController extends Controller
                 $trade->stamp_charges,
                 $trade->total_charges,
                 $trade->net_amount,
+                $trade->realized_pnl,
+                $trade->realized_pnl_pct,
             ], escape: '');
         }
 

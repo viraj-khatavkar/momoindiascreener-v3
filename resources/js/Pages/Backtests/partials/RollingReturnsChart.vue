@@ -1,25 +1,55 @@
 <template>
     <div class="rounded-lg bg-slate-50 p-4 md:p-6">
-        <div ref="chartContainer" class="h-[350px]" />
+        <div v-if="legendEntries.length > 0" class="mb-3 flex flex-wrap items-center gap-4">
+            <div v-for="entry in legendEntries" :key="entry.label" class="flex items-center gap-1.5 text-xs">
+                <span class="inline-block h-2 w-2 rounded-full" :style="{ backgroundColor: entry.color }" />
+                <span class="font-medium text-gray-700">{{ entry.label }}</span>
+            </div>
+        </div>
+
+        <div
+            ref="chartContainer"
+            class="h-[350px]"
+            role="img"
+            aria-label="Rolling returns chart: annualized 1-year, 3-year and 5-year rolling returns of the strategy over the backtest period"
+            @dblclick="resetView"
+        />
+
+        <p class="mt-2 text-[11px] text-gray-400">Scroll to zoom · drag to pan · double-click to reset</p>
     </div>
 </template>
 
 <script setup lang="ts">
-import { onUnmounted, ref, watch } from 'vue';
+import { computed, onUnmounted, ref, watch } from 'vue';
 import { LineSeries, ColorType, CrosshairMode, LineStyle, createChart } from 'lightweight-charts';
 import type { IChartApi, ISeriesApi, SeriesType, Time } from 'lightweight-charts';
+import type { ChartSyncGroup } from '@/utils/chartSyncGroup';
 
 const props = defineProps<{
     oneYear: Array<{ date: string; return: number }> | null;
     threeYear: Array<{ date: string; return: number }> | null;
     fiveYear: Array<{ date: string; return: number }> | null;
+    syncGroup?: ChartSyncGroup;
 }>();
+
+const ONE_YEAR_COLOR = '#f59e0b';
+const THREE_YEAR_COLOR = '#0ea5e9';
+const FIVE_YEAR_COLOR = '#64748b';
+
+const legendEntries = computed<{ label: string; color: string }[]>(() => {
+    const entries: { label: string; color: string }[] = [];
+    if (props.oneYear && props.oneYear.length > 0) entries.push({ label: '1Y', color: ONE_YEAR_COLOR });
+    if (props.threeYear && props.threeYear.length > 0) entries.push({ label: '3Y', color: THREE_YEAR_COLOR });
+    if (props.fiveYear && props.fiveYear.length > 0) entries.push({ label: '5Y', color: FIVE_YEAR_COLOR });
+    return entries;
+});
 
 const chartContainer = ref<HTMLDivElement>();
 let chart: IChartApi | null = null;
 let oneYearSeries: ISeriesApi<SeriesType> | null = null;
 let threeYearSeries: ISeriesApi<SeriesType> | null = null;
 let fiveYearSeries: ISeriesApi<SeriesType> | null = null;
+let unregisterSync: (() => void) | null = null;
 
 function initChart(container: HTMLDivElement): void {
     chart = createChart(container, {
@@ -45,7 +75,7 @@ function initChart(container: HTMLDivElement): void {
 
     if (props.oneYear && props.oneYear.length > 0) {
         oneYearSeries = chart.addSeries(LineSeries, {
-            color: '#7c3aed',
+            color: ONE_YEAR_COLOR,
             lineWidth: 2,
             title: '1Y',
             lastValueVisible: true,
@@ -55,7 +85,7 @@ function initChart(container: HTMLDivElement): void {
 
     if (props.threeYear && props.threeYear.length > 0) {
         threeYearSeries = chart.addSeries(LineSeries, {
-            color: '#2563eb',
+            color: THREE_YEAR_COLOR,
             lineWidth: 2,
             title: '3Y',
             lastValueVisible: true,
@@ -65,7 +95,7 @@ function initChart(container: HTMLDivElement): void {
 
     if (props.fiveYear && props.fiveYear.length > 0) {
         fiveYearSeries = chart.addSeries(LineSeries, {
-            color: '#059669',
+            color: FIVE_YEAR_COLOR,
             lineWidth: 2,
             title: '5Y',
             lastValueVisible: true,
@@ -87,6 +117,14 @@ function initChart(container: HTMLDivElement): void {
     });
 
     chart.timeScale().fitContent();
+
+    if (props.syncGroup && anchorSeries) {
+        unregisterSync = props.syncGroup.register(chart, anchorSeries);
+    }
+}
+
+function resetView(): void {
+    chart?.timeScale().fitContent();
 }
 
 function toSeriesData(data: Array<{ date: string; return: number }> | null) {
@@ -105,6 +143,8 @@ function setData(): void {
 
 function destroyChart(): void {
     if (chart) {
+        unregisterSync?.();
+        unregisterSync = null;
         chart.remove();
         chart = null;
         oneYearSeries = null;
@@ -114,7 +154,10 @@ function destroyChart(): void {
 }
 
 watch(chartContainer, (el) => {
-    if (!el) { destroyChart(); return; }
+    if (!el) {
+        destroyChart();
+        return;
+    }
     if (!chart) initChart(el);
 });
 

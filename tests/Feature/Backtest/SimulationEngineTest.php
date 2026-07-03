@@ -193,6 +193,23 @@ it('conserves money across rebalances with flat prices: total value plus charges
     expect(round((float) $lastSnap->total_value + $allCharges, 0))->toBe(1000000.0);
 });
 
+it('records the simulated period on the summary metrics', function () {
+    $dates = tradingDates(10);
+    seedIndexRange('2010-01-01', end($dates), 5000);
+    foreach ($dates as $date) {
+        seedInstrument($date, 'A', 100, ['sharpe_return_one_year' => 5.0]);
+        seedInstrument($date, 'B', 200, ['sharpe_return_one_year' => 4.0]);
+    }
+
+    $user = User::factory()->create(['is_paid' => true]);
+    $bt = makeBacktest($user, ['max_stocks_to_hold' => 2]);
+    run($bt);
+
+    $metrics = $bt->summaryMetrics;
+    expect($metrics->start_date->format('Y-m-d'))->toBe($dates[0])
+        ->and($metrics->end_date->format('Y-m-d'))->toBe(end($dates));
+});
+
 // ==========================================================================
 // SELL PRICE CORRECTNESS
 // ==========================================================================
@@ -225,6 +242,36 @@ it('sells at the current days price not the previous days', function () {
             expect((float) $trade->price)->not->toBe((float) $yesterday->close_adjusted, 'Sell should NOT be at yesterdays price');
         }
     }
+});
+
+it('records realized pnl against cost basis on every sell trade', function () {
+    $dates = tradingDates(20);
+    seedIndexRange('2010-01-01', end($dates), 5000);
+
+    // A: rises 2/day, sharpe drops at day 8 → sold at a profit
+    foreach ($dates as $i => $date) {
+        seedInstrument($date, 'A', 100 + $i * 2, ['sharpe_return_one_year' => $i < 8 ? 5.0 : 0.1]);
+        seedInstrument($date, 'B', 200, ['sharpe_return_one_year' => 4.0]);
+        seedInstrument($date, 'C', 150, ['sharpe_return_one_year' => 3.0]);
+        seedInstrument($date, 'D', 250, ['sharpe_return_one_year' => 3.5]);
+    }
+
+    $user = User::factory()->create(['is_paid' => true]);
+    $bt = makeBacktest($user, ['worst_rank_held' => 3]);
+    run($bt);
+
+    $aBuy = $bt->trades()->where('symbol', 'A')->where('trade_type', 'buy')->first();
+    $aSell = $bt->trades()->where('symbol', 'A')->where('trade_type', 'sell')->first();
+
+    expect($aSell)->not->toBeNull();
+
+    $costBasis = (float) $aBuy->price * $aSell->quantity;
+    $expectedPnl = round((float) $aSell->net_amount - $costBasis, 2);
+
+    expect(round((float) $aSell->realized_pnl, 2))->toBe($expectedPnl)
+        ->and((float) $aSell->realized_pnl)->toBeGreaterThan(0)
+        ->and(round((float) $aSell->realized_pnl_pct, 2))->toBe(round($expectedPnl / $costBasis * 100, 2))
+        ->and($aBuy->realized_pnl)->toBeNull();
 });
 
 // ==========================================================================
@@ -417,6 +464,31 @@ it('forces the demerger exit when the held stock is in a stale circuit set', fun
         ->and($bt->trades()->where('symbol', 'D')->where('trade_type', 'buy')->where('date', $dates[4])->count())->toBe(1);
 });
 
+it('holds through a demerger when exit before demerger is disabled', function () {
+    $dates = tradingDates(10);
+    seedIndexRange('2010-01-01', end($dates), 5000);
+
+    foreach ($dates as $date) {
+        seedInstrument($date, 'A', 100, ['sharpe_return_one_year' => 5.0]);
+        seedInstrument($date, 'B', 200, ['sharpe_return_one_year' => 4.0]);
+        seedInstrument($date, 'C', 150, ['sharpe_return_one_year' => 3.0]);
+        seedInstrument($date, 'D', 250, ['sharpe_return_one_year' => 2.0]);
+    }
+
+    createCorporateAction('A', $dates[5], [
+        'type' => CorporateActionTypeEnum::DEMERGER,
+        'description' => 'Corporate Action: EQ A DEMERGER',
+        'ratio' => 'DEMERGER',
+    ]);
+
+    $user = User::factory()->create(['is_paid' => true]);
+    $bt = makeBacktest($user, ['exit_before_demerger' => false]);
+    run($bt);
+
+    expect($bt->trades()->where('symbol', 'A')->where('trade_type', 'sell')->count())->toBe(0)
+        ->and($bt->trades()->where('symbol', 'D')->count())->toBe(0);
+});
+
 it('does not exit a demerger stock that is not held before the ex-date', function () {
     $dates = tradingDates(10);
     seedIndexRange('2010-01-01', end($dates), 5000);
@@ -502,6 +574,230 @@ it('lets a same-day cash call rebalance consume demerger exit proceeds without b
     expect($day8Trades->where('symbol', 'A')->where('trade_type', 'sell')->count())->toBe(1)
         ->and($day8Trades->where('symbol', 'D')->count())->toBe(0)
         ->and($bt->dailySnapshots()->where('date', $dates[8])->first()->holdings_count)->toBe(0);
+});
+
+// ==========================================================================
+// BE SERIES EXITS
+// ==========================================================================
+// Rebalance day indices for tradingDates() with weekly/Mon: 0, 3, 8, 13, 18.
+
+it('exits a held stock the day it moves to the BE series and buys a replacement', function () {
+    $dates = tradingDates(10);
+    seedIndexRange('2010-01-01', end($dates), 5000);
+
+    // A: top-ranked, moves from EQ to BE on day 4 (not a rebalance day).
+    foreach ($dates as $i => $date) {
+        seedInstrument($date, 'A', 100, ['sharpe_return_one_year' => 5.0, 'series' => $i < 4 ? 'EQ' : 'BE']);
+        seedInstrument($date, 'B', 200, ['sharpe_return_one_year' => 4.0]);
+        seedInstrument($date, 'C', 150, ['sharpe_return_one_year' => 3.0]);
+        seedInstrument($date, 'D', 250, ['sharpe_return_one_year' => 2.0]);
+    }
+
+    $user = User::factory()->create(['is_paid' => true]);
+    $bt = makeBacktest($user, ['exit_on_be_series' => true]);
+    run($bt);
+
+    $aSell = $bt->trades()->where('symbol', 'A')->where('trade_type', 'sell')->first();
+    $dBuy = $bt->trades()->where('symbol', 'D')->where('trade_type', 'buy')->where('date', $dates[4])->first();
+
+    expect($aSell)->not->toBeNull()
+        ->and($aSell->date->format('Y-m-d'))->toBe($dates[4])
+        ->and($aSell->reason)->toBe('Series changed to BE - exiting')
+        ->and($dBuy)->not->toBeNull()
+        ->and($dBuy->reason)->toBe('Replacement after BE series exit')
+        // A stays rank 1 afterwards but is blocked from re-entry while in BE
+        ->and($bt->trades()->where('symbol', 'A')->where('trade_type', 'buy')->count())->toBe(1);
+});
+
+it('keeps a held stock that moves to BE when exit on BE series is disabled', function () {
+    $dates = tradingDates(10);
+    seedIndexRange('2010-01-01', end($dates), 5000);
+
+    foreach ($dates as $i => $date) {
+        seedInstrument($date, 'A', 100, ['sharpe_return_one_year' => 5.0, 'series' => $i < 4 ? 'EQ' : 'BE']);
+        seedInstrument($date, 'B', 200, ['sharpe_return_one_year' => 4.0]);
+        seedInstrument($date, 'C', 150, ['sharpe_return_one_year' => 3.0]);
+        seedInstrument($date, 'D', 250, ['sharpe_return_one_year' => 2.0]);
+    }
+
+    $user = User::factory()->create(['is_paid' => true]);
+    $bt = makeBacktest($user);
+    run($bt);
+
+    // series_be defaults to true, so A stays in the universe and is never sold
+    expect($bt->trades()->where('symbol', 'A')->where('trade_type', 'sell')->count())->toBe(0)
+        ->and($bt->trades()->where('symbol', 'D')->count())->toBe(0);
+});
+
+it('skips buying a BE series stock on entry when exit on BE series is enabled', function () {
+    $dates = tradingDates(10);
+    seedIndexRange('2010-01-01', end($dates), 5000);
+
+    // A: top-ranked but BE from day one; D should fill the third slot instead.
+    foreach ($dates as $date) {
+        seedInstrument($date, 'A', 100, ['sharpe_return_one_year' => 5.0, 'series' => 'BE']);
+        seedInstrument($date, 'B', 200, ['sharpe_return_one_year' => 4.0]);
+        seedInstrument($date, 'C', 150, ['sharpe_return_one_year' => 3.0]);
+        seedInstrument($date, 'D', 250, ['sharpe_return_one_year' => 2.0]);
+    }
+
+    $user = User::factory()->create(['is_paid' => true]);
+    $bt = makeBacktest($user, ['exit_on_be_series' => true]);
+    run($bt);
+
+    $day0Buys = $bt->trades()->where('date', $dates[0])->where('trade_type', 'buy')->pluck('symbol')->all();
+    expect($day0Buys)->not->toContain('A')
+        ->and($day0Buys)->toContain('B')
+        ->and($day0Buys)->toContain('C')
+        ->and($day0Buys)->toContain('D');
+});
+
+it('defers the BE series exit while the stock is in circuit and sells the next trading day', function () {
+    $dates = tradingDates(10);
+    seedIndexRange('2010-01-01', end($dates), 5000);
+
+    // A moves to BE on day 4 but is also in circuit that day → exit retried on day 5.
+    foreach ($dates as $i => $date) {
+        seedInstrument($date, 'A', 100, [
+            'sharpe_return_one_year' => 5.0,
+            'series' => $i < 4 ? 'EQ' : 'BE',
+            't_percent' => $i === 4 ? 5.00 : 1.0,
+        ]);
+        seedInstrument($date, 'B', 200, ['sharpe_return_one_year' => 4.0]);
+        seedInstrument($date, 'C', 150, ['sharpe_return_one_year' => 3.0]);
+        seedInstrument($date, 'D', 250, ['sharpe_return_one_year' => 2.0]);
+    }
+
+    $user = User::factory()->create(['is_paid' => true]);
+    $bt = makeBacktest($user, ['exit_on_be_series' => true]);
+    run($bt);
+
+    $aSells = $bt->trades()->where('symbol', 'A')->where('trade_type', 'sell')->get();
+    expect($aSells)->toHaveCount(1)
+        ->and($aSells->first()->date->format('Y-m-d'))->toBe($dates[5]);
+});
+
+it('forces the BE series exit when the held stock is in a stale circuit set', function () {
+    $dates = tradingDates(10);
+    seedIndexRange('2010-01-01', end($dates), 5000);
+
+    // A hits a circuit on rebalance day 3 (entering the stale circuit set),
+    // then moves to BE on day 4 with a normal close — the exit must still fire.
+    foreach ($dates as $i => $date) {
+        seedInstrument($date, 'A', 100, [
+            'sharpe_return_one_year' => 5.0,
+            'series' => $i < 4 ? 'EQ' : 'BE',
+            't_percent' => $i === 3 ? 5.00 : 1.0,
+        ]);
+        seedInstrument($date, 'B', 200, ['sharpe_return_one_year' => 4.0]);
+        seedInstrument($date, 'C', 150, ['sharpe_return_one_year' => 3.0]);
+        seedInstrument($date, 'D', 250, ['sharpe_return_one_year' => 2.0]);
+    }
+
+    $user = User::factory()->create(['is_paid' => true]);
+    $bt = makeBacktest($user, ['exit_on_be_series' => true]);
+    run($bt);
+
+    expect($bt->trades()->where('symbol', 'A')->where('trade_type', 'sell')->where('date', $dates[4])->count())->toBe(1);
+});
+
+it('skips a BE series stock when choosing replacements for a BE exit', function () {
+    $dates = tradingDates(10);
+    seedIndexRange('2010-01-01', end($dates), 5000);
+
+    // A exits on day 4 (moves to BE). E — never held, top-ranked, but BE all
+    // along — must be passed over for the replacement; EQ-series D gets it.
+    foreach ($dates as $i => $date) {
+        seedInstrument($date, 'A', 100, ['sharpe_return_one_year' => 5.0, 'series' => $i < 4 ? 'EQ' : 'BE']);
+        seedInstrument($date, 'B', 200, ['sharpe_return_one_year' => 4.0]);
+        seedInstrument($date, 'C', 150, ['sharpe_return_one_year' => 3.0]);
+        seedInstrument($date, 'D', 250, ['sharpe_return_one_year' => 2.0]);
+        seedInstrument($date, 'E', 300, ['sharpe_return_one_year' => 6.0, 'series' => 'BE']);
+    }
+
+    $user = User::factory()->create(['is_paid' => true]);
+    $bt = makeBacktest($user, ['exit_on_be_series' => true]);
+    run($bt);
+
+    $day4Buys = $bt->trades()->where('date', $dates[4])->where('trade_type', 'buy')->pluck('symbol')->all();
+    expect($day4Buys)->toBe(['D'])
+        ->and($bt->trades()->where('symbol', 'E')->count())->toBe(0);
+});
+
+it('does not re-buy a demerger-exited stock as a replacement for a same-day BE exit', function () {
+    $dates = tradingDates(10);
+    seedIndexRange('2010-01-01', end($dates), 5000);
+
+    // Day 4 (non-rebalance): A exits ahead of its day-5 demerger ex-date and
+    // B exits for moving to BE. A still ranks first — it must not come back
+    // as B's replacement.
+    foreach ($dates as $i => $date) {
+        seedInstrument($date, 'A', 100, ['sharpe_return_one_year' => 5.0]);
+        seedInstrument($date, 'B', 200, ['sharpe_return_one_year' => 4.0, 'series' => $i < 4 ? 'EQ' : 'BE']);
+        seedInstrument($date, 'C', 150, ['sharpe_return_one_year' => 3.0]);
+        seedInstrument($date, 'D', 250, ['sharpe_return_one_year' => 2.0]);
+        seedInstrument($date, 'E', 300, ['sharpe_return_one_year' => 1.5]);
+    }
+
+    createCorporateAction('A', $dates[5], [
+        'type' => CorporateActionTypeEnum::DEMERGER,
+        'description' => 'Corporate Action: EQ A DEMERGER',
+        'ratio' => 'DEMERGER',
+    ]);
+
+    $user = User::factory()->create(['is_paid' => true]);
+    $bt = makeBacktest($user, ['exit_on_be_series' => true]);
+    run($bt);
+
+    $day4Trades = $bt->trades()->where('date', $dates[4])->get();
+
+    expect($day4Trades->where('trade_type', 'sell')->pluck('symbol')->sort()->values()->all())->toBe(['A', 'B'])
+        ->and($day4Trades->where('trade_type', 'buy')->pluck('symbol')->sort()->values()->all())->toBe(['D', 'E'])
+        ->and($bt->trades()->where('symbol', 'A')->where('trade_type', 'buy')->count())->toBe(1);
+});
+
+it('blocks entry when the stock moves to BE on the execution day under execute next trading day', function () {
+    $dates = tradingDates(10);
+    seedIndexRange('2010-01-01', end($dates), 5000);
+
+    // Decision day = day 0 (A still EQ); execution day = day 1 (A now BE).
+    foreach ($dates as $i => $date) {
+        seedInstrument($date, 'A', 100, ['sharpe_return_one_year' => 5.0, 'series' => $i === 0 ? 'EQ' : 'BE']);
+        seedInstrument($date, 'B', 200, ['sharpe_return_one_year' => 4.0]);
+        seedInstrument($date, 'C', 150, ['sharpe_return_one_year' => 3.0]);
+        seedInstrument($date, 'D', 250, ['sharpe_return_one_year' => 2.0]);
+    }
+
+    $user = User::factory()->create(['is_paid' => true]);
+    $bt = makeBacktest($user, ['exit_on_be_series' => true, 'execute_next_trading_day' => true]);
+    run($bt);
+
+    expect($bt->trades()->where('symbol', 'A')->count())->toBe(0);
+});
+
+it('lets the rebalance absorb a BE series exit on a rebalance day without re-buying it', function () {
+    $dates = tradingDates(10);
+    seedIndexRange('2010-01-01', end($dates), 5000);
+
+    // A moves to BE exactly on day 3, a rebalance day.
+    foreach ($dates as $i => $date) {
+        seedInstrument($date, 'A', 100, ['sharpe_return_one_year' => 5.0, 'series' => $i < 3 ? 'EQ' : 'BE']);
+        seedInstrument($date, 'B', 200, ['sharpe_return_one_year' => 4.0]);
+        seedInstrument($date, 'C', 150, ['sharpe_return_one_year' => 3.0]);
+        seedInstrument($date, 'D', 250, ['sharpe_return_one_year' => 2.0]);
+    }
+
+    $user = User::factory()->create(['is_paid' => true]);
+    $bt = makeBacktest($user, ['exit_on_be_series' => true]);
+    run($bt);
+
+    $day3Buys = $bt->trades()->where('date', $dates[3])->where('trade_type', 'buy')->get();
+
+    expect($bt->trades()->where('symbol', 'A')->where('trade_type', 'sell')->where('date', $dates[3])->count())->toBe(1)
+        ->and($day3Buys->pluck('symbol')->all())->toContain('D')
+        ->and($day3Buys->pluck('symbol')->all())->not->toContain('A')
+        // The scheduled rebalance absorbs the freed cash — no replacement flow
+        ->and($day3Buys->firstWhere('symbol', 'D')->reason)->toBe('New entry');
 });
 
 // ==========================================================================
