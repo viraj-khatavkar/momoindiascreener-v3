@@ -188,6 +188,7 @@ class CalculateBacktestMetricsAction
                         'entry_date_obj' => $trade->date,
                         'qty' => 0,
                         'buy_value' => 0.0,
+                        'buy_charges' => 0.0,
                         'sell_value' => 0.0,
                         'charges' => 0.0,
                     ];
@@ -195,6 +196,7 @@ class CalculateBacktestMetricsAction
 
                 $openPositions[$symbol]['qty'] += $trade->quantity;
                 $openPositions[$symbol]['buy_value'] += (float) $trade->gross_amount;
+                $openPositions[$symbol]['buy_charges'] += (float) $trade->total_charges;
                 $openPositions[$symbol]['charges'] += (float) $trade->total_charges;
 
                 continue;
@@ -236,14 +238,18 @@ class CalculateBacktestMetricsAction
     }
 
     /**
-     * @param  array{symbol: string, name: string, entry_date_obj: Carbon, qty: int|float, buy_value: float, sell_value: float, charges: float}  $position
+     * @param  array{symbol: string, name: string, entry_date_obj: Carbon, qty: int|float, buy_value: float, buy_charges: float, sell_value: float, charges: float}  $position
      * @return array{symbol: string, name: string, entry_date: string, exit_date: string|null, holding_days: int, buy_value: float, sell_value: float, unrealized_value: float, charges: float, net_pnl: float, pnl_pct: float, still_held: bool}
      */
     private function finalizePosition(array $position, $exitDate, float $unrealizedValue, bool $stillHeld): array
     {
         $totalProceeds = $position['sell_value'] + $unrealizedValue;
         $netPnl = $totalProceeds - $position['buy_value'] - $position['charges'];
-        $pnlPct = $position['buy_value'] > 0 ? ($netPnl / $position['buy_value']) * 100 : 0.0;
+
+        // Percentage is against charge-inclusive deployed capital, matching
+        // the realized_pnl_pct recorded on individual sell trades.
+        $investedValue = $position['buy_value'] + $position['buy_charges'];
+        $pnlPct = $investedValue > 0 ? ($netPnl / $investedValue) * 100 : 0.0;
         $holdingDays = (int) $position['entry_date_obj']->diffInDays($exitDate);
 
         return [

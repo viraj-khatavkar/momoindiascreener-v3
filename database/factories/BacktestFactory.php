@@ -41,6 +41,12 @@ class BacktestFactory extends Factory
             'cash_call_index' => 'nifty-50',
             'cash_call_dma_period' => 50,
             'cash_return_rate' => 6.00,
+            'brokerage_rate' => 0,
+            'stt_rate' => 0.1,
+            'transaction_charges_rate' => 0.00307,
+            'sebi_charges_rate' => 0.00001,
+            'gst_rate' => 18,
+            'stamp_charges_rate' => 0.015,
             'initial_capital' => 5000000.00,
             'start_date' => '2011-01-05',
 

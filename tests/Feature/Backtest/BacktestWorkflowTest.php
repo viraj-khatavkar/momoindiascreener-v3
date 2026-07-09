@@ -129,6 +129,34 @@ it('touches settings_changed_at when a strategy-affecting field changes', functi
     expect($backtest->refresh()->settings_changed_at)->not->toBeNull();
 });
 
+it('saves configured transaction cost rates', function () {
+    Queue::fake();
+    $user = User::factory()->create(['is_paid' => true]);
+    $backtest = Backtest::factory()->create(['user_id' => $user->id]);
+
+    $this->actingAs($user)->put(
+        '/backtests/'.$backtest->id,
+        validBacktestUpdatePayload($backtest, ['brokerage_rate' => 0.03, 'stt_rate' => 0.2])
+    );
+
+    $backtest->refresh();
+    expect((float) $backtest->brokerage_rate)->toBe(0.03)
+        ->and((float) $backtest->stt_rate)->toBe(0.2)
+        // Cost rates change results, so they must flag them stale
+        ->and($backtest->settings_changed_at)->not->toBeNull();
+});
+
+it('rejects out-of-range transaction cost rates', function () {
+    Queue::fake();
+    $user = User::factory()->create(['is_paid' => true]);
+    $backtest = Backtest::factory()->create(['user_id' => $user->id]);
+
+    $this->actingAs($user)->put(
+        '/backtests/'.$backtest->id,
+        validBacktestUpdatePayload($backtest, ['brokerage_rate' => -1, 'gst_rate' => 101])
+    )->assertSessionHasErrors(['brokerage_rate', 'gst_rate']);
+});
+
 it('saves settings, clears old results, and queues a run when the run flag is set', function () {
     Queue::fake();
     $user = User::factory()->create(['is_paid' => true]);

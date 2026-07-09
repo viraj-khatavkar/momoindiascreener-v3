@@ -160,6 +160,78 @@
             </div>
         </div>
 
+        <!-- Transaction Costs -->
+        <div class="mt-4 rounded-xl bg-slate-100 p-6 ring-1 ring-slate-200">
+            <h2 class="mb-4 text-sm font-semibold uppercase tracking-wide text-gray-600">Transaction Costs</h2>
+            <div class="grid grid-cols-1 gap-x-8 gap-y-6 sm:grid-cols-2 lg:grid-cols-3">
+                <div>
+                    <TextInput
+                        v-model="form.brokerage_rate"
+                        type="number"
+                        label="Brokerage (%)"
+                        name="brokerage_rate"
+                        :error="form.errors.brokerage_rate"
+                    />
+                    <p class="mt-1 text-xs text-gray-500">Per order, on both buys and sells — 0 for discount brokers</p>
+                </div>
+                <div>
+                    <TextInput
+                        v-model="form.stt_rate"
+                        type="number"
+                        label="STT (%)"
+                        name="stt_rate"
+                        :error="form.errors.stt_rate"
+                    />
+                    <p class="mt-1 text-xs text-gray-500">Securities Transaction Tax, charged on sells only</p>
+                </div>
+                <div>
+                    <TextInput
+                        v-model="form.stamp_charges_rate"
+                        type="number"
+                        label="Stamp Duty (%)"
+                        name="stamp_charges_rate"
+                        :error="form.errors.stamp_charges_rate"
+                    />
+                    <p class="mt-1 text-xs text-gray-500">Charged on buys only</p>
+                </div>
+                <div>
+                    <TextInput
+                        v-model="form.transaction_charges_rate"
+                        type="number"
+                        label="Exchange Transaction Charges (%)"
+                        name="transaction_charges_rate"
+                        :error="form.errors.transaction_charges_rate"
+                    />
+                    <p class="mt-1 text-xs text-gray-500">NSE turnover charges, on both sides</p>
+                </div>
+                <div>
+                    <TextInput
+                        v-model="form.sebi_charges_rate"
+                        type="number"
+                        label="SEBI Charges (%)"
+                        name="sebi_charges_rate"
+                        :error="form.errors.sebi_charges_rate"
+                    />
+                    <p class="mt-1 text-xs text-gray-500">SEBI turnover fees, on both sides</p>
+                </div>
+                <div>
+                    <TextInput
+                        v-model="form.gst_rate"
+                        type="number"
+                        label="GST (%)"
+                        name="gst_rate"
+                        :error="form.errors.gst_rate"
+                    />
+                    <p class="mt-1 text-xs text-gray-500">Applied on brokerage + exchange + SEBI charges</p>
+                </div>
+            </div>
+            <p class="mt-4 border-t border-slate-200 pt-3 text-xs text-gray-600">
+                Estimated round trip:
+                <span class="font-semibold">{{ costEstimate.roundTrip.toFixed(4) }}%</span> of trade value
+                (buy {{ costEstimate.buy.toFixed(4) }}% + sell {{ costEstimate.sell.toFixed(4) }}%)
+            </p>
+        </div>
+
         <!-- Universe & Ranking -->
         <div class="mt-4 rounded-xl bg-slate-100 p-6 ring-1 ring-slate-200">
             <h2 class="mb-4 text-sm font-semibold uppercase tracking-wide text-gray-600">Universe &amp; Ranking</h2>
@@ -915,6 +987,23 @@ const cashCallSelectOptions = computed(() =>
     })),
 );
 
+// --- Transaction costs (rates are % of trade value; GST applies on brokerage + exchange + SEBI) ---
+
+const costEstimate = computed(() => {
+    const brokerage = Number(props.form.brokerage_rate) || 0;
+    const stt = Number(props.form.stt_rate) || 0;
+    const txn = Number(props.form.transaction_charges_rate) || 0;
+    const sebi = Number(props.form.sebi_charges_rate) || 0;
+    const gst = Number(props.form.gst_rate) || 0;
+    const stamp = Number(props.form.stamp_charges_rate) || 0;
+
+    const gstCharge = (gst / 100) * (brokerage + txn + sebi);
+    const buy = brokerage + stamp + txn + sebi + gstCharge;
+    const sell = brokerage + stt + txn + sebi + gstCharge;
+
+    return { buy, sell, roundTrip: buy + sell };
+});
+
 // --- Apply filters on ---
 
 const applyFiltersOnLabels: Record<string, string> = {
@@ -1238,6 +1327,12 @@ const fieldLabels: Record<string, string> = {
     cash_call_index: 'Cash Call Index / Benchmark',
     cash_call_dma_period: 'Cash Call DMA Period',
     cash_return_rate: 'Cash Return Rate (% p.a.)',
+    brokerage_rate: 'Brokerage (%)',
+    stt_rate: 'STT (%)',
+    transaction_charges_rate: 'Exchange Transaction Charges (%)',
+    sebi_charges_rate: 'SEBI Charges (%)',
+    gst_rate: 'GST (%)',
+    stamp_charges_rate: 'Stamp Duty (%)',
     start_date: 'Start Date',
     index: 'Index Universe',
     sort_by: 'Sort By (Factor)',

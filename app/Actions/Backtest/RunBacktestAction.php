@@ -20,8 +20,8 @@ class RunBacktestAction
 
     private string $startDate;
 
-    // No STT on buy for delivery; stamp 0.015% + txn 0.00307% + SEBI 0.00001% + GST on (txn+SEBI).
-    private const BUY_COST_RATE = 0.000187;
+    /** Buy-side cost fraction derived from the backtest's configured rates. */
+    private float $buyCostRate = 0;
 
     // Circuit hits land at one of these close-to-close return values (in %).
     private const CIRCUIT_PERCENTAGES = [
@@ -80,6 +80,7 @@ class RunBacktestAction
 
         $annualRate = (float) $backtest->cash_return_rate;
         $this->dailyCashReturnRate = pow(1 + $annualRate / 100, 1.0 / 252) - 1;
+        $this->buyCostRate = $this->costsAction->buyCostRate($backtest);
 
         $tradingDates = $this->loadTradingDates($backtest);
 
@@ -726,7 +727,7 @@ class RunBacktestAction
 
         // Scale down if not enough cash
         $scaleFactor = 1.0;
-        $estimatedCosts = $totalBuyBudget * self::BUY_COST_RATE;
+        $estimatedCosts = $totalBuyBudget * $this->buyCostRate;
         if (($totalBuyBudget + $estimatedCosts) > $this->cash && $totalBuyBudget > 0) {
             $scaleFactor = $this->cash / ($totalBuyBudget + $estimatedCosts);
         }
@@ -1061,12 +1062,13 @@ class RunBacktestAction
         $holding = $this->holdings[$symbol];
         $sellPrice = $holding['last_known_price'];
         $grossAmount = $quantity * $sellPrice;
-        $costs = $this->costsAction->execute($grossAmount, 'sell');
+        $costs = $this->costsAction->execute($grossAmount, 'sell', $backtest);
         $netAmount = $grossAmount - $costs['total_charges'];
 
         $this->cash += $netAmount;
 
-        // Realized P&L against the average cost basis of the shares sold.
+        // Realized P&L against the charge-inclusive average cost of the shares
+        // sold, so a round trip nets out buy-side and sell-side charges alike.
         $investedValue = $holding['cost_basis'] * $quantity;
         $realizedPnl = $netAmount - $investedValue;
         $realizedPnlPct = $investedValue > 0 ? ($realizedPnl / $investedValue) * 100 : null;
@@ -1082,6 +1084,7 @@ class RunBacktestAction
             'price' => round($sellPrice, 2),
             'raw_price' => round($holding['last_known_raw_price'] ?? 0, 2),
             'gross_amount' => round($grossAmount, 2),
+            'brokerage' => $costs['brokerage'],
             'stt' => $costs['stt'],
             'transaction_charges' => $costs['transaction_charges'],
             'sebi_charges' => $costs['sebi_charges'],
@@ -1120,7 +1123,7 @@ class RunBacktestAction
             return;
         }
 
-        $maxGross = $budget / (1 + self::BUY_COST_RATE);
+        $maxGross = $budget / (1 + $this->buyCostRate);
         $quantity = (int) floor($maxGross / $buyPrice);
 
         if ($quantity <= 0) {
@@ -1128,17 +1131,17 @@ class RunBacktestAction
         }
 
         $grossAmount = $quantity * $buyPrice;
-        $costs = $this->costsAction->execute($grossAmount, 'buy');
+        $costs = $this->costsAction->execute($grossAmount, 'buy', $backtest);
         $netCost = $grossAmount + $costs['total_charges'];
 
         // Safety: reduce quantity if we can't afford
         if ($netCost > $this->cash) {
-            $quantity = (int) floor($this->cash / ($buyPrice * (1 + self::BUY_COST_RATE)));
+            $quantity = (int) floor($this->cash / ($buyPrice * (1 + $this->buyCostRate)));
             if ($quantity <= 0) {
                 return;
             }
             $grossAmount = $quantity * $buyPrice;
-            $costs = $this->costsAction->execute($grossAmount, 'buy');
+            $costs = $this->costsAction->execute($grossAmount, 'buy', $backtest);
             $netCost = $grossAmount + $costs['total_charges'];
         }
 
@@ -1157,6 +1160,7 @@ class RunBacktestAction
             'price' => round($buyPrice, 2),
             'raw_price' => round($rawPrice, 2),
             'gross_amount' => round($grossAmount, 2),
+            'brokerage' => $costs['brokerage'],
             'stt' => $costs['stt'],
             'transaction_charges' => $costs['transaction_charges'],
             'sebi_charges' => $costs['sebi_charges'],
@@ -1170,18 +1174,20 @@ class RunBacktestAction
 
         $symbol = $stock->symbol;
 
+        // Cost basis includes buy-side charges so realized P&L on the eventual
+        // sell nets out the full round-trip cost, matching the position metrics.
         if (isset($this->holdings[$symbol])) {
             $oldQty = $this->holdings[$symbol]['quantity'];
             $oldCost = $this->holdings[$symbol]['cost_basis'];
             $newQty = $oldQty + $quantity;
             $this->holdings[$symbol]['quantity'] = $newQty;
-            $this->holdings[$symbol]['cost_basis'] = (($oldCost * $oldQty) + ($buyPrice * $quantity)) / $newQty;
+            $this->holdings[$symbol]['cost_basis'] = (($oldCost * $oldQty) + $netCost) / $newQty;
             $this->holdings[$symbol]['last_known_price'] = $buyPrice;
             $this->holdings[$symbol]['last_known_raw_price'] = $rawPrice;
         } else {
             $this->holdings[$symbol] = [
                 'quantity' => $quantity,
-                'cost_basis' => $buyPrice,
+                'cost_basis' => $netCost / $quantity,
                 'last_known_price' => $buyPrice,
                 'last_known_raw_price' => $rawPrice,
                 'name' => $stock->name ?? null,

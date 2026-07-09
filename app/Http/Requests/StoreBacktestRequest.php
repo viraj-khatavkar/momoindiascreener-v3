@@ -43,6 +43,12 @@ class StoreBacktestRequest extends FormRequest
             'cash_call_dma_period' => ['required_if:cash_call,full_cash_below_index_dma,only_exits_below_index_dma,allocate_to_gold_below_index_dma,only_exits_allocate_to_gold_below_index_dma', 'nullable', 'integer', 'in:20,50,100,200'],
             'start_date' => ['required', 'date', 'after_or_equal:2011-01-05'],
             'cash_return_rate' => ['required', 'numeric', 'between:0,20'],
+            'brokerage_rate' => ['required', 'numeric', 'between:0,5'],
+            'stt_rate' => ['required', 'numeric', 'between:0,5'],
+            'transaction_charges_rate' => ['required', 'numeric', 'between:0,5'],
+            'sebi_charges_rate' => ['required', 'numeric', 'between:0,5'],
+            'gst_rate' => ['required', 'numeric', 'between:0,100'],
+            'stamp_charges_rate' => ['required', 'numeric', 'between:0,5'],
 
             // Screen filter fields
             'index' => ['required'],

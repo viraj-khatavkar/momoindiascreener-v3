@@ -265,13 +265,50 @@ it('records realized pnl against cost basis on every sell trade', function () {
 
     expect($aSell)->not->toBeNull();
 
-    $costBasis = (float) $aBuy->price * $aSell->quantity;
+    // Cost basis is charge-inclusive: the buy's net_amount (gross + charges).
+    $costBasis = (float) $aBuy->net_amount / $aBuy->quantity * $aSell->quantity;
     $expectedPnl = round((float) $aSell->net_amount - $costBasis, 2);
 
     expect(round((float) $aSell->realized_pnl, 2))->toBe($expectedPnl)
         ->and((float) $aSell->realized_pnl)->toBeGreaterThan(0)
         ->and(round((float) $aSell->realized_pnl_pct, 2))->toBe(round($expectedPnl / $costBasis * 100, 2))
         ->and($aBuy->realized_pnl)->toBeNull();
+});
+
+it('nets buy-side charges out of realized pnl on a flat-price round trip', function () {
+    $dates = tradingDates(20);
+    seedIndexRange('2010-01-01', end($dates), 5000);
+
+    // A: flat price, sharpe drops at day 8 → sold at exactly its buy price,
+    // so the only realized P&L is the full round-trip charges.
+    foreach ($dates as $i => $date) {
+        seedInstrument($date, 'A', 100, ['sharpe_return_one_year' => $i < 8 ? 5.0 : 0.1]);
+        seedInstrument($date, 'B', 200, ['sharpe_return_one_year' => 4.0]);
+        seedInstrument($date, 'C', 150, ['sharpe_return_one_year' => 3.0]);
+        seedInstrument($date, 'D', 250, ['sharpe_return_one_year' => 3.5]);
+    }
+
+    $user = User::factory()->create(['is_paid' => true]);
+    $bt = makeBacktest($user, ['worst_rank_held' => 3, 'brokerage_rate' => 0.5]);
+    run($bt);
+
+    $aBuy = $bt->trades()->where('symbol', 'A')->where('trade_type', 'buy')->first();
+    $aSell = $bt->trades()->where('symbol', 'A')->where('trade_type', 'sell')->first();
+
+    expect($aSell)->not->toBeNull()
+        ->and(round((float) $aSell->realized_pnl, 2))
+        ->toBe(round((float) $aSell->net_amount - (float) $aBuy->net_amount, 2))
+        // The loss must exceed the buy-side charges alone — proof they are
+        // part of the basis and not just the sell-side charges.
+        ->and((float) $aSell->realized_pnl)->toBeLessThan(-(float) $aBuy->total_charges);
+
+    // The trade log and the position metrics agree on this closed cycle —
+    // same net P&L and the same charge-inclusive percentage.
+    $aPosition = collect($bt->summaryMetrics->stock_performance)->firstWhere('symbol', 'A');
+
+    expect($aPosition)->not->toBeNull()
+        ->and((float) $aPosition['net_pnl'])->toEqualWithDelta((float) $aSell->realized_pnl, 0.01)
+        ->and((float) $aPosition['pnl_pct'])->toEqualWithDelta((float) $aSell->realized_pnl_pct, 0.01);
 });
 
 // ==========================================================================
@@ -1242,4 +1279,59 @@ it('produces a separate trade cycle for each buy-sell round-trip on the same sto
         ->and($closed['entry_date'])->toBe($dates[0])
         ->and($closed['exit_date'])->not->toBeNull()
         ->and($closed['holding_days'])->toBeGreaterThan(0);
+});
+
+// ==========================================================================
+// CONFIGURABLE TRANSACTION COSTS
+// ==========================================================================
+
+it('applies a configured brokerage rate to trades and still conserves money', function () {
+    $dates = tradingDates(10);
+    seedIndexRange('2010-01-01', end($dates), 5000);
+
+    // Flat prices: only charges reduce value, so conservation is exact.
+    foreach ($dates as $date) {
+        seedInstrument($date, 'A', 100, ['sharpe_return_one_year' => 5.0]);
+        seedInstrument($date, 'B', 200, ['sharpe_return_one_year' => 4.0]);
+    }
+
+    $user = User::factory()->create(['is_paid' => true]);
+    $bt = makeBacktest($user, ['max_stocks_to_hold' => 2, 'brokerage_rate' => 0.5]);
+    run($bt);
+
+    $buy = $bt->trades()->where('trade_type', 'buy')->first();
+    $expectedGst = ((float) $buy->brokerage + (float) $buy->transaction_charges + (float) $buy->sebi_charges) * 0.18;
+
+    expect((float) $buy->brokerage)->toEqualWithDelta((float) $buy->gross_amount * 0.005, 0.01)
+        // GST base includes the brokerage
+        ->and((float) $buy->gst)->toEqualWithDelta($expectedGst, 0.02);
+
+    $allCharges = (float) $bt->trades()->sum('total_charges');
+    $lastSnap = $bt->dailySnapshots()->orderBy('date', 'desc')->first();
+    expect(round((float) $lastSnap->total_value + $allCharges, 0))->toBe(1000000.0);
+});
+
+it('charges nothing on trades when every cost rate is zero', function () {
+    $dates = tradingDates(10);
+    seedIndexRange('2010-01-01', end($dates), 5000);
+
+    foreach ($dates as $date) {
+        seedInstrument($date, 'A', 100, ['sharpe_return_one_year' => 5.0]);
+        seedInstrument($date, 'B', 200, ['sharpe_return_one_year' => 4.0]);
+    }
+
+    $user = User::factory()->create(['is_paid' => true]);
+    $bt = makeBacktest($user, [
+        'max_stocks_to_hold' => 2,
+        'brokerage_rate' => 0,
+        'stt_rate' => 0,
+        'transaction_charges_rate' => 0,
+        'sebi_charges_rate' => 0,
+        'gst_rate' => 0,
+        'stamp_charges_rate' => 0,
+    ]);
+    run($bt);
+
+    expect($bt->trades()->count())->toBeGreaterThan(0)
+        ->and((float) $bt->trades()->sum('total_charges'))->toBe(0.0);
 });

@@ -19,6 +19,12 @@ export interface Backtest {
     cash_call_index: string;
     cash_call_dma_period: number;
     cash_return_rate: number | string;
+    brokerage_rate: number | string;
+    stt_rate: number | string;
+    transaction_charges_rate: number | string;
+    sebi_charges_rate: number | string;
+    gst_rate: number | string;
+    stamp_charges_rate: number | string;
     initial_capital: number | string;
     start_date: string;
     started_at: string | null;

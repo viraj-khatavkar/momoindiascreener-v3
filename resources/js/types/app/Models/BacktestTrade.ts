@@ -10,6 +10,7 @@ export interface BacktestTrade {
     price: number;
     raw_price: number;
     gross_amount: number;
+    brokerage: number;
     stt: number;
     transaction_charges: number;
     sebi_charges: number;

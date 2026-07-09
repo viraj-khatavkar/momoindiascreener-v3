@@ -76,6 +76,20 @@
             </div>
         </div>
 
+        <!-- Costs (only when rates differ from the statutory defaults) -->
+        <div v-if="costChips(backtest).length > 0" class="flex items-baseline gap-2">
+            <span class="w-16 shrink-0 text-[11px] font-semibold uppercase tracking-wider text-gray-400">Costs</span>
+            <div class="flex flex-wrap gap-1.5">
+                <span
+                    v-for="(chip, idx) in costChips(backtest)"
+                    :key="idx"
+                    class="rounded-md bg-rose-50 px-2 py-0.5 text-xs font-medium text-rose-800"
+                >
+                    {{ chip }}
+                </span>
+            </div>
+        </div>
+
         <!-- Filters (only if any are active) -->
         <div v-if="activeFilters(backtest).length > 0" class="flex items-baseline gap-2">
             <span class="w-16 shrink-0 text-[11px] font-semibold uppercase tracking-wider text-gray-400">Filters</span>
@@ -336,5 +350,21 @@ function activeFilters(bt: Backtest): string[] {
 
 function numWord(n: number): string {
     return ['one', 'two', 'three', 'four', 'five'][n - 1];
+}
+
+// Statutory defaults — a chip only appears when a rate deviates from these.
+const defaultCostRates: { key: keyof Backtest; label: string; default: number }[] = [
+    { key: 'brokerage_rate', label: 'Brokerage', default: 0 },
+    { key: 'stt_rate', label: 'STT', default: 0.1 },
+    { key: 'transaction_charges_rate', label: 'Exchange txn', default: 0.00307 },
+    { key: 'sebi_charges_rate', label: 'SEBI', default: 0.00001 },
+    { key: 'gst_rate', label: 'GST', default: 18 },
+    { key: 'stamp_charges_rate', label: 'Stamp', default: 0.015 },
+];
+
+function costChips(bt: Backtest): string[] {
+    return defaultCostRates
+        .filter(({ key, default: def }) => Number(bt[key]) !== def)
+        .map(({ key, label }) => `${label} ${Number(bt[key])}%`);
 }
 </script>

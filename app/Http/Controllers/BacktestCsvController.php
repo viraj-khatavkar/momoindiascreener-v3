@@ -31,7 +31,7 @@ class BacktestCsvController extends Controller
 
         fputcsv($out, [
             'date', 'symbol', 'name', 'type', 'reason', 'quantity', 'raw_price', 'adjusted_price',
-            'gross_amount', 'stt', 'transaction_charges', 'sebi_charges', 'gst', 'stamp_charges',
+            'gross_amount', 'brokerage', 'stt', 'transaction_charges', 'sebi_charges', 'gst', 'stamp_charges',
             'total_charges', 'net_amount', 'realized_pnl', 'realized_pnl_pct',
         ], escape: '');
 
@@ -46,6 +46,7 @@ class BacktestCsvController extends Controller
                 $trade->raw_price,
                 $trade->price,
                 $trade->gross_amount,
+                $trade->brokerage,
                 $trade->stt,
                 $trade->transaction_charges,
                 $trade->sebi_charges,
