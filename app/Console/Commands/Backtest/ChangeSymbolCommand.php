@@ -3,6 +3,7 @@
 namespace App\Console\Commands\Backtest;
 
 use App\Models\BacktestNseCorporateAction;
+use App\Models\BacktestNseIndexConstituent;
 use App\Models\BacktestNseInstrument;
 use App\Models\BacktestNseInstrumentPrice;
 use Illuminate\Console\Command;
@@ -22,7 +23,7 @@ class ChangeSymbolCommand extends Command
      *
      * @var string
      */
-    protected $description = 'Changes an NSE symbol across backtest price, corporate action, and instrument master tables';
+    protected $description = 'Changes an NSE symbol across backtest price, corporate action, index constituent, and instrument master tables';
 
     /**
      * Execute the console command.
@@ -45,7 +46,7 @@ class ChangeSymbolCommand extends Command
             return Command::FAILURE;
         }
 
-        [$priceRowsUpdated, $corporateActionRowsUpdated, $instrumentRowsUpdated] = DB::transaction(function () use ($oldSymbol, $newSymbol): array {
+        [$priceRowsUpdated, $corporateActionRowsUpdated, $constituentRowsUpdated, $instrumentRowsUpdated] = DB::transaction(function () use ($oldSymbol, $newSymbol): array {
             $priceRowsUpdated = BacktestNseInstrumentPrice::query()
                 ->where('symbol', $oldSymbol)
                 ->update(['symbol' => $newSymbol]);
@@ -54,16 +55,42 @@ class ChangeSymbolCommand extends Command
                 ->where('symbol', $oldSymbol)
                 ->update(['symbol' => $newSymbol]);
 
+            $constituentRowsUpdated = $this->updateIndexConstituentSymbol($oldSymbol, $newSymbol);
+
             $instrumentRowsUpdated = $this->updateInstrumentSymbol($oldSymbol, $newSymbol);
 
-            return [$priceRowsUpdated, $corporateActionRowsUpdated, $instrumentRowsUpdated];
+            return [$priceRowsUpdated, $corporateActionRowsUpdated, $constituentRowsUpdated, $instrumentRowsUpdated];
         });
 
         $this->info($priceRowsUpdated.' price rows updated.');
         $this->info($corporateActionRowsUpdated.' corporate action rows updated.');
+        $this->info($constituentRowsUpdated.' index constituent rows updated.');
         $this->info($instrumentRowsUpdated.' instrument rows updated.');
 
         return Command::SUCCESS;
+    }
+
+    /**
+     * Renames the symbol on every index constituent row, dropping the old rows
+     * for indexes where the new symbol is already a constituent so the
+     * (index, symbol) unique constraint is not violated.
+     */
+    private function updateIndexConstituentSymbol(string $oldSymbol, string $newSymbol): int
+    {
+        $indexesAlreadyHoldingNewSymbol = BacktestNseIndexConstituent::query()
+            ->where('symbol', $newSymbol)
+            ->pluck('index');
+
+        if ($indexesAlreadyHoldingNewSymbol->isNotEmpty()) {
+            BacktestNseIndexConstituent::query()
+                ->where('symbol', $oldSymbol)
+                ->whereIn('index', $indexesAlreadyHoldingNewSymbol)
+                ->delete();
+        }
+
+        return BacktestNseIndexConstituent::query()
+            ->where('symbol', $oldSymbol)
+            ->update(['symbol' => $newSymbol]);
     }
 
     private function updateInstrumentSymbol(string $oldSymbol, string $newSymbol): int

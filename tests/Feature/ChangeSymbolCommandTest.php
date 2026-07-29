@@ -1,6 +1,7 @@
 <?php
 
 use App\Models\BacktestNseCorporateAction;
+use App\Models\BacktestNseIndexConstituent;
 use App\Models\BacktestNseInstrument;
 use App\Models\BacktestNseInstrumentPrice;
 
@@ -13,6 +14,8 @@ it('updates the instrument master table when changing a symbol', function () {
 
     createBacktestPriceRow('OLDETF', '2020-01-01');
     createCorporateAction('OLDETF', '2020-01-02');
+    BacktestNseIndexConstituent::create(['symbol' => 'OLDETF', 'index' => 'nifty-50']);
+    BacktestNseIndexConstituent::create(['symbol' => 'OLDETF', 'index' => 'nifty-500']);
 
     $this->artisan('backtest:change-symbol', [
         '--old-symbol' => 'OLDETF',
@@ -25,7 +28,25 @@ it('updates the instrument master table when changing a symbol', function () {
         ->and(BacktestNseInstrumentPrice::where('symbol', 'OLDETF')->exists())->toBeFalse()
         ->and(BacktestNseInstrumentPrice::where('symbol', 'NEWETF')->where('date', '2020-01-01')->exists())->toBeTrue()
         ->and(BacktestNseCorporateAction::where('symbol', 'OLDETF')->exists())->toBeFalse()
-        ->and(BacktestNseCorporateAction::where('symbol', 'NEWETF')->where('date', '2020-01-02')->exists())->toBeTrue();
+        ->and(BacktestNseCorporateAction::where('symbol', 'NEWETF')->where('date', '2020-01-02')->exists())->toBeTrue()
+        ->and(BacktestNseIndexConstituent::where('symbol', 'OLDETF')->exists())->toBeFalse()
+        ->and(BacktestNseIndexConstituent::where('symbol', 'NEWETF')->pluck('index')->sort()->values()->all())
+        ->toBe(['nifty-50', 'nifty-500']);
+});
+
+it('drops duplicate index constituent rows when the new symbol is already a constituent', function () {
+    BacktestNseIndexConstituent::create(['symbol' => 'INFRATEL', 'index' => 'nifty-50']);
+    BacktestNseIndexConstituent::create(['symbol' => 'INFRATEL', 'index' => 'nifty-500']);
+    BacktestNseIndexConstituent::create(['symbol' => 'INDUSTOWER', 'index' => 'nifty-500']);
+
+    $this->artisan('backtest:change-symbol', [
+        '--old-symbol' => 'INFRATEL',
+        '--new-symbol' => 'INDUSTOWER',
+    ])->assertSuccessful();
+
+    expect(BacktestNseIndexConstituent::where('symbol', 'INFRATEL')->exists())->toBeFalse()
+        ->and(BacktestNseIndexConstituent::where('symbol', 'INDUSTOWER')->pluck('index')->sort()->values()->all())
+        ->toBe(['nifty-50', 'nifty-500']);
 });
 
 it('merges the old instrument row when the new symbol already exists', function () {

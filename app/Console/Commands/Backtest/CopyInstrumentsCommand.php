@@ -59,6 +59,7 @@ class CopyInstrumentsCommand extends Command
         'NIFTY CONSUMPTION INDEX' => 'nifty-india-consumption',
         'NIFTY INFRA' => 'nifty-infrastructure',
         'NIFTY IT INDEX' => 'nifty-it',
+        'NIFTY IT' => 'nifty-it',
         'NIFTYIT' => 'nifty-it',
         'NIFTY DIV OPPS 50' => 'nifty-dividend-opportunities-50',
         'NIFTY 10 YR BENCHMARK G-SEC INDEX' => 'nifty-10-yr-benchmark-g-sec',

@@ -652,7 +652,7 @@
                         class="rounded-xl bg-white p-6 shadow-xs ring-1 ring-gray-200"
                     >
                         <div class="mb-4 flex flex-wrap items-baseline justify-between gap-2">
-                            <h2 class="text-sm font-semibold uppercase tracking-wide text-gray-500">Monthly Returns</h2>
+                            <h2 class="text-sm font-semibold uppercase tracking-wide text-gray-500">Monthly &amp; Calendar-Year Returns</h2>
                             <p v-if="bestWorstYear" class="text-xs text-gray-500">
                                 Best year <span class="font-semibold text-emerald-700">{{ bestWorstYear.best.year }} {{ formatSignedPct(bestWorstYear.best.value) }}</span>
                                 <span class="mx-1 text-gray-300">·</span>
@@ -660,16 +660,19 @@
                             </p>
                         </div>
                         <div class="overflow-x-auto">
+                            <!-- Two zones: shaded month-on-month cells (left) and the calendar-year
+                                 total (right), set apart by a rule, a neutral band, and a solid pill
+                                 so the year figure never reads as another month. -->
                             <table class="min-w-full text-xs">
                                 <thead>
                                     <tr>
-                                        <th class="sticky left-0 z-10 bg-white px-2 py-2 text-left font-medium text-gray-500">Year</th>
-                                        <th v-for="month in monthNames" :key="month" class="px-2 py-2 text-right font-medium text-gray-500">
+                                        <th class="sticky left-0 z-10 border-b border-b-gray-200 bg-white px-2 py-2 text-left font-medium text-gray-500">Year</th>
+                                        <th v-for="month in monthNames" :key="month" class="border-b border-b-gray-200 px-2 py-2 text-right font-medium text-gray-500">
                                             {{ month }}
                                         </th>
-                                        <th class="px-2 py-2 text-right font-semibold text-gray-700">Total</th>
-                                        <th class="px-2 py-2 text-right font-medium text-gray-500">Nifty 50</th>
-                                        <th class="whitespace-nowrap px-2 py-2 text-right font-semibold text-gray-700">α vs Nifty 50</th>
+                                        <th class="whitespace-nowrap border-b border-b-gray-200 border-l-2 border-l-gray-300 bg-gray-100 px-2 py-2 text-center font-semibold text-gray-700">
+                                            Calendar Year
+                                        </th>
                                     </tr>
                                 </thead>
                                 <tbody>
@@ -682,27 +685,23 @@
                                             :class="monthCellClass(val)"
                                             :title="monthCellTitle(row.year, idx, val)"
                                         >
-                                            {{ val === null ? '—' : (val >= 0 ? '+' : '') + (val * 100).toFixed(1) + '%' }}
+                                            {{ val === null ? '—' : formatSignedPct(val) }}
                                         </td>
-                                        <td
-                                            class="whitespace-nowrap px-2 py-2 text-right font-semibold tabular-nums"
-                                            :class="row.yearReturn >= 0 ? 'bg-emerald-100 text-emerald-800' : 'bg-red-100 text-red-800'"
-                                        >
-                                            {{ (row.yearReturn >= 0 ? '+' : '') + (row.yearReturn * 100).toFixed(1) + '%' }}
-                                        </td>
-                                        <td class="whitespace-nowrap px-2 py-2 text-right tabular-nums text-gray-600">
-                                            {{ row.benchReturn === null ? '—' : (row.benchReturn >= 0 ? '+' : '') + (row.benchReturn * 100).toFixed(1) + '%' }}
-                                        </td>
-                                        <td
-                                            class="whitespace-nowrap px-2 py-2 text-right font-semibold tabular-nums"
-                                            :class="row.alpha === null ? 'text-gray-300' : row.alpha >= 0 ? 'text-emerald-700' : 'text-red-700'"
-                                        >
-                                            {{ row.alpha === null ? '—' : (row.alpha >= 0 ? '+' : '') + (row.alpha * 100).toFixed(1) + '%' }}
+                                        <td class="border-l-2 border-l-gray-300 bg-gray-100 px-2 py-1.5 text-center">
+                                            <span
+                                                class="inline-flex min-w-[3.75rem] justify-center rounded-md px-2 py-1 font-semibold tabular-nums text-white"
+                                                :class="row.yearReturn >= 0 ? 'bg-emerald-700' : 'bg-red-700'"
+                                            >
+                                                {{ formatSignedPct(row.yearReturn) }}
+                                            </span>
                                         </td>
                                     </tr>
                                 </tbody>
                             </table>
                         </div>
+                        <p class="mt-3 text-[11px] text-gray-400">
+                            Shaded cells are month-on-month NAV changes; the right-hand column is the full calendar-year return.
+                        </p>
                     </div>
                 </Deferred>
 
@@ -1932,31 +1931,6 @@ const bestWorstYear = computed<{ best: { year: string; value: number }; worst: {
     return { best: { year: best.year, value: best.yearReturn }, worst: { year: worst.year, value: worst.yearReturn } };
 });
 
-// Calendar-year benchmark returns from the preloaded Nifty 50 series
-const benchmarkYearlyReturns = computed<Record<string, number>>(() => {
-    const bench = props.defaultBenchmark;
-    if (!Array.isArray(bench) || bench.length === 0) return {};
-
-    const byYear: Record<string, { first: number; last: number }> = {};
-    for (const point of bench) {
-        const year = point.date.substring(0, 4);
-        if (!byYear[year]) {
-            byYear[year] = { first: point.nav, last: point.nav };
-        } else {
-            byYear[year].last = point.nav;
-        }
-    }
-
-    const years = Object.keys(byYear).sort();
-    const out: Record<string, number> = {};
-    years.forEach((year, idx) => {
-        const base = idx > 0 ? byYear[years[idx - 1]].last : byYear[year].first;
-        out[year] = base > 0 ? (byYear[year].last - base) / base : 0;
-    });
-
-    return out;
-});
-
 const monthlyReturns = computed(() => {
     if (!props.dailySnapshots || props.dailySnapshots.length === 0) return [];
 
@@ -1995,14 +1969,7 @@ const monthlyReturns = computed(() => {
             }
         }
         const yearReturn = yearStartNav > 0 ? (yearEndNav - yearStartNav) / yearStartNav : 0;
-        const benchReturn = benchmarkYearlyReturns.value[year] ?? null;
-        return {
-            year,
-            months,
-            yearReturn,
-            benchReturn,
-            alpha: benchReturn !== null ? yearReturn - benchReturn : null,
-        };
+        return { year, months, yearReturn };
     });
 });
 
