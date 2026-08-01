@@ -5,19 +5,21 @@ namespace App\Http\Controllers;
 use App\Enums\ScreenResultColumnEnum;
 use App\Models\Screen;
 use Illuminate\Http\Request;
+use Illuminate\Validation\Rule;
 
 class ScreenColumnsController extends Controller
 {
+    /**
+     * Columns are now edited in a slide-over on the screen edit page; this
+     * route only remains so old links keep working.
+     */
     public function edit(Screen $screen, Request $request)
     {
         if ($request->user()->cannot('update', $screen)) {
             abort(404);
         }
 
-        return inertia('Screens/Columns/Edit', [
-            'screen' => $screen,
-            'columns' => ScreenResultColumnEnum::resolveDisplayableValueList(),
-        ]);
+        return redirect()->to('/screens/'.$screen->getKey().'/edit');
     }
 
     public function update(Screen $screen, Request $request)
@@ -26,10 +28,13 @@ class ScreenColumnsController extends Controller
             abort(404);
         }
 
-        $screen->update([
-            'columns' => $request->input('columns'),
+        $validated = $request->validate([
+            'columns' => ['present', 'array'],
+            'columns.*' => [Rule::enum(ScreenResultColumnEnum::class)],
         ]);
 
-        return redirect()->to('/screens/'.$screen->id.'/edit');
+        $screen->update(['columns' => $validated['columns']]);
+
+        return redirect()->to('/screens/'.$screen->getKey().'/edit');
     }
 }

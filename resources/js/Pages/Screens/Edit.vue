@@ -5,21 +5,13 @@
             <PageHeader description="Edit your screen">{{ screen.name }}</PageHeader>
         </div>
 
-        <ErrorAlert v-if="Object.keys(form.errors).length > 0" class="mb-4">
-            There are some errors in your form. Please fix them.
-        </ErrorAlert>
+        <ErrorAlert v-if="Object.keys(form.errors).length > 0" class="mb-4"> There are some errors in your form. Please fix them. </ErrorAlert>
 
         <form @submit.prevent="update">
             <!-- Core Settings -->
             <div class="bg-slate-100 p-8">
                 <div class="grid grid-cols-1 gap-x-8 gap-y-6 sm:grid-cols-2 lg:grid-cols-3">
-                    <SelectInput
-                        v-model="form.index"
-                        label="Index Universe"
-                        name="index"
-                        :options="indices"
-                        :error="form.errors.index"
-                    />
+                    <SelectInput v-model="form.index" label="Index Universe" name="index" :options="indices" :error="form.errors.index" />
                     <SelectInput
                         v-model="form.sort_by"
                         label="Sort By (Factor)"
@@ -44,19 +36,14 @@
 
             <template v-if="showMoreFilters">
                 <!-- General Filters -->
-                <Disclosure v-slot="{ open }" as="div" class="mt-4 border border-gray-200 rounded-md" default-open>
+                <Disclosure v-slot="{ open }" as="div" class="mt-4 rounded-md border border-gray-200" default-open>
                     <DisclosureButton class="flex w-full items-center justify-between bg-gray-50 px-4 py-3">
                         <span class="text-sm font-semibold text-gray-900">General Filters</span>
                         <ChevronDownIcon :class="[open ? 'rotate-180' : '', 'h-5 w-5 text-gray-500']" />
                     </DisclosureButton>
                     <DisclosurePanel class="p-4">
                         <div class="grid grid-cols-1 gap-x-8 gap-y-6 sm:grid-cols-2 lg:grid-cols-3">
-                            <TextInput
-                                v-model="form.name"
-                                label="Name"
-                                name="name"
-                                :error="form.errors.name"
-                            />
+                            <TextInput v-model="form.name" label="Name" name="name" :error="form.errors.name" />
                             <SelectInput
                                 v-model="form.apply_filters_on"
                                 label="Apply Filters on"
@@ -72,9 +59,7 @@
                                 :error="form.errors.minimum_return_one_year"
                             />
                             <div>
-                                <label class="block text-sm/6 font-medium text-gray-900">
-                                    Median Daily Volume One Year (in Rupees)
-                                </label>
+                                <label class="block text-sm/6 font-medium text-gray-900"> Median Daily Volume One Year (in Rupees) </label>
                                 <div class="mt-2 flex gap-x-2">
                                     <TextInput
                                         v-model="form.median_volume_one_year"
@@ -96,7 +81,7 @@
                 </Disclosure>
 
                 <!-- Moving Average Filters -->
-                <Disclosure v-slot="{ open }" as="div" class="mt-4 border border-gray-200 rounded-md">
+                <Disclosure v-slot="{ open }" as="div" class="mt-4 rounded-md border border-gray-200">
                     <DisclosureButton class="flex w-full items-center justify-between bg-gray-50 px-4 py-3">
                         <span class="text-sm font-semibold text-gray-900">Moving Average Filters</span>
                         <ChevronDownIcon :class="[open ? 'rotate-180' : '', 'h-5 w-5 text-gray-500']" />
@@ -120,15 +105,13 @@
                 </Disclosure>
 
                 <!-- Away from High Filters -->
-                <Disclosure v-slot="{ open }" as="div" class="mt-4 border border-gray-200 rounded-md">
+                <Disclosure v-slot="{ open }" as="div" class="mt-4 rounded-md border border-gray-200">
                     <DisclosureButton class="flex w-full items-center justify-between bg-gray-50 px-4 py-3">
                         <span class="text-sm font-semibold text-gray-900">Away from High Filters</span>
                         <ChevronDownIcon :class="[open ? 'rotate-180' : '', 'h-5 w-5 text-gray-500']" />
                     </DisclosureButton>
                     <DisclosurePanel class="p-4">
-                        <div class="mb-4 text-sm text-purple-500">
-                            Note: Keep value as 100 if you want to ignore any of the away from high filter
-                        </div>
+                        <div class="mb-4 text-sm text-purple-500">Note: Keep value as 100 if you want to ignore any of the away from high filter</div>
                         <div class="grid grid-cols-1 gap-x-8 gap-y-6 sm:grid-cols-2">
                             <TextInput
                                 v-model="form.away_from_high_all_time"
@@ -149,7 +132,7 @@
                 </Disclosure>
 
                 <!-- Positive Days % Filters -->
-                <Disclosure v-slot="{ open }" as="div" class="mt-4 border border-gray-200 rounded-md">
+                <Disclosure v-slot="{ open }" as="div" class="mt-4 rounded-md border border-gray-200">
                     <DisclosureButton class="flex w-full items-center justify-between bg-gray-50 px-4 py-3">
                         <span class="text-sm font-semibold text-gray-900">Percentage of Positive Days Filters</span>
                         <ChevronDownIcon :class="[open ? 'rotate-180' : '', 'h-5 w-5 text-gray-500']" />
@@ -199,18 +182,17 @@
                 </Disclosure>
 
                 <!-- Circuit Filters -->
-                <Disclosure v-slot="{ open }" as="div" class="mt-4 border border-gray-200 rounded-md">
+                <Disclosure v-slot="{ open }" as="div" class="mt-4 rounded-md border border-gray-200">
                     <DisclosureButton class="flex w-full items-center justify-between bg-gray-50 px-4 py-3">
                         <span class="text-sm font-semibold text-gray-900">Circuit Filters</span>
                         <ChevronDownIcon :class="[open ? 'rotate-180' : '', 'h-5 w-5 text-gray-500']" />
                     </DisclosureButton>
                     <DisclosurePanel class="p-4">
                         <div class="mb-4 text-sm text-purple-500">
-                            A stock will be excluded from the ranking if it has exceeded the maximum number of circuits mentioned in the value of the below input.
+                            A stock will be excluded from the ranking if it has exceeded the maximum number of circuits mentioned in the value of the
+                            below input.
                         </div>
-                        <div class="mb-4 text-sm text-purple-500">
-                            Keep value greater than 250 if you want to ignore any of the circuit filters.
-                        </div>
+                        <div class="mb-4 text-sm text-purple-500">Keep value greater than 250 if you want to ignore any of the circuit filters.</div>
                         <div class="grid grid-cols-1 gap-x-8 gap-y-6 sm:grid-cols-2">
                             <TextInput
                                 v-model="form.circuits_one_year"
@@ -252,14 +234,15 @@
                 </Disclosure>
 
                 <!-- Marketcap Range -->
-                <Disclosure v-slot="{ open }" as="div" class="mt-4 border border-gray-200 rounded-md">
+                <Disclosure v-slot="{ open }" as="div" class="mt-4 rounded-md border border-gray-200">
                     <DisclosureButton class="flex w-full items-center justify-between bg-gray-50 px-4 py-3">
                         <span class="text-sm font-semibold text-gray-900">Marketcap Range (in crores)</span>
                         <ChevronDownIcon :class="[open ? 'rotate-180' : '', 'h-5 w-5 text-gray-500']" />
                     </DisclosureButton>
                     <DisclosurePanel class="p-4">
                         <div class="mb-4 text-sm text-purple-500">
-                            This will include stocks between the marketcap range. The filter is applied only on the stocks that are present in the selected index filter.
+                            This will include stocks between the marketcap range. The filter is applied only on the stocks that are present in the
+                            selected index filter.
                         </div>
                         <div class="grid grid-cols-1 gap-x-8 gap-y-6 sm:grid-cols-2">
                             <TextInput
@@ -281,14 +264,15 @@
                 </Disclosure>
 
                 <!-- Price to Earnings Range -->
-                <Disclosure v-slot="{ open }" as="div" class="mt-4 border border-gray-200 rounded-md">
+                <Disclosure v-slot="{ open }" as="div" class="mt-4 rounded-md border border-gray-200">
                     <DisclosureButton class="flex w-full items-center justify-between bg-gray-50 px-4 py-3">
                         <span class="text-sm font-semibold text-gray-900">Price to Earnings Range</span>
                         <ChevronDownIcon :class="[open ? 'rotate-180' : '', 'h-5 w-5 text-gray-500']" />
                     </DisclosureButton>
                     <DisclosurePanel class="p-4">
                         <div class="mb-4 text-sm text-purple-500">
-                            Some stocks have undefined P/E data from NSE. If you apply this filter the stocks which don't have P/E data will be excluded from the ranking.
+                            Some stocks have undefined P/E data from NSE. If you apply this filter the stocks which don't have P/E data will be
+                            excluded from the ranking.
                         </div>
                         <Toggle v-model="form.apply_pe" label="Apply Price to Earnings Filter" />
                         <template v-if="form.apply_pe">
@@ -313,7 +297,7 @@
                 </Disclosure>
 
                 <!-- Series -->
-                <Disclosure v-slot="{ open }" as="div" class="mt-4 border border-gray-200 rounded-md">
+                <Disclosure v-slot="{ open }" as="div" class="mt-4 rounded-md border border-gray-200">
                     <DisclosureButton class="flex w-full items-center justify-between bg-gray-50 px-4 py-3">
                         <span class="text-sm font-semibold text-gray-900">Series</span>
                         <ChevronDownIcon :class="[open ? 'rotate-180' : '', 'h-5 w-5 text-gray-500']" />
@@ -333,7 +317,7 @@
                 </Disclosure>
 
                 <!-- Ignore Above Beta -->
-                <Disclosure v-slot="{ open }" as="div" class="mt-4 border border-gray-200 rounded-md">
+                <Disclosure v-slot="{ open }" as="div" class="mt-4 rounded-md border border-gray-200">
                     <DisclosureButton class="flex w-full items-center justify-between bg-gray-50 px-4 py-3">
                         <span class="text-sm font-semibold text-gray-900">Ignore Above Beta</span>
                         <ChevronDownIcon :class="[open ? 'rotate-180' : '', 'h-5 w-5 text-gray-500']" />
@@ -355,7 +339,7 @@
                 </Disclosure>
 
                 <!-- Price (CMP) Range -->
-                <Disclosure v-slot="{ open }" as="div" class="mt-4 border border-gray-200 rounded-md">
+                <Disclosure v-slot="{ open }" as="div" class="mt-4 rounded-md border border-gray-200">
                     <DisclosureButton class="flex w-full items-center justify-between bg-gray-50 px-4 py-3">
                         <span class="text-sm font-semibold text-gray-900">Price (CMP) Range</span>
                         <ChevronDownIcon :class="[open ? 'rotate-180' : '', 'h-5 w-5 text-gray-500']" />
@@ -365,41 +349,36 @@
                             Only those stocks will be included in the ranking whose last closing price is between the range (inclusive).
                         </div>
                         <div class="grid grid-cols-1 gap-x-8 gap-y-6 sm:grid-cols-2">
-                            <TextInput
-                                v-model="form.price_from"
-                                type="number"
-                                label="Price From"
-                                name="price_from"
-                                :error="form.errors.price_from"
-                            />
-                            <TextInput
-                                v-model="form.price_to"
-                                type="number"
-                                label="Price To"
-                                name="price_to"
-                                :error="form.errors.price_to"
-                            />
+                            <TextInput v-model="form.price_from" type="number" label="Price From" name="price_from" :error="form.errors.price_from" />
+                            <TextInput v-model="form.price_to" type="number" label="Price To" name="price_to" :error="form.errors.price_to" />
                         </div>
                     </DisclosurePanel>
                 </Disclosure>
 
                 <!-- Multi-Factor Combined Ranking -->
-                <Disclosure v-slot="{ open }" as="div" class="mt-4 border border-gray-200 rounded-md">
+                <Disclosure v-slot="{ open }" as="div" class="mt-4 rounded-md border border-gray-200">
                     <DisclosureButton class="flex w-full items-center justify-between bg-gray-50 px-4 py-3">
                         <span class="text-sm font-semibold text-gray-900">Multi-Factor Combined Ranking</span>
                         <ChevronDownIcon :class="[open ? 'rotate-180' : '', 'h-5 w-5 text-gray-500']" />
                     </DisclosureButton>
                     <DisclosurePanel class="p-4">
                         <PurpleAlert class="mb-4">
-                            <h3 class="mb-4 text-sm font-medium text-purple-800">
-                                How does multi-factor combined ranking work:
-                            </h3>
+                            <h3 class="mb-4 text-sm font-medium text-purple-800">How does multi-factor combined ranking work:</h3>
                             <ul role="list" class="list-disc space-y-1 pl-5">
-                                <li>First, all filters except "Sort By" and "Sort Direction" are applied on the stocks present in the selected index filter.</li>
+                                <li>
+                                    First, all filters except "Sort By" and "Sort Direction" are applied on the stocks present in the selected index
+                                    filter.
+                                </li>
                                 <li>Then, the resultant stocks from step 1 are ranked according to the first factor selected in "Sort By".</li>
-                                <li>Next, the resultant stocks from step 1 are also ranked according to the second factor selected in "Sort By (Factor Two)".</li>
+                                <li>
+                                    Next, the resultant stocks from step 1 are also ranked according to the second factor selected in "Sort By (Factor
+                                    Two)".
+                                </li>
                                 <li>If "Factor Three" is also enabled, the stocks are also ranked by the third factor.</li>
-                                <li>Finally, the combined rank is calculated as the sum of all factor ranks, and stocks are sorted by this combined rank (lowest combined rank = best).</li>
+                                <li>
+                                    Finally, the combined rank is calculated as the sum of all factor ranks, and stocks are sorted by this combined
+                                    rank (lowest combined rank = best).
+                                </li>
                             </ul>
                         </PurpleAlert>
 
@@ -450,7 +429,7 @@
                 </Disclosure>
 
                 <!-- Historical Ranks -->
-                <Disclosure v-slot="{ open }" as="div" class="mt-4 border border-gray-200 rounded-md">
+                <Disclosure v-slot="{ open }" as="div" class="mt-4 rounded-md border border-gray-200">
                     <DisclosureButton class="flex w-full items-center justify-between bg-gray-50 px-4 py-3">
                         <span class="text-sm font-semibold text-gray-900">Historical Ranks</span>
                         <ChevronDownIcon :class="[open ? 'rotate-180' : '', 'h-5 w-5 text-gray-500']" />
@@ -473,7 +452,7 @@
                 </Disclosure>
 
                 <!-- Custom Filters -->
-                <Disclosure v-slot="{ open }" as="div" class="mt-4 border border-gray-200 rounded-md">
+                <Disclosure v-slot="{ open }" as="div" class="mt-4 rounded-md border border-gray-200">
                     <DisclosureButton class="flex w-full items-center justify-between bg-gray-50 px-4 py-3">
                         <span class="text-sm font-semibold text-gray-900">Custom Filters</span>
                         <ChevronDownIcon :class="[open ? 'rotate-180' : '', 'h-5 w-5 text-gray-500']" />
@@ -640,11 +619,9 @@
             </div>
         </form>
 
-        <ErrorAlert v-if="Object.keys(form.errors).length > 0" class="mt-4">
-            There are some errors in your form. Please fix them.
-        </ErrorAlert>
+        <ErrorAlert v-if="Object.keys(form.errors).length > 0" class="mt-4"> There are some errors in your form. Please fix them. </ErrorAlert>
 
-        <Results :screen="screen" :results="results" :columns="columns" />
+        <Results :screen="screen" :results="results" :columns="columns" :available-columns="availableColumns" :loading="form.processing" />
     </div>
 </template>
 
@@ -663,6 +640,7 @@ import Results from '@/Pages/Screens/partials/Results.vue';
 import type { Screen } from '@/types/app/Models/Screen';
 import type { BacktestNseInstrumentPriceResource } from '@/types/app/Resources/BacktestNseInstrumentPriceResource';
 import type { SelectOption } from '@/types/SelectOption';
+import type { ScreenColumnGroup } from '@/types/ScreenColumnGroup';
 import type { ScreenResultColumn } from '@/types/ScreenResultColumn';
 
 const props = defineProps<{
@@ -674,6 +652,7 @@ const props = defineProps<{
     customFilterComparatorOptions: SelectOption[];
     results: (BacktestNseInstrumentPriceResource & Record<string, any>)[];
     columns: ScreenResultColumn[];
+    availableColumns: ScreenColumnGroup[];
 }>();
 
 const sortDirectionOptions = [
@@ -695,13 +674,9 @@ const medianVolumeOneYearOptions = [
 const showMoreFilters = ref(false);
 const deleting = ref(false);
 
-const matchingOption = medianVolumeOneYearOptions.filter(
-    (option) => option.id == props.screen.median_volume_one_year,
-);
+const matchingOption = medianVolumeOneYearOptions.filter((option) => option.id == props.screen.median_volume_one_year);
 
-const selectedMedianVolumeOption = ref(
-    matchingOption.length === 1 ? props.screen.median_volume_one_year : 'custom',
-);
+const selectedMedianVolumeOption = ref(matchingOption.length === 1 ? props.screen.median_volume_one_year : 'custom');
 
 const form = useForm({
     name: props.screen.name,

@@ -86,6 +86,43 @@ function createBacktestPriceRow(string $symbol, string $date, array $attributes 
 }
 
 /**
+ * Create a price row that passes every default ScreenFactory filter (allcap
+ * membership, volume, minimum return, circuits, positive days, away from high).
+ * Override $attributes to change factor values or make the row fail a filter.
+ *
+ * @param  array<string, mixed>  $attributes
+ */
+function createScreenResultRow(string $symbol, string $name, string $date, array $attributes = []): BacktestNseInstrumentPrice
+{
+    return createBacktestPriceRow($symbol, $date, array_merge([
+        'name' => $name,
+        'series' => 'EQ',
+        'is_nifty_allcap' => true,
+        'close_raw' => 100,
+        'close_adjusted' => 100,
+        'absolute_return_one_year' => 50,
+        'sharpe_return_one_year' => 10,
+        'median_volume_one_year' => 20000000,
+        'away_from_high_one_year' => -5,
+        'away_from_high_all_time' => -10,
+        'positive_days_percent_one_year' => 55,
+        'positive_days_percent_nine_months' => 55,
+        'positive_days_percent_six_months' => 55,
+        'positive_days_percent_three_months' => 55,
+        'positive_days_percent_one_months' => 55,
+        'circuits_one_year' => 0,
+        'circuits_nine_months' => 0,
+        'circuits_six_months' => 0,
+        'circuits_three_months' => 0,
+        'circuits_one_months' => 0,
+        'volatility_one_year' => 0.02,
+        'beta' => 1.1,
+        'marketcap' => 5000,
+        'ma_200' => 90,
+    ], $attributes));
+}
+
+/**
  * Create a backtest_nse_corporate_actions row. Pass $attributes to set the type,
  * description, dividend, adjustment factors or applied timestamps.
  *

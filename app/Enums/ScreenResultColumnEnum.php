@@ -88,6 +88,48 @@ enum ScreenResultColumnEnum: string implements ResolveDisplayableValueListForEnu
         };
     }
 
+    public function getGroup(): string
+    {
+        return match ($this) {
+            self::CLOSE_ADJUSTED,
+            self::CLOSE_RAW,
+            self::MEDIAN_VOLUME_ONE_YEAR => 'Price & Liquidity',
+            self::SERIES,
+            self::MARKETCAP,
+            self::PRICE_TO_EARNINGS => 'Stock Info',
+            self::ABSOLUTE_RETURN_ONE_YEAR,
+            self::ABSOLUTE_RETURN_NINE_MONTHS,
+            self::ABSOLUTE_RETURN_SIX_MONTHS,
+            self::ABSOLUTE_RETURN_THREE_MONTHS,
+            self::ABSOLUTE_RETURN_ONE_MONTHS => 'Returns',
+            self::SHARPE_RETURN_ONE_YEAR,
+            self::SHARPE_RETURN_NINE_MONTHS,
+            self::SHARPE_RETURN_SIX_MONTHS,
+            self::SHARPE_RETURN_THREE_MONTHS,
+            self::SHARPE_RETURN_ONE_MONTHS => 'Sharpe Returns',
+            self::RSI_ONE_YEAR,
+            self::RSI_NINE_MONTHS,
+            self::RSI_SIX_MONTHS,
+            self::RSI_THREE_MONTHS,
+            self::RSI_ONE_MONTHS => 'RSI',
+            self::VOLATILITY_ONE_YEAR,
+            self::BETA => 'Risk',
+            self::MA_200,
+            self::MA_100,
+            self::MA_50,
+            self::MA_20 => 'Moving Averages',
+            self::HIGH_ONE_YEAR,
+            self::AWAY_FROM_HIGH_ONE_YEAR,
+            self::HIGH_ALL_TIME,
+            self::AWAY_FROM_HIGH_ALL_TIME => 'Highs',
+            self::CIRCUITS_ONE_YEAR,
+            self::CIRCUITS_NINE_MONTHS,
+            self::CIRCUITS_SIX_MONTHS,
+            self::CIRCUITS_THREE_MONTHS,
+            self::CIRCUITS_ONE_MONTHS => 'Circuits',
+        };
+    }
+
     public function getSortOrder(): int
     {
         return match ($this) {

@@ -103,7 +103,29 @@ class ScreensController extends Controller
             'customFilterComparatorOptions' => array_values(CustomFilterComparatorOptionEnum::resolveDisplayableValueList()),
             'results' => $results,
             'columns' => $columns,
+            'availableColumns' => $this->getAvailableColumnGroups(),
         ]);
+    }
+
+    /**
+     * All selectable result columns grouped by family, in table display order.
+     *
+     * @return array<int, array{name: string, columns: array<int, array{id: string, name: string}>}>
+     */
+    protected function getAvailableColumnGroups(): array
+    {
+        return collect(ScreenResultColumnEnum::cases())
+            ->sortBy(fn (ScreenResultColumnEnum $column) => $column->getSortOrder())
+            ->groupBy(fn (ScreenResultColumnEnum $column) => $column->getGroup())
+            ->map(fn ($columns, string $group) => [
+                'name' => $group,
+                'columns' => $columns->map(fn (ScreenResultColumnEnum $column) => [
+                    'id' => $column->value,
+                    'name' => $column->getDisplayName(),
+                ])->values()->all(),
+            ])
+            ->values()
+            ->all();
     }
 
     public function update(Screen $screen, UpdateScreenRequest $request)
