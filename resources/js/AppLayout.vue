@@ -258,6 +258,7 @@ import {
 import {
     AdjustmentsHorizontalIcon,
     ArrowLeftStartOnRectangleIcon,
+    BanknotesIcon,
     BeakerIcon,
     Bars3Icon,
     ChartBarIcon,
@@ -311,6 +312,12 @@ const navigation = computed(() => {
             href: '/market-health',
             icon: ChartBarIcon,
             current: page.url.startsWith('/market-health'),
+        },
+        {
+            name: 'Corporate Actions',
+            href: '/corporate-actions',
+            icon: BanknotesIcon,
+            current: page.url.startsWith('/corporate-actions'),
         },
         {
             name: 'Profile',

@@ -11,6 +11,8 @@ use App\Http\Controllers\BillingAcceptTermsController;
 use App\Http\Controllers\BlogCommentsController;
 use App\Http\Controllers\BlogsController;
 use App\Http\Controllers\ChangePasswordController;
+use App\Http\Controllers\CorporateActionsController;
+use App\Http\Controllers\CorporateActionSymbolSearchController;
 use App\Http\Controllers\IndicesDashboardController;
 use App\Http\Controllers\InstrumentSearchController;
 use App\Http\Controllers\InvoiceDownloadController;
@@ -79,6 +81,9 @@ Route::get('/instruments/search', InstrumentSearchController::class);
 Route::get('/instruments/{symbol}', BacktestNseInstrumentViewController::class);
 
 Route::get('/market-health/{index?}', MarketHealthController::class);
+
+Route::get('/corporate-actions', CorporateActionsController::class);
+Route::get('/corporate-actions/search', CorporateActionSymbolSearchController::class);
 
 Route::get('/blogs', [BlogsController::class, 'index']);
 Route::get('/blogs/{blog:slug}', [BlogsController::class, 'show']);
