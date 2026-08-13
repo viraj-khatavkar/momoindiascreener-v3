@@ -3,12 +3,14 @@
 namespace App\Console\Commands\Backtest;
 
 use App\Actions\ReadCsvAction;
+use App\Actions\ResolveMarketIndexAliasAction;
+use App\Enums\MarketIndexAliasStatusEnum;
 use App\Models\BacktestNseInstrument;
 use App\Models\BacktestNseInstrumentPrice;
+use App\Models\MarketIndexAlias;
 use Carbon\Carbon;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\Storage;
-use Illuminate\Support\Str;
 
 class CopyInstrumentsCommand extends Command
 {
@@ -27,71 +29,12 @@ class CopyInstrumentsCommand extends Command
     protected $description = 'Copies the symbols traded on a given date into backtest_nse_instruments and populates etf_index (normalized) from that date ETF file';
 
     /**
-     * Maps the raw NSE "UNDERLYING" label (squished + upper-cased) to a canonical
-     * index slug. Slugs align with nse_indices.slug where an NSE index exists;
-     * non-NSE underlyings (gold, BSE, international, money market) use sensible slugs.
-     *
-     * @var array<string, string>
-     */
-    private const INDEX_NORMALIZATION_MAP = [
-        'NIFTY' => 'nifty-50',
-        'NIFTY 50' => 'nifty-50',
-        'NIFTY50' => 'nifty-50',
-        'NIFTY 100' => 'nifty-100',
-        'LIC MF EXCHANGE TRADED FUND- NIFTY 100' => 'nifty-100',
-        'NIFTY BANK' => 'nifty-bank',
-        'NIFTY BANK INDEX' => 'nifty-bank',
-        'NIFTY NEXT 50' => 'nifty-next-50',
-        'NIFTY NEXT 50 ETF' => 'nifty-next-50',
-        'NIFTY MIDCAP 100' => 'nifty-midcap-100',
-        'NIFTY MIDCAP 150' => 'nifty-midcap-150',
-        'NIFTY CPSE' => 'nifty-cpse',
-        'NIFTY PRIVATE BANK INDEX' => 'nifty-private-bank',
-        'NIFTY PSU BANK INDEX' => 'nifty-psu-bank',
-        'NIFTY1D RATE INDEX' => 'nifty-1d-rate-index',
-        'NIFTY 1D RATE INDEX' => 'nifty-1d-rate-index',
-        'NIFTY50 VALUE 20' => 'nifty50-value-20',
-        'NIFTY 100 LOW VOLATILITY 30 INDEX' => 'nifty100-low-volatility-30',
-        'NIFTY ALPHA LOW-VOLATILITY 30 INDEX' => 'nifty-alpha-low-volatility-30',
-        'NIFTY 200 QUALITY 30 INDEX' => 'nifty200-quality-30',
-        'NIFTY100 ESG SECTOR LEADERS TRI INDEX' => 'nifty100-esg-sector-leaders',
-        'NIFTY QUALITY 30' => 'nifty100-quality-30',
-        'NIFTY CONSUMPTION INDEX' => 'nifty-india-consumption',
-        'NIFTY HEALTHCARE INDEX' => 'nifty-healthcare-index',
-        'NIFTY INFRA' => 'nifty-infrastructure',
-        'NIFTY IT INDEX' => 'nifty-it',
-        'NIFTY IT' => 'nifty-it',
-        'NIFTYIT' => 'nifty-it',
-        'NIFTY DIV OPPS 50' => 'nifty-dividend-opportunities-50',
-        'NIFTY 10 YR BENCHMARK G-SEC INDEX' => 'nifty-10-yr-benchmark-g-sec',
-        'NIFTY 5 YR BENCHMARK G - SEC INDEX TRI' => 'nifty-5-yr-benchmark-g-sec',
-        'NIFTY 5 YR BENCHMARK G-SEC INDEX' => 'nifty-5-yr-benchmark-g-sec',
-        'NIFTY GS 8 13YR' => 'nifty-8-13-yr-g-sec',
-        'NIFTY BHARAT BOND' => 'nifty-bharat-bond',
-        'NIFTY AAA BOND PLUS SDL APR 2026 50:50 INDEX' => 'nifty-aaa-bond-plus-sdl-apr-2026',
-        'NIFTY CPSE BOND PLUS SDL SEP 2024 50:50 INDEX' => 'nifty-cpse-bond-plus-sdl-sep-2024',
-        'NIFTY SDL APR 2026 TOP 20 EQUAL WEIGHT' => 'nifty-sdl-apr-2026-top-20-equal-weight',
-        'GSEC 10 NSE INDEX' => 'gsec-10',
-        'SENSEX' => 'sensex',
-        'BSE SENSEX NEXT 50' => 'bse-sensex-next-50',
-        'NASDAQ100' => 'nasdaq-100',
-        'HANG SENG INDEX' => 'hang-seng',
-        // Generic label NSE used for MAFANG (Mirae Asset NYSE FANG+ ETF) around its May 2021 listing.
-        'TOTAL RETURN INDEX' => 'nyse-fang-plus',
-        'S&P BSE 500 INDEX' => 'bse-500',
-        'S&P BSE BHARAT 22 INDEX' => 'bse-bharat-22',
-        'S&P BSE LIQUID RATE INDEX' => 'bse-liquid-rate',
-        'S&P BSE MIDCAP SELECT INDEX' => 'bse-midcap-select',
-        'GOLD' => 'gold',
-        'CALL MONEY SHORT TERM G-SECS & MONEY MARKET INSTR' => 'liquid',
-        'SHARIAH INDEX' => 'nifty50-shariah',
-    ];
-
-    /**
      * Execute the console command.
      */
-    public function handle(): int
-    {
+    public function handle(
+        ResolveMarketIndexAliasAction $resolveMarketIndexAlias,
+        ReadCsvAction $readCsvAction,
+    ): int {
         $date = $this->option('date');
 
         if (is_null($date)) {
@@ -120,7 +63,7 @@ class CopyInstrumentsCommand extends Command
 
         $this->info($newSymbols->count().' instruments copied. '.($sourceSymbols->count() - $newSymbols->count()).' already present.');
 
-        $this->populateEtfIndexes($date);
+        $this->populateEtfIndexes($date, $resolveMarketIndexAlias, $readCsvAction);
 
         return Command::SUCCESS;
     }
@@ -129,8 +72,11 @@ class CopyInstrumentsCommand extends Command
      * Populate the etf_index column from the ETF file for the given date.
      * Symbols not listed in that file keep their existing value (null for non-ETFs).
      */
-    protected function populateEtfIndexes(string $date): void
-    {
+    protected function populateEtfIndexes(
+        string $date,
+        ResolveMarketIndexAliasAction $resolveMarketIndexAlias,
+        ReadCsvAction $readCsvAction,
+    ): void {
         $relativePath = 'uploads/'.(new Carbon($date))->format('Y-m-d').'/etf.csv';
 
         if (! Storage::exists($relativePath)) {
@@ -139,14 +85,11 @@ class CopyInstrumentsCommand extends Command
             return;
         }
 
-        /** @var ReadCsvAction $readCsvAction */
-        $readCsvAction = app(ReadCsvAction::class);
-
         $rows = $readCsvAction->execute(Storage::path($relativePath))->toCollection();
 
         $seen = 0;
-        $updated = 0;
-        $unmapped = [];
+        $populated = 0;
+        $pendingAliases = [];
 
         foreach ($rows as $row) {
             if (! isset($row[2], $row[14])) {
@@ -161,67 +104,55 @@ class CopyInstrumentsCommand extends Command
 
             $seen++;
 
-            $rawIndex = $row[14];
-            $slug = $this->normalizeIndex($rawIndex);
+            $marketIndexAlias = $resolveMarketIndexAlias->execute($row[14], $symbol, $date);
+            $slug = $marketIndexAlias->status === MarketIndexAliasStatusEnum::Approved
+                ? $marketIndexAlias->marketIndex?->slug
+                : null;
 
-            if (! $this->isKnownIndex($rawIndex)) {
-                $unmapped[Str::squish($rawIndex)] = $slug;
+            if ($marketIndexAlias->status === MarketIndexAliasStatusEnum::Pending) {
+                $pendingAliases[$marketIndexAlias->id] = $marketIndexAlias;
             }
 
-            $updated += BacktestNseInstrument::query()
+            $updated = BacktestNseInstrument::query()
                 ->where('symbol', $symbol)
-                ->update(['etf_index' => $slug]);
+                ->where(function ($query) use ($date) {
+                    $query->whereNull('etf_index_source_date')
+                        ->orWhere('etf_index_source_date', '<=', $date);
+                })
+                ->update([
+                    'etf_index' => $slug,
+                    'market_index_alias_id' => $marketIndexAlias->id,
+                    'etf_index_source_date' => $date,
+                ]);
+
+            if ($slug !== null) {
+                $populated += $updated;
+            }
         }
 
-        $this->info($updated.' etf_index values populated from '.$seen.' ETFs in the file for '.$date.'.');
+        $this->info($populated.' etf_index values populated from '.$seen.' ETFs in the file for '.$date.'.');
 
-        $this->warnAboutUnmappedIndexes($unmapped);
+        $this->warnAboutPendingAliases($pendingAliases);
     }
 
     /**
-     * Warn about underlying labels that had no curated mapping and were slugged
-     * via the fallback, so a canonical entry can be added to the map.
-     *
-     * @param  array<string, string>  $unmapped  raw label => fallback slug
+     * @param  array<int, MarketIndexAlias>  $pendingAliases
      */
-    protected function warnAboutUnmappedIndexes(array $unmapped): void
+    protected function warnAboutPendingAliases(array $pendingAliases): void
     {
-        if ($unmapped === []) {
+        if ($pendingAliases === []) {
             return;
         }
 
-        $this->warn(count($unmapped).' unmapped ETF index(es) slugged via fallback — add to INDEX_NORMALIZATION_MAP for a canonical slug:');
+        $this->warn(count($pendingAliases).' ETF index label(s) need review:');
 
-        foreach ($unmapped as $rawIndex => $slug) {
-            $this->warn('  "'.$rawIndex.'" => '.$slug);
+        foreach ($pendingAliases as $marketIndexAlias) {
+            $suggestion = $marketIndexAlias->suggestedMarketIndex?->slug
+                ?? $marketIndexAlias->suggested_slug;
+
+            $this->warn('  "'.$marketIndexAlias->source_label.'" ('.$marketIndexAlias->sample_symbol.') => '.$suggestion);
         }
-    }
 
-    /**
-     * Normalize a raw NSE underlying label into a canonical index slug.
-     * Known labels use the curated map; anything else falls back to a slug of
-     * the raw label so new/unmapped indexes still get a consistent value.
-     */
-    public function normalizeIndex(string $rawIndex): string
-    {
-        $key = $this->normalizeKey($rawIndex);
-
-        return self::INDEX_NORMALIZATION_MAP[$key] ?? Str::slug($key);
-    }
-
-    /**
-     * Whether the raw underlying label has an explicit (curated) mapping.
-     */
-    public function isKnownIndex(string $rawIndex): bool
-    {
-        return isset(self::INDEX_NORMALIZATION_MAP[$this->normalizeKey($rawIndex)]);
-    }
-
-    /**
-     * Normalize a raw underlying label into a stable lookup key.
-     */
-    private function normalizeKey(string $rawIndex): string
-    {
-        return Str::of($rawIndex)->squish()->upper()->toString();
+        $this->warn('Review these labels in Admin > ETF Index Mappings.');
     }
 }

@@ -3,6 +3,7 @@
 use App\Http\Controllers\Admin\BlogsController;
 use App\Http\Controllers\Admin\CorporateActionsController;
 use App\Http\Controllers\Admin\DashboardController;
+use App\Http\Controllers\Admin\MarketIndexAliasesController;
 use App\Http\Controllers\Admin\NseFilesController;
 use App\Http\Controllers\Admin\OrdersController;
 use App\Http\Controllers\Admin\UsersController;
@@ -17,6 +18,8 @@ Route::get('/orders', [OrdersController::class, 'index'])->name('admin.orders.in
 Route::get('/orders/download', [OrdersController::class, 'download'])->name('admin.orders.download');
 
 Route::resource('/nse-files', NseFilesController::class)->only(['index', 'create', 'store']);
+
+Route::resource('/market-index-aliases', MarketIndexAliasesController::class)->only(['index', 'update']);
 
 Route::resource('/corporate-actions', CorporateActionsController::class)->except(['show']);
 

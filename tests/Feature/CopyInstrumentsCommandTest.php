@@ -1,13 +1,18 @@
 <?php
 
-use App\Console\Commands\Backtest\CopyInstrumentsCommand;
+use App\Actions\ResolveMarketIndexAliasAction;
+use App\Enums\MarketIndexAliasStatusEnum;
 use App\Models\BacktestNseInstrument;
 use App\Models\BacktestNseInstrumentPrice;
+use App\Models\MarketIndex;
+use App\Models\MarketIndexAlias;
+use Database\Seeders\MarketIndexSeeder;
 use Illuminate\Support\Facades\Storage;
 
 beforeEach(function () {
     // Fake the disk so the command never touches the real uploads/ files.
     Storage::fake('local');
+    $this->seed(MarketIndexSeeder::class);
 });
 
 function createBacktestPrice(string $symbol, string $date): BacktestNseInstrumentPrice
@@ -138,43 +143,129 @@ it('only reads the etf file for the given date', function () {
     expect(BacktestNseInstrument::where('symbol', 'NIFTYBEES')->value('etf_index'))->toBe('nifty-50');
 });
 
-it('normalizes known index variants and slugifies unknown indexes', function () {
-    $command = new CopyInstrumentsCommand;
+it('resolves known index variants from the database registry', function () {
+    $resolver = app(ResolveMarketIndexAliasAction::class);
+    $knownMappings = [
+        'NIFTY 50' => 'nifty-50',
+        'NIFTY' => 'nifty-50',
+        'NIFTY50' => 'nifty-50',
+        '  nifty   50  ' => 'nifty-50',
+        'NIFTY50 EQUAL WEIGHT INDEX' => 'nifty50-equal-weight',
+        'NIFTY BANK INDEX' => 'nifty-bank',
+        'NIFTY FINANCIAL SERVICES TOTAL RETURN INDEX' => 'nifty-financial-services',
+        'NIFTY NEXT 50 ETF' => 'nifty-next-50',
+        'S&P BSE 500 INDEX' => 'bse-500',
+        'SENSEX' => 'sensex',
+        'BSE SENSEX INDEX' => 'sensex',
+        'S&P 500 TOP 50 TOTAL RETURN INDEX' => 'sp-500-top-50',
+        'NIFTY BHARAT BOND' => 'nifty-bharat-bond',
+        'NIFTY ALPHA LOW-VOLATILITY 30 INDEX' => 'nifty-alpha-low-volatility-30',
+        'NIFTY IT INDEX' => 'nifty-it',
+        'NIFTY IT TRI' => 'nifty-it',
+        'NIFTYIT' => 'nifty-it',
+        'TOTAL RETURN INDEX' => 'nyse-fang-plus',
+        'NIFTY AAA BOND PLUS SDL APR 2026 50:50 INDEX' => 'nifty-aaa-bond-plus-sdl-apr-2026',
+        'NIFTY CONSUMPTION INDEX' => 'nifty-india-consumption',
+        'NIFTY INDIA CONSUMPTION INDEX' => 'nifty-india-consumption',
+        'NIFTY FMCG INDEX' => 'nifty-fmcg',
+        'NIFTY HEALTHCARE INDEX' => 'nifty-healthcare-index',
+        'NIFTY HEALTHCARE TRI' => 'nifty-healthcare-index',
+        'NIFTY PHARMA INDEX' => 'nifty-pharma',
+    ];
 
-    expect($command->normalizeIndex('NIFTY 50'))->toBe('nifty-50')
-        ->and($command->normalizeIndex('NIFTY'))->toBe('nifty-50')
-        ->and($command->normalizeIndex('NIFTY50'))->toBe('nifty-50')
-        ->and($command->normalizeIndex('  nifty   50  '))->toBe('nifty-50')
-        ->and($command->normalizeIndex('NIFTY BANK INDEX'))->toBe('nifty-bank')
-        ->and($command->normalizeIndex('NIFTY NEXT 50 ETF'))->toBe('nifty-next-50')
-        ->and($command->normalizeIndex('S&P BSE 500 INDEX'))->toBe('bse-500')
-        ->and($command->normalizeIndex('NIFTY BHARAT BOND'))->toBe('nifty-bharat-bond')
-        ->and($command->normalizeIndex('NIFTY ALPHA LOW-VOLATILITY 30 INDEX'))->toBe('nifty-alpha-low-volatility-30')
-        ->and($command->normalizeIndex('NIFTY IT INDEX'))->toBe('nifty-it')
-        ->and($command->normalizeIndex('NIFTYIT'))->toBe('nifty-it')
-        ->and($command->normalizeIndex('TOTAL RETURN INDEX'))->toBe('nyse-fang-plus')
-        ->and($command->normalizeIndex('NIFTY AAA BOND PLUS SDL APR 2026 50:50 INDEX'))->toBe('nifty-aaa-bond-plus-sdl-apr-2026')
-        ->and($command->normalizeIndex('NIFTY HEALTHCARE INDEX'))->toBe('nifty-healthcare-index')
-        ->and($command->isKnownIndex('NIFTY HEALTHCARE INDEX'))->toBeTrue()
-        ->and($command->isKnownIndex('TOTAL RETURN INDEX'))->toBeTrue()
-        ->and($command->isKnownIndex('NIFTY AAA BOND PLUS SDL APR 2026 50:50 INDEX'))->toBeTrue()
-        ->and($command->isKnownIndex('NIFTY BANK INDEX'))->toBeTrue()
-        ->and($command->isKnownIndex('NIFTY ALPHA LOW-VOLATILITY 30 INDEX'))->toBeTrue()
-        ->and($command->isKnownIndex('NIFTY IT INDEX'))->toBeTrue()
-        ->and($command->isKnownIndex('NIFTYIT'))->toBeTrue()
-        ->and($command->isKnownIndex('NIFTY BHARAT BOND'))->toBeTrue()
-        ->and($command->normalizeIndex('SOME BRAND NEW INDEX'))->toBe('some-brand-new-index');
+    foreach ($knownMappings as $sourceLabel => $expectedSlug) {
+        $marketIndexAlias = $resolver->execute($sourceLabel, 'TESTETF', '2019-12-20');
+
+        expect($marketIndexAlias->status)->toBe(MarketIndexAliasStatusEnum::Approved)
+            ->and($marketIndexAlias->marketIndex?->slug)->toBe($expectedSlug);
+    }
 });
 
-it('warns about unmapped indexes but still applies the fallback slug', function () {
+it('queues an unknown index for review and does not apply an unverified slug', function () {
     createBacktestPrice('NEWETF', '2019-12-20');
 
     putEtfCsv('2019-12-20', [['NEWETF', 'NIFTY BRAND NEW INDEX']]);
 
     $this->artisan('backtest:copy-instruments', ['--date' => '2019-12-20'])
-        ->expectsOutputToContain('1 unmapped ETF index')
-        ->expectsOutputToContain('"NIFTY BRAND NEW INDEX" => nifty-brand-new-index')
+        ->expectsOutputToContain('1 ETF index label(s) need review')
+        ->expectsOutputToContain('"NIFTY BRAND NEW INDEX" (NEWETF) => nifty-brand-new-index')
+        ->expectsOutputToContain('Admin > ETF Index Mappings')
         ->assertSuccessful();
 
-    expect(BacktestNseInstrument::where('symbol', 'NEWETF')->value('etf_index'))->toBe('nifty-brand-new-index');
+    $marketIndexAlias = MarketIndexAlias::query()->where('normalized_label', 'NIFTY BRAND NEW INDEX')->sole();
+    $instrument = BacktestNseInstrument::query()->where('symbol', 'NEWETF')->sole();
+
+    expect($marketIndexAlias->status)->toBe(MarketIndexAliasStatusEnum::Pending)
+        ->and($marketIndexAlias->suggested_slug)->toBe('nifty-brand-new-index')
+        ->and($marketIndexAlias->sample_symbol)->toBe('NEWETF')
+        ->and($instrument->etf_index)->toBeNull()
+        ->and($instrument->market_index_alias_id)->toBe($marketIndexAlias->id);
+});
+
+it('suggests an existing index after it removes a return type suffix', function () {
+    $marketIndex = MarketIndex::query()->create([
+        'name' => 'Nifty Brand New',
+        'slug' => 'nifty-brand-new',
+        'provider' => 'NSE',
+    ]);
+    createBacktestPrice('NEWETF', '2019-12-20');
+    putEtfCsv('2019-12-20', [['NEWETF', 'NIFTY BRAND NEW INDEX']]);
+
+    $this->artisan('backtest:copy-instruments', ['--date' => '2019-12-20'])->assertSuccessful();
+
+    $marketIndexAlias = MarketIndexAlias::query()->where('normalized_label', 'NIFTY BRAND NEW INDEX')->sole();
+
+    expect($marketIndexAlias->status)->toBe(MarketIndexAliasStatusEnum::Pending)
+        ->and($marketIndexAlias->suggested_market_index_id)->toBe($marketIndex->id)
+        ->and($marketIndexAlias->suggested_slug)->toBe('nifty-brand-new');
+});
+
+it('records the first and last date for one pending alias', function () {
+    createBacktestPrice('NEWETF', '2019-12-20');
+    createBacktestPrice('NEWETF', '2019-12-21');
+    putEtfCsv('2019-12-20', [['NEWETF', 'NIFTY BRAND NEW INDEX']]);
+    putEtfCsv('2019-12-21', [['NEWETF', 'NIFTY BRAND NEW INDEX']]);
+
+    $this->artisan('backtest:copy-instruments', ['--date' => '2019-12-20'])->assertSuccessful();
+    $this->artisan('backtest:copy-instruments', ['--date' => '2019-12-21'])->assertSuccessful();
+
+    $marketIndexAlias = MarketIndexAlias::query()->where('normalized_label', 'NIFTY BRAND NEW INDEX')->sole();
+
+    expect($marketIndexAlias->first_seen_on->toDateString())->toBe('2019-12-20')
+        ->and($marketIndexAlias->last_seen_on->toDateString())->toBe('2019-12-21')
+        ->and(MarketIndexAlias::query()->where('normalized_label', 'NIFTY BRAND NEW INDEX')->count())->toBe(1);
+});
+
+it('automatically approves a new label when its slug exactly matches an index', function () {
+    MarketIndex::query()->create([
+        'name' => 'Nifty Brand New Index',
+        'slug' => 'nifty-brand-new-index',
+        'provider' => 'NSE',
+    ]);
+    createBacktestPrice('NEWETF', '2019-12-20');
+    putEtfCsv('2019-12-20', [['NEWETF', 'NIFTY BRAND NEW INDEX']]);
+
+    $this->artisan('backtest:copy-instruments', ['--date' => '2019-12-20'])
+        ->doesntExpectOutputToContain('need review')
+        ->assertSuccessful();
+
+    expect(BacktestNseInstrument::query()->where('symbol', 'NEWETF')->value('etf_index'))
+        ->toBe('nifty-brand-new-index')
+        ->and(MarketIndexAlias::query()->where('normalized_label', 'NIFTY BRAND NEW INDEX')->value('status'))
+        ->toBe(MarketIndexAliasStatusEnum::Approved);
+});
+
+it('does not let an older file replace a newer index assignment', function () {
+    createBacktestPrice('TESTETF', '2019-12-20');
+    createBacktestPrice('TESTETF', '2019-12-21');
+    putEtfCsv('2019-12-20', [['TESTETF', 'GOLD']]);
+    putEtfCsv('2019-12-21', [['TESTETF', 'NIFTY IT']]);
+
+    $this->artisan('backtest:copy-instruments', ['--date' => '2019-12-21'])->assertSuccessful();
+    $this->artisan('backtest:copy-instruments', ['--date' => '2019-12-20'])->assertSuccessful();
+
+    $instrument = BacktestNseInstrument::query()->where('symbol', 'TESTETF')->sole();
+
+    expect($instrument->etf_index)->toBe('nifty-it')
+        ->and($instrument->etf_index_source_date->toDateString())->toBe('2019-12-21');
 });

@@ -97,7 +97,7 @@ class ChangeSymbolCommand extends Command
     {
         $oldInstrument = BacktestNseInstrument::query()
             ->where('symbol', $oldSymbol)
-            ->first(['id', 'name', 'etf_index']);
+            ->first(['id', 'name', 'etf_index', 'market_index_alias_id', 'etf_index_source_date']);
 
         if (! $oldInstrument) {
             return 0;
@@ -105,7 +105,7 @@ class ChangeSymbolCommand extends Command
 
         $newInstrument = BacktestNseInstrument::query()
             ->where('symbol', $newSymbol)
-            ->first(['id', 'name', 'etf_index']);
+            ->first(['id', 'name', 'etf_index', 'market_index_alias_id', 'etf_index_source_date']);
 
         if (! $newInstrument) {
             return BacktestNseInstrument::query()
@@ -119,7 +119,18 @@ class ChangeSymbolCommand extends Command
             $updates['name'] = $oldInstrument->name;
         }
 
-        if (blank($newInstrument->etf_index) && filled($oldInstrument->etf_index)) {
+        if ($oldInstrument->market_index_alias_id && (
+            ! $newInstrument->etf_index_source_date
+            || $oldInstrument->etf_index_source_date?->isAfter($newInstrument->etf_index_source_date)
+        )) {
+            $updates['etf_index'] = $oldInstrument->etf_index;
+            $updates['market_index_alias_id'] = $oldInstrument->market_index_alias_id;
+            $updates['etf_index_source_date'] = $oldInstrument->etf_index_source_date;
+        } elseif (
+            ! $newInstrument->market_index_alias_id
+            && blank($newInstrument->etf_index)
+            && filled($oldInstrument->etf_index)
+        ) {
             $updates['etf_index'] = $oldInstrument->etf_index;
         }
 
