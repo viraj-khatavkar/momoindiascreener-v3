@@ -25,7 +25,7 @@ class RunBacktestJob implements ShouldQueue
             $this->backtest->update([
                 'status' => BacktestStatusEnum::Running,
                 'started_at' => now(),
-                'progress' => 0,
+                'progress' => 1,
                 'error_message' => null,
             ]);
 

@@ -111,11 +111,11 @@
                 <div
                     class="relative overflow-hidden rounded-2xl bg-linear-to-br from-gray-900 to-gray-950 p-8 shadow-xl ring-1 ring-white/10"
                     role="progressbar"
-                    :aria-valuenow="backtest.progress"
+                    :aria-valuenow="backtest.progress > 0 ? backtest.progress : undefined"
                     aria-valuemin="0"
                     aria-valuemax="100"
                     aria-live="polite"
-                    :aria-label="`Backtest ${backtest.progress}% complete`"
+                    :aria-label="backtest.progress === 0 ? 'Backtest is waiting for a worker' : `Backtest ${backtest.progress}% complete`"
                 >
                     <!-- Animated background grid -->
                     <div class="pointer-events-none absolute inset-0 opacity-[0.03]" style="background-image: linear-gradient(rgba(255,255,255,.1) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,.1) 1px, transparent 1px); background-size: 24px 24px;" />
@@ -128,13 +128,14 @@
 
                     <!-- Top row: percentage + status -->
                     <div class="relative flex items-end justify-between">
-                        <div class="flex items-baseline gap-3">
+                        <div v-if="backtest.progress > 0" class="flex items-baseline gap-3">
                             <span class="text-5xl font-black tabular-nums tracking-tight text-white">{{ backtest.progress }}</span>
                             <span class="text-lg font-medium text-white/40">%</span>
                         </div>
+                        <span v-else class="text-3xl font-black tracking-tight text-white">Starting</span>
                         <div class="flex items-center gap-2 pb-2">
                             <span class="relative flex h-2.5 w-2.5">
-                                <span class="absolute inline-flex h-full w-full animate-ping rounded-full bg-purple-400 opacity-75"></span>
+                                <span class="absolute inline-flex h-full w-full rounded-full bg-purple-400 opacity-75 motion-safe:animate-ping"></span>
                                 <span class="relative inline-flex h-2.5 w-2.5 rounded-full bg-purple-500"></span>
                             </span>
                             <span class="text-sm font-medium text-white/60">{{ progressStageLabel }}</span>
@@ -143,8 +144,13 @@
 
                     <!-- Progress bar -->
                     <div class="relative mt-6 h-3 w-full overflow-hidden rounded-full bg-white/10">
+                        <div
+                            v-if="backtest.progress === 0"
+                            class="absolute inset-0 bg-linear-to-r from-violet-500/30 via-purple-500 to-fuchsia-500/30 motion-safe:animate-pulse"
+                        />
                         <!-- Track glow -->
                         <div
+                            v-else
                             class="absolute inset-y-0 left-0 rounded-full bg-linear-to-r from-violet-500 via-purple-500 to-fuchsia-500 transition-all duration-700 ease-out"
                             :style="`width: ${backtest.progress}%`"
                         />
@@ -158,11 +164,17 @@
                     </div>
 
                     <!-- Bottom detail chips -->
-                    <div class="mt-5 flex items-center gap-3 text-xs">
+                    <div class="mt-5 flex flex-wrap items-center gap-3 text-xs">
                         <span class="rounded-full bg-white/10 px-3 py-1 font-medium text-white/50">
                             {{ progressStageLabel }}
                         </span>
-                        <span v-if="backtest.progress > 0 && backtest.progress < 95" class="text-white/30">
+                        <span v-if="backtest.progress === 0" class="text-white/40">
+                            Your run will start when a worker is free. You can leave this page.
+                        </span>
+                        <span v-else-if="backtest.progress < 5" class="text-white/40">
+                            Loading prices and strategy data
+                        </span>
+                        <span v-else-if="backtest.progress < 95" class="text-white/30">
                             {{ simulatedDaysPct }}% of trading days processed
                         </span>
                     </div>
@@ -1343,7 +1355,7 @@ watch(() => props.backtest.status, (newStatus, oldStatus) => {
 function startPolling(): void {
     pollInterval = setInterval(() => {
         router.reload({ only: ['backtest'] });
-    }, 3000);
+    }, 2000);
 }
 
 function stopPolling(): void {
@@ -1442,16 +1454,17 @@ function rollingReturnColor(value: number): string {
 
 // --- Computed: derived metrics ---
 
-// Honest stages: 0-95% of the progress value is trading-day simulation,
-// the final 5% is metric computation.
+// Honest stages: 0% is the queue wait, 1-4% is preparation, 5-94% is the
+// trading-day simulation, and 95-99% is metric computation.
 const progressStageLabel = computed(() => {
     const p = props.backtest.progress;
-    if (p === 0) return 'Queued';
+    if (p === 0) return 'Waiting for a worker';
+    if (p < 5) return 'Preparing market data';
     if (p < 95) return 'Simulating trades';
     return 'Computing metrics';
 });
 
-const simulatedDaysPct = computed(() => Math.min(100, Math.round((props.backtest.progress / 95) * 100)));
+const simulatedDaysPct = computed(() => Math.max(0, Math.min(100, Math.round(((props.backtest.progress - 5) / 89) * 100))));
 
 const growthMultiplier = computed(() => {
     const capital = Number(props.backtest.initial_capital);

@@ -88,6 +88,8 @@ class RunBacktestAction
             return;
         }
 
+        $backtest->update(['progress' => 2]);
+
         $this->dmaPeriod = (int) $backtest->cash_call_dma_period;
         $this->loadIndexData($backtest->cash_call_index);
         $this->computeDma($this->dmaPeriod);
@@ -105,6 +107,9 @@ class RunBacktestAction
 
         $totalDays = $tradingDates->count();
         $dayIndex = 0;
+        $lastReportedProgress = 5;
+
+        $backtest->update(['progress' => $lastReportedProgress]);
 
         foreach ($tradingDates as $date) {
             $dateStr = $date->format('Y-m-d');
@@ -150,13 +155,18 @@ class RunBacktestAction
             }
 
             // Step D: Update progress
-            if ($dayIndex % 50 === 0) {
-                $backtest->update(['progress' => (int) (($dayIndex / $totalDays) * 95)]);
+            $simulationProgress = 5 + (int) floor(($dayIndex / $totalDays) * 89);
+
+            if ($simulationProgress > $lastReportedProgress) {
+                $backtest->update(['progress' => $simulationProgress]);
+                $lastReportedProgress = $simulationProgress;
             }
         }
 
         $this->flushSnapshots();
         $this->flushTrades();
+
+        $backtest->update(['progress' => 95]);
     }
 
     private function loadTradingDates(Backtest $backtest)

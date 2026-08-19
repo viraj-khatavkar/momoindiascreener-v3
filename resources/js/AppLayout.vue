@@ -413,6 +413,14 @@ const adminNavigation = computed(() => [
         current: page.url.startsWith('/admin/nse-files'),
     },
     {
+        name: 'Processes',
+        href: '/admin/processes',
+        initial: 'P',
+        current:
+            page.url.startsWith('/admin/processes') ||
+            page.url.startsWith('/admin/process-runs'),
+    },
+    {
         name: 'ETF Index Mappings',
         href: '/admin/market-index-aliases',
         initial: 'E',

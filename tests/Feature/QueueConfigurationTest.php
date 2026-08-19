@@ -2,6 +2,7 @@
 
 use App\Jobs\RunBacktestJob;
 use App\Models\Backtest;
+use Illuminate\Support\Facades\Artisan;
 use Laravel\Horizon\ProvisioningPlan;
 
 it('uses one Redis queue with multiple processes and safe timeouts', function () {
@@ -38,6 +39,13 @@ it('uses Horizon as the local Composer queue worker', function () {
         ->and($developmentScript)->not->toContain('queue:listen')
         ->and($serverRenderedDevelopmentScript)->toContain('php artisan horizon:listen')
         ->and($serverRenderedDevelopmentScript)->not->toContain('queue:listen');
+});
+
+it('uses a Horizon worker that supports the Laravel worker options', function () {
+    $horizonWorkCommand = Artisan::all()['horizon:work'];
+
+    expect($horizonWorkCommand->getDefinition()->hasOption('stop-when-empty-for'))
+        ->toBeTrue();
 });
 
 it('uses Redis queues in the example environment', function () {

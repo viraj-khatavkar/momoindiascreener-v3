@@ -58,4 +58,9 @@ class User extends Authenticatable implements MustVerifyEmail
     {
         return $this->hasMany(Backtest::class);
     }
+
+    public function adminProcessRuns(): HasMany
+    {
+        return $this->hasMany(AdminProcessRun::class);
+    }
 }

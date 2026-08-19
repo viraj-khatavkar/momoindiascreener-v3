@@ -1,5 +1,7 @@
 <?php
 
+use App\Actions\Backtest\CalculateBacktestMetricsAction;
+use App\Actions\Backtest\RunBacktestAction;
 use App\Enums\BacktestStatusEnum;
 use App\Jobs\RunBacktestJob;
 use App\Models\Backtest;
@@ -9,6 +11,8 @@ use App\Models\BacktestTrade;
 use App\Models\User;
 use Illuminate\Support\Facades\Queue;
 use Inertia\Testing\AssertableInertia as Assert;
+
+use function Pest\Laravel\mock;
 
 /**
  * Build a full valid update payload from the backtest's current attributes,
@@ -255,4 +259,32 @@ it('queues a run from the standalone run endpoint', function () {
         ->and($backtest->dailySnapshots()->count())->toBe(0)
         ->and($backtest->summaryMetrics)->toBeNull();
     Queue::assertPushed(RunBacktestJob::class);
+});
+
+it('reports preparation progress when a queue worker starts the run', function () {
+    $backtest = Backtest::factory()->create([
+        'status' => BacktestStatusEnum::Running,
+        'progress' => 0,
+    ]);
+    $runAction = mock(RunBacktestAction::class);
+    $metricsAction = mock(CalculateBacktestMetricsAction::class);
+
+    $runAction->shouldReceive('execute')
+        ->once()
+        ->withArgs(function (Backtest $runningBacktest) use ($backtest): bool {
+            $runningBacktest->refresh();
+
+            expect($runningBacktest->is($backtest))->toBeTrue()
+                ->and($runningBacktest->status)->toBe(BacktestStatusEnum::Running)
+                ->and($runningBacktest->progress)->toBe(1)
+                ->and($runningBacktest->started_at)->not->toBeNull();
+
+            return true;
+        });
+    $metricsAction->shouldReceive('execute')->once();
+
+    (new RunBacktestJob($backtest))->handle($runAction, $metricsAction);
+
+    expect($backtest->refresh()->status)->toBe(BacktestStatusEnum::Completed)
+        ->and($backtest->progress)->toBe(100);
 });

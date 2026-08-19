@@ -210,6 +210,23 @@ it('records the simulated period on the summary metrics', function () {
         ->and($metrics->end_date->format('Y-m-d'))->toBe(end($dates));
 });
 
+it('reports simulation progress for fewer than fifty trading days', function () {
+    $dates = tradingDates(10);
+    seedIndexRange('2010-01-01', end($dates), 5000);
+
+    foreach ($dates as $date) {
+        seedInstrument($date, 'A', 100, ['sharpe_return_one_year' => 5.0]);
+    }
+
+    $user = User::factory()->create(['is_paid' => true]);
+    $backtest = makeBacktest($user, ['max_stocks_to_hold' => 1]);
+    $action = new RunBacktestAction(new ApplyBacktestFiltersAction, new CalculateTransactionCostsAction);
+
+    $action->execute($backtest);
+
+    expect($backtest->refresh()->progress)->toBe(95);
+});
+
 // ==========================================================================
 // SELL PRICE CORRECTNESS
 // ==========================================================================
