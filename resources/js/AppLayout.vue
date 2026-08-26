@@ -375,8 +375,29 @@ const navigation = computed(() => {
         },
     ];
 
-    if (page.props.auth.user) {
-        items.push({
+    const user = page.props.auth.user;
+    const guestRestrictedItems = new Set([
+        'Backtests',
+        'Profile',
+        'Change Password',
+        'Invoices',
+        'AMA Recording',
+    ]);
+    const paidItems = new Set(['Backtests', 'AMA Recording']);
+    const visibleItems = items.filter((item) => {
+        if (!user) {
+            return !guestRestrictedItems.has(item.name);
+        }
+
+        if (!user.is_paid) {
+            return !paidItems.has(item.name);
+        }
+
+        return true;
+    });
+
+    if (user) {
+        visibleItems.push({
             name: 'Sign Out',
             href: '/logout',
             icon: ArrowLeftStartOnRectangleIcon,
@@ -384,7 +405,7 @@ const navigation = computed(() => {
         });
     }
 
-    return items;
+    return visibleItems;
 });
 
 const adminNavigation = computed(() => [

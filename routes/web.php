@@ -13,6 +13,7 @@ use App\Http\Controllers\BlogsController;
 use App\Http\Controllers\ChangePasswordController;
 use App\Http\Controllers\CorporateActionsController;
 use App\Http\Controllers\CorporateActionSymbolSearchController;
+use App\Http\Controllers\HomeController;
 use App\Http\Controllers\IndicesDashboardController;
 use App\Http\Controllers\InstrumentSearchController;
 use App\Http\Controllers\InvoiceDownloadController;
@@ -32,7 +33,8 @@ use Illuminate\Foundation\Auth\EmailVerificationRequest;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\Route;
-use Inertia\Inertia;
+
+Route::get('/', HomeController::class)->name('home');
 
 Route::middleware('guest')->group(function () {
     Route::get('/login', [AuthController::class, 'loginView'])->name('login');
@@ -95,8 +97,6 @@ Route::get('/screens/create', [ScreensController::class, 'create'])->middleware(
 Route::get('/screens/{screen}', [ScreensController::class, 'show']);
 
 Route::middleware(['auth', 'verified'])->group(function () {
-    Route::get('/', fn () => Inertia::render('Welcome'))->name('home');
-
     Route::inertia('/ama-recording', 'AmaRecording')->middleware(VerifyIsPaid::class);
 
     Route::get('/change-password', [ChangePasswordController::class, 'edit']);
