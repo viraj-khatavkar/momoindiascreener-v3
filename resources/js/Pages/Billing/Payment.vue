@@ -25,7 +25,7 @@ onMounted(() => {
             currency: 'INR',
             name: 'momoindiascreener.in',
             description: props.description,
-            image: 'https://momoindiascreener.in/images/logo.png',
+            image: new URL('/images/momo-icon-512.png', window.location.origin).href,
             order_id: props.order_id,
             callback_url: props.callback_url,
             prefill: {

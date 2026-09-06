@@ -49,9 +49,23 @@ class ImportNseCorporateActionsCommand extends Command
             return Command::FAILURE;
         }
 
-        $corporateActions = $this->fetchCorporateActionsFromWebsiteFile($date, $series);
+        $date = (new Carbon($date))->format('Y-m-d');
+        $corporateActions = collect($this->fetchCorporateActionsFromWebsiteFile($date, $series));
+        $previousFileDate = $this->findPreviousCorporateActionsFileDate($date);
 
-        if (empty($corporateActions)) {
+        if ($previousFileDate !== null) {
+            $corporateActions = $corporateActions->concat(
+                $this->fetchCorporateActionsFromWebsiteFile($date, $series, $previousFileDate)
+            );
+        }
+
+        $corporateActions = $corporateActions->uniqueStrict(fn (array $corporateAction): array => [
+            $corporateAction['symbol'],
+            $corporateAction['type'],
+            $corporateAction['ratio'],
+        ]);
+
+        if ($corporateActions->isEmpty()) {
             $this->info('No corporate actions found');
 
             return Command::SUCCESS;
@@ -104,12 +118,34 @@ class ImportNseCorporateActionsCommand extends Command
         return Command::SUCCESS;
     }
 
-    protected function fetchCorporateActionsFromWebsiteFile($date, $series): array
+    protected function findPreviousCorporateActionsFileDate(string $date): ?string
+    {
+        $previousDate = BacktestNseInstrumentPrice::query()
+            ->where('date', '<', $date)
+            ->max('date');
+
+        if ($previousDate === null) {
+            return null;
+        }
+
+        if (! Storage::exists('uploads/'.$previousDate.'/corporate_actions.csv')) {
+            $this->warn('No corporate actions file for '.$previousDate.', skipping previous trading day');
+
+            return null;
+        }
+
+        return $previousDate;
+    }
+
+    /**
+     * @return array<int, array{symbol: string, series: string, ratio: ?string, type: ?CorporateActionTypeEnum, sentence: string}>
+     */
+    protected function fetchCorporateActionsFromWebsiteFile(string $date, string $series, ?string $fileDate = null): array
     {
         /** @var ReadCsvAction $readCsvAction */
         $readCsvAction = app(ReadCsvAction::class);
 
-        $filePath = Storage::path('uploads/'.(new Carbon($date))->format('Y-m-d').'/corporate_actions.csv');
+        $filePath = Storage::path('uploads/'.($fileDate ?? $date).'/corporate_actions.csv');
         $this->info($filePath);
 
         $rows = $readCsvAction->execute($filePath)->toCollection();

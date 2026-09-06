@@ -1,12 +1,13 @@
 <template>
     <div class="flex min-h-full flex-1 flex-col justify-center py-12 sm:px-6 lg:px-8">
         <div class="sm:mx-auto sm:w-full sm:max-w-md">
-            <Link href="/">
-                <img alt="momoindiascreener" src="/images/logo.png" class="mx-auto w-auto" />
-            </Link>
-            <h2
-                class="mt-6 text-center text-2xl font-bold leading-9 tracking-tight text-gray-900"
+            <Link
+                href="/"
+                class="mx-auto flex w-fit rounded-sm focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-purple-700"
             >
+                <BrandLogo class="w-64 max-w-full sm:w-72" />
+            </Link>
+            <h2 class="mt-6 text-center text-2xl leading-9 font-bold tracking-tight text-gray-900">
                 {{ pageHeader }}
             </h2>
         </div>
@@ -24,6 +25,7 @@
 import { Link, usePage } from '@inertiajs/vue3';
 import { computed } from 'vue';
 import SuccessAlert from './Components/Alerts/SuccessAlert.vue';
+import BrandLogo from './Components/BrandLogo.vue';
 
 const page = usePage();
 

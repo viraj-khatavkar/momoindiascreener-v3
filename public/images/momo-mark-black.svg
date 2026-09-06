@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="234" height="76" viewBox="-1 -4 234 76" fill="none">
+    <title>momoindiascreener</title>
+    <g fill="#000000">
+        <path d="M0 2H24V10C30 3 36 0 46 0C57 0 64 4 69 11C76 3 83 0 94 0C110 0 118 11 118 29V68H91V35C91 27 88 22 82 22C75 22 71 28 71 36V68H45V35C45 27 42 22 36 22C29 22 26 28 26 36V68H0Z" />
+        <path fill-rule="evenodd" d="M203 34C203 13 187-1 162-1S121 13 121 34S137 69 162 69S203 55 203 34ZM177 34C177 43 171 49 162 49S147 43 147 34S153 19 162 19S177 25 177 34Z" />
+        <circle cx="219" cy="18" r="12" />
+        <circle cx="219" cy="50" r="12" />
+    </g>
+</svg>

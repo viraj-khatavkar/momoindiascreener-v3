@@ -1,5 +1,5 @@
 <template>
-    <Head title="Momo India Screener" />
+    <Head title="momoindiascreener" />
     <div>
         <!-- Mobile sidebar -->
         <TransitionRoot as="template" :show="sidebarOpen">
@@ -36,12 +36,8 @@
                                 leave-from="opacity-100"
                                 leave-to="opacity-0"
                             >
-                                <div class="absolute left-full top-0 flex w-16 justify-center pt-5">
-                                    <button
-                                        type="button"
-                                        class="-m-2.5 cursor-pointer p-2.5"
-                                        @click="sidebarOpen = false"
-                                    >
+                                <div class="absolute top-0 left-full flex w-16 justify-center pt-5">
+                                    <button type="button" class="-m-2.5 cursor-pointer p-2.5" @click="sidebarOpen = false">
                                         <span class="sr-only">Close sidebar</span>
                                         <XMarkIcon class="h-6 w-6 text-white" aria-hidden="true" />
                                     </button>
@@ -50,7 +46,13 @@
                             <!-- Sidebar content -->
                             <div class="flex grow flex-col gap-y-5 overflow-y-auto bg-white px-6 pb-4">
                                 <div class="flex h-16 shrink-0 items-center">
-                                    <img alt="momoindiascreener logo" src="/images/logo.png" />
+                                    <Link
+                                        href="/"
+                                        class="rounded-sm focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-purple-700"
+                                        @click="sidebarOpen = false"
+                                    >
+                                        <BrandLogo class="w-56" />
+                                    </Link>
                                 </div>
                                 <nav class="flex flex-1 flex-col">
                                     <ul role="list" class="flex flex-1 flex-col gap-y-7">
@@ -63,16 +65,14 @@
                                                             item.current
                                                                 ? 'bg-gray-50 text-purple-600'
                                                                 : 'text-gray-700 hover:bg-gray-50 hover:text-purple-600',
-                                                            'group flex gap-x-3 rounded-md p-2 text-sm font-semibold leading-6',
+                                                            'group flex gap-x-3 rounded-md p-2 text-sm leading-6 font-semibold',
                                                         ]"
                                                         @click="sidebarOpen = false"
                                                     >
                                                         <component
                                                             :is="item.icon"
                                                             :class="[
-                                                                item.current
-                                                                    ? 'text-purple-600'
-                                                                    : 'text-gray-400 group-hover:text-purple-600',
+                                                                item.current ? 'text-purple-600' : 'text-gray-400 group-hover:text-purple-600',
                                                                 'h-6 w-6 shrink-0',
                                                             ]"
                                                             aria-hidden="true"
@@ -83,23 +83,16 @@
                                             </ul>
                                         </li>
                                         <li v-if="page.props.auth.user?.is_admin">
-                                            <div
-                                                class="text-xs font-semibold leading-6 text-gray-400"
-                                            >
-                                                Admin
-                                            </div>
+                                            <div class="text-xs leading-6 font-semibold text-gray-400">Admin</div>
                                             <ul role="list" class="-mx-2 mt-2 space-y-1">
-                                                <li
-                                                    v-for="item in adminNavigation"
-                                                    :key="item.name"
-                                                >
+                                                <li v-for="item in adminNavigation" :key="item.name">
                                                     <Link
                                                         :href="item.href"
                                                         :class="[
                                                             item.current
                                                                 ? 'bg-gray-50 text-purple-600'
                                                                 : 'text-gray-700 hover:bg-gray-50 hover:text-purple-600',
-                                                            'group flex gap-x-3 rounded-md p-2 text-sm font-semibold leading-6',
+                                                            'group flex gap-x-3 rounded-md p-2 text-sm leading-6 font-semibold',
                                                         ]"
                                                         @click="sidebarOpen = false"
                                                     >
@@ -131,48 +124,35 @@
             <div>
                 <!-- Sticky header -->
                 <div
-                    class="sticky top-0 z-40 flex h-16 shrink-0 items-center gap-x-4 border-b border-gray-200 bg-white px-4 shadow-xs sm:gap-x-6 sm:px-6"
+                    class="sticky top-0 z-40 flex min-h-16 shrink-0 flex-wrap items-center gap-x-4 border-b border-gray-200 bg-white px-4 py-2 shadow-xs sm:h-16 sm:flex-nowrap sm:gap-x-6 sm:px-6 sm:py-0"
                 >
-                    <button
-                        type="button"
-                        class="-m-2.5 cursor-pointer p-2.5 text-gray-700"
-                        @click="sidebarOpen = true"
-                    >
+                    <button type="button" class="-m-2.5 cursor-pointer p-2.5 text-gray-700" @click="sidebarOpen = true">
                         <span class="sr-only">Open sidebar</span>
                         <Bars3Icon class="h-6 w-6" aria-hidden="true" />
                     </button>
 
-                    <!-- Separator -->
-                    <div class="h-6 w-px bg-gray-200" aria-hidden="true" />
+                    <Link
+                        href="/"
+                        class="flex min-h-11 shrink-0 items-center rounded-sm focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-purple-700"
+                    >
+                        <BrandLogo class="w-56 sm:w-72" />
+                    </Link>
 
-                    <div class="flex flex-1 gap-x-4 self-stretch">
+                    <div class="flex h-11 min-w-0 flex-1 basis-full gap-x-4 self-stretch sm:h-auto sm:basis-auto">
                         <InstrumentSearch />
                         <div class="flex min-w-fit items-center gap-x-4">
                             <!-- Separator -->
-                            <div
-                                class="hidden xl:block xl:h-6 xl:w-px xl:bg-gray-200"
-                                aria-hidden="true"
-                            />
+                            <div class="hidden xl:block xl:h-6 xl:w-px xl:bg-gray-200" aria-hidden="true" />
 
                             <!-- Profile dropdown -->
                             <Menu as="div" class="relative">
                                 <MenuButton class="-m-1.5 flex items-center p-1.5">
                                     <span class="sr-only">Open user menu</span>
                                     <span class="hidden xl:flex xl:items-center">
-                                        <span
-                                            class="ml-4 text-sm font-semibold leading-6 text-gray-900"
-                                            aria-hidden="true"
-                                        >
-                                            {{
-                                                $page.props.auth.user
-                                                    ? $page.props.auth.user.name
-                                                    : 'Welcome, Guest'
-                                            }}
+                                        <span class="ml-4 text-sm leading-6 font-semibold text-gray-900" aria-hidden="true">
+                                            {{ $page.props.auth.user ? $page.props.auth.user.name : 'Welcome, Guest' }}
                                         </span>
-                                        <ChevronDownIcon
-                                            class="ml-2 h-5 w-5 text-gray-400"
-                                            aria-hidden="true"
-                                        />
+                                        <ChevronDownIcon class="ml-2 h-5 w-5 text-gray-400" aria-hidden="true" />
                                     </span>
                                 </MenuButton>
                                 <transition
@@ -187,34 +167,20 @@
                                         class="absolute right-0 z-10 mt-2.5 w-32 origin-top-right rounded-md bg-white py-2 shadow-lg ring-1 ring-gray-900/5 focus:outline-hidden"
                                     >
                                         <template v-if="$page.props.auth.user">
-                                            <MenuItem
-                                                v-for="item in authUserNavigation"
-                                                :key="item.name"
-                                                v-slot="{ active }"
-                                            >
+                                            <MenuItem v-for="item in authUserNavigation" :key="item.name" v-slot="{ active }">
                                                 <Link
                                                     :href="item.href"
-                                                    :class="[
-                                                        active ? 'bg-gray-50' : '',
-                                                        'block px-3 py-1 text-sm leading-6 text-gray-900',
-                                                    ]"
+                                                    :class="[active ? 'bg-gray-50' : '', 'block px-3 py-1 text-sm leading-6 text-gray-900']"
                                                 >
                                                     {{ item.name }}
                                                 </Link>
                                             </MenuItem>
                                         </template>
                                         <template v-else>
-                                            <MenuItem
-                                                v-for="item in guestUserNavigation"
-                                                :key="item.name"
-                                                v-slot="{ active }"
-                                            >
+                                            <MenuItem v-for="item in guestUserNavigation" :key="item.name" v-slot="{ active }">
                                                 <Link
                                                     :href="item.href"
-                                                    :class="[
-                                                        active ? 'bg-gray-50' : '',
-                                                        'block px-3 py-1 text-sm leading-6 text-gray-900',
-                                                    ]"
+                                                    :class="[active ? 'bg-gray-50' : '', 'block px-3 py-1 text-sm leading-6 text-gray-900']"
                                                 >
                                                     {{ item.name }}
                                                 </Link>
@@ -245,16 +211,7 @@
 </template>
 
 <script setup lang="ts">
-import {
-    Dialog,
-    DialogPanel,
-    Menu,
-    MenuButton,
-    MenuItem,
-    MenuItems,
-    TransitionChild,
-    TransitionRoot,
-} from '@headlessui/vue';
+import { Dialog, DialogPanel, Menu, MenuButton, MenuItem, MenuItems, TransitionChild, TransitionRoot } from '@headlessui/vue';
 import {
     AdjustmentsHorizontalIcon,
     ArrowLeftStartOnRectangleIcon,
@@ -282,6 +239,7 @@ import ErrorAlert from './Components/Alerts/ErrorAlert.vue';
 import Footer from './Components/Footer.vue';
 import InstrumentSearch from './Components/InstrumentSearch.vue';
 import SuccessAlert from './Components/Alerts/SuccessAlert.vue';
+import BrandLogo from './Components/BrandLogo.vue';
 
 const page = usePage();
 const sidebarOpen = ref(false);
@@ -376,13 +334,7 @@ const navigation = computed(() => {
     ];
 
     const user = page.props.auth.user;
-    const guestRestrictedItems = new Set([
-        'Backtests',
-        'Profile',
-        'Change Password',
-        'Invoices',
-        'AMA Recording',
-    ]);
+    const guestRestrictedItems = new Set(['Backtests', 'Profile', 'Change Password', 'Invoices', 'AMA Recording']);
     const paidItems = new Set(['Backtests', 'AMA Recording']);
     const visibleItems = items.filter((item) => {
         if (!user) {
@@ -437,9 +389,7 @@ const adminNavigation = computed(() => [
         name: 'Processes',
         href: '/admin/processes',
         initial: 'P',
-        current:
-            page.url.startsWith('/admin/processes') ||
-            page.url.startsWith('/admin/process-runs'),
+        current: page.url.startsWith('/admin/processes') || page.url.startsWith('/admin/process-runs'),
     },
     {
         name: 'ETF Index Mappings',
