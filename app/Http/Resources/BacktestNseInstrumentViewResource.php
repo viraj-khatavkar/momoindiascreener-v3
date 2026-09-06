@@ -22,6 +22,7 @@ class BacktestNseInstrumentViewResource extends JsonResource
         return [
             'id' => $this->id,
             'symbol' => $this->symbol,
+            'date' => $this->date->format('Y-m-d'),
             'name' => $this->name,
             'close_adjusted' => $this->close_adjusted,
             'high_one_year' => $this->high_one_year,

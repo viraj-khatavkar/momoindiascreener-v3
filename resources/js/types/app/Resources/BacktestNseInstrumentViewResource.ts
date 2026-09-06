@@ -1,7 +1,8 @@
 export interface BacktestNseInstrumentViewResource {
     id: number;
     symbol: string;
-    name: string;
+    date: string;
+    name: string | null;
     close_adjusted: number;
     high_one_year: number;
     away_from_high_one_year: string;
@@ -47,7 +48,7 @@ export interface BacktestNseInstrumentViewResource {
     circuits_six_months: number;
     circuits_three_months: number;
     circuits_one_months: number;
-    price_to_earnings: number;
+    price_to_earnings: number | null;
     marketcap: string;
     series: string;
     beta: number;

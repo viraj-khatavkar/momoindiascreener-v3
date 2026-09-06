@@ -37,6 +37,7 @@ it('serves dividends and corporate actions from the corporate actions table', fu
     $this->get('/instruments/TCS')
         ->assertInertia(fn (Assert $page) => $page
             ->component('InstrumentView')
+            ->where('instrument.date', '2020-01-27')
             ->missing('dividends')
             ->missing('corporateActions')
             ->loadDeferredProps('extras', fn (Assert $reload) => $reload
@@ -76,6 +77,7 @@ it('serves a historical instrument that is absent on the latest market date', fu
         ->assertInertia(fn (Assert $page) => $page
             ->component('InstrumentView')
             ->where('instrument.symbol', 'GITANJALI')
+            ->where('instrument.date', '2019-04-01')
             ->where('instrument.name', 'Gitanjali Gems')
             ->where('instrument.close_adjusted', '25.00')
         );
