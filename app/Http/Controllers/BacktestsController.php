@@ -83,7 +83,10 @@ class BacktestsController extends Controller
             'customFilterComparatorOptions' => array_values(CustomFilterComparatorOptionEnum::resolveDisplayableValueList()),
             'rebalanceFrequencyOptions' => array_values(BacktestRebalanceFrequencyEnum::resolveDisplayableValueList()),
             'weightageOptions' => array_values(BacktestWeightageEnum::resolveDisplayableValueList()),
-            'cashCallOptions' => array_values(BacktestCashCallEnum::resolveDisplayableValueList()),
+            'cashCallOptions' => collect(BacktestCashCallEnum::resolveDisplayableValueList())
+                ->reject(fn (array $option): bool => $option['id'] === BacktestCashCallEnum::CashCallIfNotEnoughStocks->value
+                    && $backtest->cash_call !== BacktestCashCallEnum::CashCallIfNotEnoughStocks)
+                ->values()->all(),
             'cashCallIndexOptions' => self::INDEX_SLUG_OPTIONS,
         ]);
     }

@@ -35,6 +35,7 @@ class CreateDefaultBacktestAction
             'cash_call' => BacktestCashCallEnum::NoCashCall->value,
             'cash_call_index' => 'nifty-50',
             'cash_call_dma_period' => 50,
+            'cash_call_gold_dma_period' => 50,
             'cash_return_rate' => 6.00,
             'brokerage_rate' => 0,
             'stt_rate' => 0.1,

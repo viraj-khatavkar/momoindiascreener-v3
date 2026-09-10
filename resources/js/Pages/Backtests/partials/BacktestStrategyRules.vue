@@ -70,6 +70,12 @@
                 >
                     {{ formatIndex(backtest.cash_call_index) }} DMA {{ backtest.cash_call_dma_period }}
                 </span>
+                <span
+                    v-if="backtest.cash_call === 'only_exits_allocate_to_gold_above_dma_below_index_dma'"
+                    class="rounded-md bg-amber-50 px-2 py-0.5 text-xs text-amber-700"
+                >
+                    GOLDBEES above DMA {{ backtest.cash_call_gold_dma_period }}
+                </span>
                 <span v-if="Number(backtest.cash_return_rate) > 0" class="rounded-md bg-amber-50 px-2 py-0.5 text-xs text-amber-700">
                     {{ backtest.cash_return_rate }}% p.a. return
                 </span>
@@ -203,6 +209,7 @@ function formatCashCall(value: string): string {
         only_exits_below_index_dma: 'Only exits below DMA',
         allocate_to_gold_below_index_dma: 'Gold below DMA',
         only_exits_allocate_to_gold_below_index_dma: 'Exits + Gold below DMA',
+        only_exits_allocate_to_gold_above_dma_below_index_dma: 'Exits to gold with gold DMA check',
     };
     return labels[value] || formatSnakeCase(value);
 }
@@ -213,6 +220,7 @@ function hasDmaBasedCashCall(value: string): boolean {
         'only_exits_below_index_dma',
         'allocate_to_gold_below_index_dma',
         'only_exits_allocate_to_gold_below_index_dma',
+        'only_exits_allocate_to_gold_above_dma_below_index_dma',
     ].includes(value);
 }
 

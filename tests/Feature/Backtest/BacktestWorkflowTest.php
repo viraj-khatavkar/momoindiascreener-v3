@@ -2,6 +2,7 @@
 
 use App\Actions\Backtest\CalculateBacktestMetricsAction;
 use App\Actions\Backtest\RunBacktestAction;
+use App\Enums\BacktestCashCallEnum;
 use App\Enums\BacktestStatusEnum;
 use App\Jobs\RunBacktestJob;
 use App\Models\Backtest;
@@ -148,6 +149,120 @@ it('saves configured transaction cost rates', function () {
         ->and((float) $backtest->stt_rate)->toBe(0.2)
         // Cost rates change results, so they must flag them stale
         ->and($backtest->settings_changed_at)->not->toBeNull();
+});
+
+it('offers the six supported cash call settings', function () {
+    $user = User::factory()->create(['is_paid' => true]);
+    $backtest = Backtest::factory()->create(['user_id' => $user->id]);
+
+    $this->actingAs($user)->get('/backtests/'.$backtest->id)
+        ->assertInertia(fn (Assert $page) => $page
+            ->has('cashCallOptions', 6)
+            ->where('cashCallOptions.0.id', 'no_cash_call')
+            ->where('cashCallOptions.5.id', 'only_exits_allocate_to_gold_above_dma_below_index_dma')
+            ->where('backtest.cash_call_gold_dma_period', 50));
+});
+
+it('saves each cash call mode and its gold DMA setting', function (string $mode) {
+    Queue::fake();
+    $user = User::factory()->create(['is_paid' => true]);
+    $backtest = Backtest::factory()->create(['user_id' => $user->id]);
+
+    $this->actingAs($user)->put('/backtests/'.$backtest->id, validBacktestUpdatePayload($backtest, [
+        'cash_call' => $mode,
+        'cash_call_index' => 'nifty-500',
+        'cash_call_dma_period' => 200,
+        'cash_call_gold_dma_period' => 100,
+        'cash_return_rate' => 7.25,
+    ]))->assertSessionHasNoErrors();
+
+    $backtest->refresh();
+    expect($backtest->cash_call->value)->toBe($mode)
+        ->and((float) $backtest->cash_return_rate)->toBe(7.25)
+        ->and($backtest->settings_changed_at)->not->toBeNull();
+
+    if ($backtest->cash_call->usesIndexDma()) {
+        expect($backtest->cash_call_index)->toBe('nifty-500')
+            ->and($backtest->cash_call_dma_period)->toBe(200);
+    }
+
+    expect($backtest->cash_call_gold_dma_period)->toBe(
+        $mode === 'only_exits_allocate_to_gold_above_dma_below_index_dma' ? 100 : 50,
+    );
+    Queue::assertNothingPushed();
+})->with([
+    'no_cash_call',
+    'full_cash_below_index_dma',
+    'only_exits_below_index_dma',
+    'allocate_to_gold_below_index_dma',
+    'only_exits_allocate_to_gold_below_index_dma',
+    'only_exits_allocate_to_gold_above_dma_below_index_dma',
+]);
+
+it('requires valid gold DMA settings for the conditional gold mode', function (mixed $period) {
+    $user = User::factory()->create(['is_paid' => true]);
+    $backtest = Backtest::factory()->create(['user_id' => $user->id]);
+
+    $this->actingAs($user)->put('/backtests/'.$backtest->id, validBacktestUpdatePayload($backtest, [
+        'cash_call' => 'only_exits_allocate_to_gold_above_dma_below_index_dma',
+        'cash_call_gold_dma_period' => $period,
+    ]))->assertSessionHasErrors('cash_call_gold_dma_period');
+
+    expect($backtest->refresh()->cash_call)->toBe(BacktestCashCallEnum::NoCashCall);
+})->with([null, 0, 21, 50.5, 'invalid']);
+
+it('requires an index and index DMA for the conditional gold mode', function () {
+    $user = User::factory()->create(['is_paid' => true]);
+    $backtest = Backtest::factory()->create(['user_id' => $user->id]);
+
+    $this->actingAs($user)->put('/backtests/'.$backtest->id, validBacktestUpdatePayload($backtest, [
+        'cash_call' => 'only_exits_allocate_to_gold_above_dma_below_index_dma',
+        'cash_call_index' => null,
+        'cash_call_dma_period' => null,
+    ]))->assertSessionHasErrors(['cash_call_index', 'cash_call_dma_period']);
+});
+
+it('preserves inactive DMA settings when saving no cash call', function () {
+    $user = User::factory()->create(['is_paid' => true]);
+    $backtest = Backtest::factory()->create(['user_id' => $user->id, 'cash_call_gold_dma_period' => 200]);
+
+    $this->actingAs($user)->put('/backtests/'.$backtest->id, validBacktestUpdatePayload($backtest, [
+        'cash_call_index' => null,
+        'cash_call_dma_period' => null,
+        'cash_call_gold_dma_period' => null,
+    ]))->assertSessionHasNoErrors();
+
+    expect($backtest->refresh()->cash_call_index)->toBe('nifty-50')
+        ->and($backtest->cash_call_dma_period)->toBe(50)
+        ->and($backtest->cash_call_gold_dma_period)->toBe(200);
+});
+
+it('preserves the retired cash mode only for backtests that already use it', function () {
+    $user = User::factory()->create(['is_paid' => true]);
+    $backtest = Backtest::factory()->create(['user_id' => $user->id]);
+    $payload = validBacktestUpdatePayload($backtest, ['cash_call' => 'cash_call_if_not_enough_stocks']);
+
+    $this->actingAs($user)->put('/backtests/'.$backtest->id, $payload)->assertSessionHasErrors('cash_call');
+
+    $backtest->update(['cash_call' => BacktestCashCallEnum::CashCallIfNotEnoughStocks]);
+    $this->actingAs($user)->put('/backtests/'.$backtest->id, $payload)->assertSessionHasNoErrors();
+
+    expect($backtest->refresh()->cash_call)->toBe(BacktestCashCallEnum::CashCallIfNotEnoughStocks);
+});
+
+it('queues the saved gold DMA configuration with save and run', function () {
+    Queue::fake();
+    $user = User::factory()->create(['is_paid' => true]);
+    $backtest = Backtest::factory()->create(['user_id' => $user->id]);
+
+    $this->actingAs($user)->put('/backtests/'.$backtest->id, validBacktestUpdatePayload($backtest, [
+        'cash_call' => 'only_exits_allocate_to_gold_above_dma_below_index_dma',
+        'cash_call_gold_dma_period' => 200,
+        'run' => true,
+    ]))->assertSessionHasNoErrors();
+
+    Queue::assertPushed(RunBacktestJob::class, fn (RunBacktestJob $job): bool => $job->backtest->cash_call === BacktestCashCallEnum::OnlyExitsAllocateToGoldAboveDmaBelowIndexDma
+        && $job->backtest->cash_call_gold_dma_period === 200);
 });
 
 it('rejects out-of-range transaction cost rates', function () {

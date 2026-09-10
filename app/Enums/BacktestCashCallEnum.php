@@ -15,4 +15,19 @@ enum BacktestCashCallEnum: string implements ResolveDisplayableValueListForEnum
     case OnlyExitsBelowIndexDma = 'only_exits_below_index_dma';
     case AllocateToGoldBelowIndexDma = 'allocate_to_gold_below_index_dma';
     case OnlyExitsAllocateToGoldBelowIndexDma = 'only_exits_allocate_to_gold_below_index_dma';
+    case OnlyExitsAllocateToGoldAboveDmaBelowIndexDma = 'only_exits_allocate_to_gold_above_dma_below_index_dma';
+
+    public function usesIndexDma(): bool
+    {
+        return ! in_array($this, [self::NoCashCall, self::CashCallIfNotEnoughStocks], true);
+    }
+
+    public function allocatesToGold(): bool
+    {
+        return in_array($this, [
+            self::AllocateToGoldBelowIndexDma,
+            self::OnlyExitsAllocateToGoldBelowIndexDma,
+            self::OnlyExitsAllocateToGoldAboveDmaBelowIndexDma,
+        ], true);
+    }
 }

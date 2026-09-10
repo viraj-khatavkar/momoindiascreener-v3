@@ -15,9 +15,10 @@ export interface Backtest {
     rebalance_frequency: 'weekly' | 'monthly';
     rebalance_day: number;
     weightage: 'equal_weight' | 'equal_weight_rebalanced' | 'inverse_volatility';
-    cash_call: 'no_cash_call' | 'cash_call_if_not_enough_stocks' | 'full_cash_below_index_dma' | 'only_exits_below_index_dma' | 'allocate_to_gold_below_index_dma' | 'only_exits_allocate_to_gold_below_index_dma';
+    cash_call: 'no_cash_call' | 'cash_call_if_not_enough_stocks' | 'full_cash_below_index_dma' | 'only_exits_below_index_dma' | 'allocate_to_gold_below_index_dma' | 'only_exits_allocate_to_gold_below_index_dma' | 'only_exits_allocate_to_gold_above_dma_below_index_dma';
     cash_call_index: string;
     cash_call_dma_period: number;
+    cash_call_gold_dma_period: number;
     cash_return_rate: number | string;
     brokerage_rate: number | string;
     stt_rate: number | string;

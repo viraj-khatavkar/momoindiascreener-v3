@@ -309,15 +309,15 @@ it('nets buy-side charges out of realized pnl on a flat-price round trip', funct
     $bt = makeBacktest($user, ['worst_rank_held' => 3, 'brokerage_rate' => 0.5]);
     run($bt);
 
-    $aBuy = $bt->trades()->where('symbol', 'A')->where('trade_type', 'buy')->first();
     $aSell = $bt->trades()->where('symbol', 'A')->where('trade_type', 'sell')->first();
+    $aBuys = $bt->trades()->where('symbol', 'A')->where('trade_type', 'buy')->where('date', '<', $aSell->date)->get();
 
     expect($aSell)->not->toBeNull()
         ->and(round((float) $aSell->realized_pnl, 2))
-        ->toBe(round((float) $aSell->net_amount - (float) $aBuy->net_amount, 2))
+        ->toBe(round((float) $aSell->net_amount - (float) $aBuys->sum('net_amount'), 2))
         // The loss must exceed the buy-side charges alone — proof they are
         // part of the basis and not just the sell-side charges.
-        ->and((float) $aSell->realized_pnl)->toBeLessThan(-(float) $aBuy->total_charges);
+        ->and((float) $aSell->realized_pnl)->toBeLessThan(-(float) $aBuys->sum('total_charges'));
 
     // The trade log and the position metrics agree on this closed cycle —
     // same net P&L and the same charge-inclusive percentage.
@@ -959,6 +959,250 @@ it('cash with interest produces higher final value than without', function () {
 // ==========================================================================
 // CASH CALL: NOT ENOUGH STOCKS
 // ==========================================================================
+
+it('only exits failed stocks below the index DMA and sends proceeds to the selected asset', function (string $mode, bool $buysGold) {
+    $dates = tradingDates(10);
+    seedIndexRange('2010-01-01', $dates[7], 6000);
+    seedIndexRange($dates[8], end($dates), 3000);
+
+    foreach ($dates as $i => $date) {
+        seedInstrument($date, 'A', 100, ['sharpe_return_one_year' => $i < 8 ? 5.0 : 0.1]);
+        seedInstrument($date, 'B', $i < 8 ? 200 : 400, ['sharpe_return_one_year' => 4.0]);
+        seedInstrument($date, 'C', 150, ['sharpe_return_one_year' => 3.0]);
+        seedInstrument($date, 'D', 250, ['sharpe_return_one_year' => 2.0]);
+        seedInstrument($date, 'GOLDBEES', 100, ['is_nifty_allcap' => false, 'ma_100' => 90]);
+    }
+
+    $bt = makeBacktest(User::factory()->create(), [
+        'cash_call' => $mode,
+        'cash_call_gold_dma_period' => 100,
+        'worst_rank_held' => 3,
+        'weightage' => 'equal_weight_rebalanced',
+    ]);
+    run($bt);
+
+    $sells = $bt->trades()->where('date', $dates[8])->where('trade_type', 'sell')->pluck('symbol')->all();
+    $buys = $bt->trades()->where('date', $dates[8])->where('trade_type', 'buy')->pluck('symbol')->all();
+
+    expect($sells)->toBe(['A'])
+        ->and($buys)->toBe($buysGold ? ['GOLDBEES'] : []);
+})->with([
+    ['only_exits_below_index_dma', false],
+    ['only_exits_allocate_to_gold_below_index_dma', true],
+    ['only_exits_allocate_to_gold_above_dma_below_index_dma', true],
+]);
+
+it('uses the configured gold DMA and adjusted price before buying gold', function (int $period, ?float $goldDma, bool $buysGold) {
+    $dates = tradingDates(2);
+    seedIndexRange('2010-01-01', '2011-01-04', 6000);
+    seedIndexRange($dates[0], end($dates), 3000);
+
+    foreach ($dates as $date) {
+        seedInstrument($date, 'A', 100);
+        seedInstrument($date, 'GOLDBEES', 100, ['is_nifty_allcap' => false, 'ma_'.$period => $goldDma]);
+    }
+
+    $bt = makeBacktest(User::factory()->create(), [
+        'cash_call' => 'only_exits_allocate_to_gold_above_dma_below_index_dma',
+        'cash_call_gold_dma_period' => $period,
+    ]);
+    run($bt);
+
+    expect($bt->trades()->where('symbol', 'GOLDBEES')->exists())->toBe($buysGold)
+        ->and($bt->trades()->where('symbol', 'A')->exists())->toBeFalse();
+
+    if (! $buysGold) {
+        expect((float) $bt->dailySnapshots()->first()->cash)->toBe(1000000.0);
+    }
+})->with([
+    'above 20 DMA' => [20, 90.0, true],
+    'above 50 DMA' => [50, 90.0, true],
+    'above 100 DMA' => [100, 90.0, true],
+    'above 200 DMA' => [200, 90.0, true],
+    'equal to DMA' => [100, 100.0, false],
+    'below DMA despite higher raw price' => [100, 150.0, false],
+    'missing DMA' => [100, null, false],
+    'zero DMA' => [100, 0.0, false],
+]);
+
+it('uses decision-day index and gold signals but execution-day gold prices', function (float $decisionDma, float $executionDma, bool $buysGold) {
+    $dates = tradingDates(2);
+    seedIndexRange('2010-01-01', '2011-01-04', 6000);
+    seedIndexRange($dates[0], $dates[0], 3000);
+    seedIndexRange($dates[1], $dates[1], 7000);
+
+    foreach ($dates as $i => $date) {
+        seedInstrument($date, 'A', 100);
+        seedInstrument($date, 'GOLDBEES', $i === 0 ? 100 : 120, [
+            'is_nifty_allcap' => false,
+            'ma_100' => $i === 0 ? $decisionDma : $executionDma,
+        ]);
+    }
+
+    $bt = makeBacktest(User::factory()->create(), [
+        'cash_call' => 'only_exits_allocate_to_gold_above_dma_below_index_dma',
+        'cash_call_gold_dma_period' => 100,
+        'execute_next_trading_day' => true,
+    ]);
+    run($bt);
+
+    $goldBuy = $bt->trades()->where('symbol', 'GOLDBEES')->first();
+    expect($goldBuy !== null)->toBe($buysGold)
+        ->and($bt->trades()->where('symbol', 'A')->exists())->toBeFalse();
+
+    if ($buysGold) {
+        expect((float) $goldBuy->price)->toBe(120.0)
+            ->and($goldBuy->date->format('Y-m-d'))->toBe($dates[1]);
+    }
+})->with([
+    'gold passes only on decision day' => [90.0, 150.0, true],
+    'gold passes only on execution day' => [150.0, 90.0, false],
+]);
+
+it('retains existing gold when its DMA fails and sells gold when the index recovers', function () {
+    $dates = tradingDates(15);
+    seedIndexRange('2010-01-01', '2011-01-04', 6000);
+    seedIndexRange($dates[0], $dates[12], 3000);
+    seedIndexRange($dates[13], end($dates), 7000);
+
+    foreach ($dates as $i => $date) {
+        seedInstrument($date, 'A', 100);
+        seedInstrument($date, 'GOLDBEES', 100, ['is_nifty_allcap' => false, 'ma_50' => $i === 0 ? 90 : 150]);
+    }
+
+    $bt = makeBacktest(User::factory()->create(), [
+        'cash_call' => 'only_exits_allocate_to_gold_above_dma_below_index_dma',
+    ]);
+    run($bt);
+
+    expect($bt->trades()->where('symbol', 'GOLDBEES')->where('trade_type', 'buy')->count())->toBe(1)
+        ->and($bt->trades()->where('symbol', 'GOLDBEES')->where('trade_type', 'sell')->first()->date->format('Y-m-d'))->toBe($dates[13])
+        ->and($bt->trades()->where('symbol', 'A')->where('trade_type', 'buy')->first()->date->format('Y-m-d'))->toBe($dates[13]);
+});
+
+it('keeps cash when the gold execution price is missing or the gold trade is blocked', function (string $condition) {
+    $dates = tradingDates(2);
+    seedIndexRange('2010-01-01', '2011-01-04', 6000);
+    seedIndexRange($dates[0], end($dates), 3000);
+
+    foreach ($dates as $i => $date) {
+        seedInstrument($date, 'A', 100);
+        if ($i === 1 && $condition === 'missing') {
+            continue;
+        }
+        seedInstrument($date, 'GOLDBEES', 100, ['is_nifty_allcap' => false, 't_percent' => $i === 1 ? 5 : 1]);
+    }
+
+    $bt = makeBacktest(User::factory()->create(), [
+        'cash_call' => 'only_exits_allocate_to_gold_above_dma_below_index_dma',
+        'execute_next_trading_day' => true,
+    ]);
+    run($bt);
+
+    expect($bt->trades()->count())->toBe(0)
+        ->and((float) $bt->dailySnapshots()->orderByDesc('date')->first()->cash)->toBe(1000000.0);
+})->with(['missing', 'circuit']);
+
+it('applies cash call rules to forced-exit proceeds between rebalances', function (string $mode, bool $goldAboveDma, string $exitType) {
+    $dates = tradingDates(7);
+    seedIndexRange('2010-01-01', $dates[3], 6000);
+    seedIndexRange($dates[4], end($dates), 3000);
+
+    foreach ($dates as $i => $date) {
+        seedInstrument($date, 'A', 100, ['sharpe_return_one_year' => 5.0, 'series' => $exitType === 'BE' && $i >= 4 ? 'BE' : 'EQ']);
+        seedInstrument($date, 'B', 200, ['sharpe_return_one_year' => 4.0]);
+        seedInstrument($date, 'C', 150, ['sharpe_return_one_year' => 3.0]);
+        seedInstrument($date, 'D', 250, ['sharpe_return_one_year' => 2.0]);
+        seedInstrument($date, 'GOLDBEES', 100, ['is_nifty_allcap' => false, 'ma_50' => $goldAboveDma ? 90 : 150]);
+    }
+
+    if ($exitType === 'demerger') {
+        createCorporateAction('A', $dates[5], ['type' => CorporateActionTypeEnum::DEMERGER, 'description' => 'DEMERGER', 'ratio' => 'DEMERGER']);
+    }
+
+    $bt = makeBacktest(User::factory()->create(), ['cash_call' => $mode, 'exit_on_be_series' => $exitType === 'BE']);
+    run($bt);
+
+    $buys = $bt->trades()->where('date', $dates[4])->where('trade_type', 'buy')->pluck('symbol')->all();
+    $buysGold = str_contains($mode, 'gold') && (! str_contains($mode, 'above_dma') || $goldAboveDma);
+
+    expect($bt->trades()->where('date', $dates[4])->where('trade_type', 'sell')->pluck('symbol')->all())->toBe(['A'])
+        ->and($buys)->toBe($buysGold ? ['GOLDBEES'] : []);
+})->with([
+    ['full_cash_below_index_dma', true],
+    ['only_exits_below_index_dma', true],
+    ['allocate_to_gold_below_index_dma', true],
+    ['only_exits_allocate_to_gold_below_index_dma', true],
+    ['only_exits_allocate_to_gold_above_dma_below_index_dma', true],
+    ['only_exits_allocate_to_gold_above_dma_below_index_dma', false],
+])->with(['demerger', 'BE']);
+
+it('uses the previous trading day cash signal for next-day forced-exit replacements', function (bool $belowOnDecisionDay) {
+    $dates = tradingDates(7);
+    seedIndexRange('2010-01-01', $dates[3], 6000);
+    seedIndexRange($dates[4], $dates[4], $belowOnDecisionDay ? 3000 : 7000);
+    seedIndexRange($dates[5], end($dates), $belowOnDecisionDay ? 7000 : 3000);
+
+    foreach ($dates as $i => $date) {
+        seedInstrument($date, 'A', 100, ['sharpe_return_one_year' => 5.0, 'series' => $i >= 5 ? 'BE' : 'EQ']);
+        seedInstrument($date, 'B', 200, ['sharpe_return_one_year' => 4.0]);
+        seedInstrument($date, 'C', 150, ['sharpe_return_one_year' => 3.0]);
+        seedInstrument($date, 'D', $i === 5 ? 350 : 250, ['sharpe_return_one_year' => 2.0]);
+    }
+
+    $bt = makeBacktest(User::factory()->create(), [
+        'cash_call' => 'full_cash_below_index_dma',
+        'exit_on_be_series' => true,
+        'execute_next_trading_day' => true,
+    ]);
+    run($bt);
+
+    $buy = $bt->trades()->where('date', $dates[5])->where('trade_type', 'buy')->first();
+    expect($buy === null)->toBe($belowOnDecisionDay);
+
+    if (! $belowOnDecisionDay) {
+        expect($buy->symbol)->toBe('D')
+            ->and((float) $buy->price)->toBe(350.0);
+    }
+})->with([true, false]);
+
+it('keeps no-cash-call holdings when no stocks pass the entry filters', function (string $weightage) {
+    $dates = tradingDates(10);
+    foreach ($dates as $i => $date) {
+        seedInstrument($date, 'A', 100, ['median_volume_one_year' => $i < 8 ? 50000000 : 0]);
+        seedInstrument($date, 'B', 200, ['median_volume_one_year' => $i < 8 ? 50000000 : 0]);
+    }
+
+    $bt = makeBacktest(User::factory()->create(), ['weightage' => $weightage]);
+    run($bt);
+
+    expect($bt->trades()->where('trade_type', 'sell')->count())->toBe(0)
+        ->and($bt->dailySnapshots()->orderByDesc('date')->first()->holdings_count)->toBe(2)
+        ->and((float) $bt->dailySnapshots()->orderByDesc('date')->first()->cash)->toBeLessThan(500);
+})->with(['equal_weight', 'equal_weight_rebalanced', 'inverse_volatility']);
+
+it('allocates no-cash-call exit proceeds to remaining stocks when there is no new candidate', function (string $exitType) {
+    $dates = tradingDates(10);
+    foreach ($dates as $i => $date) {
+        seedInstrument($date, 'A', 100, [
+            'sharpe_return_one_year' => 5.0,
+            'series' => $exitType === 'BE' && $i >= 4 ? 'BE' : 'EQ',
+            'median_volume_one_year' => $exitType === 'filter' && $i >= 8 ? 0 : 50000000,
+        ]);
+        seedInstrument($date, 'B', 200, ['sharpe_return_one_year' => 4.0]);
+    }
+
+    if ($exitType === 'demerger') {
+        createCorporateAction('A', $dates[5], ['type' => CorporateActionTypeEnum::DEMERGER, 'description' => 'DEMERGER', 'ratio' => 'DEMERGER']);
+    }
+
+    $bt = makeBacktest(User::factory()->create(), ['exit_on_be_series' => $exitType === 'BE']);
+    run($bt);
+
+    $exitDate = $dates[$exitType === 'filter' ? 8 : 4];
+    expect($bt->trades()->where('date', $exitDate)->where('symbol', 'B')->where('trade_type', 'buy')->exists())->toBeTrue()
+        ->and((float) $bt->dailySnapshots()->where('date', $exitDate)->first()->cash)->toBeLessThan(500);
+})->with(['filter', 'demerger', 'BE']);
 
 it('keeps proportional cash when fewer stocks available than max slots', function () {
     $dates = tradingDates(5);

@@ -4,6 +4,7 @@ namespace App\Console\Commands\Backtest;
 
 use App\Models\BacktestNseInstrumentPrice;
 use Illuminate\Console\Command;
+use Illuminate\Database\Eloquent\Builder;
 
 class CalculateTPercentCommand extends Command
 {
@@ -12,7 +13,7 @@ class CalculateTPercentCommand extends Command
      *
      * @var string
      */
-    protected $signature = 'backtest:calculate-t-percent {--date=}';
+    protected $signature = 'backtest:calculate-t-percent {--date=} {--symbol=}';
 
     /**
      * The console command description.
@@ -24,10 +25,11 @@ class CalculateTPercentCommand extends Command
     /**
      * Execute the console command.
      */
-    public function handle()
+    public function handle(): int
     {
         $this->info('Calculating t_percent for NSE instruments...');
         $date = $this->option('date');
+        $symbol = $this->option('symbol');
 
         if (is_null($date)) {
             $this->error('Please provide a date');
@@ -37,6 +39,7 @@ class CalculateTPercentCommand extends Command
 
         $backtestNseInstrumentPrices = BacktestNseInstrumentPrice::query()
             ->where('date', $date)
+            ->when($symbol !== null, fn (Builder $query): Builder => $query->where('symbol', $symbol))
             ->get();
 
         foreach ($backtestNseInstrumentPrices as $backtestNseInstrumentPrice) {
@@ -56,5 +59,7 @@ class CalculateTPercentCommand extends Command
             $backtestNseInstrumentPrice->t_percent_raw = $dailyReturn;
             $backtestNseInstrumentPrice->save();
         }
+
+        return Command::SUCCESS;
     }
 }

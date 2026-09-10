@@ -38,9 +38,13 @@ class StoreBacktestRequest extends FormRequest
             'rebalance_frequency' => ['required', Rule::enum(BacktestRebalanceFrequencyEnum::class)],
             'rebalance_day' => ['required', 'integer', 'min:1', $this->input('rebalance_frequency') === 'weekly' ? 'max:5' : 'max:28'],
             'weightage' => ['required', Rule::enum(BacktestWeightageEnum::class)],
-            'cash_call' => ['required', Rule::enum(BacktestCashCallEnum::class)],
-            'cash_call_index' => ['required_if:cash_call,full_cash_below_index_dma,only_exits_below_index_dma,allocate_to_gold_below_index_dma,only_exits_allocate_to_gold_below_index_dma', 'nullable', 'string', Rule::in(['nifty-50', 'nifty-100', 'nifty-500', 'nifty200-momentum-30', 'nifty500-momentum-50'])],
-            'cash_call_dma_period' => ['required_if:cash_call,full_cash_below_index_dma,only_exits_below_index_dma,allocate_to_gold_below_index_dma,only_exits_allocate_to_gold_below_index_dma', 'nullable', 'integer', 'in:20,50,100,200'],
+            'cash_call' => ['required', Rule::enum(BacktestCashCallEnum::class)->except(
+                $this->route('backtest')?->cash_call === BacktestCashCallEnum::CashCallIfNotEnoughStocks
+                    ? [] : [BacktestCashCallEnum::CashCallIfNotEnoughStocks],
+            )],
+            'cash_call_index' => ['exclude_if:cash_call,no_cash_call,cash_call_if_not_enough_stocks', 'required', 'string', Rule::in(['nifty-50', 'nifty-100', 'nifty-500', 'nifty200-momentum-30', 'nifty500-momentum-50'])],
+            'cash_call_dma_period' => ['exclude_if:cash_call,no_cash_call,cash_call_if_not_enough_stocks', 'required', 'integer', 'in:20,50,100,200'],
+            'cash_call_gold_dma_period' => ['exclude_unless:cash_call,only_exits_allocate_to_gold_above_dma_below_index_dma', 'required', 'integer', 'in:20,50,100,200'],
             'start_date' => ['required', 'date', 'after_or_equal:2011-01-05'],
             'cash_return_rate' => ['required', 'numeric', 'between:0,20'],
             'brokerage_rate' => ['required', 'numeric', 'between:0,5'],

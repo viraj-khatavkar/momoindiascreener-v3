@@ -1108,6 +1108,7 @@ const form = useForm({
     cash_call: props.backtest.cash_call,
     cash_call_index: props.backtest.cash_call_index,
     cash_call_dma_period: props.backtest.cash_call_dma_period,
+    cash_call_gold_dma_period: props.backtest.cash_call_gold_dma_period,
     cash_return_rate: props.backtest.cash_return_rate,
     brokerage_rate: props.backtest.brokerage_rate,
     stt_rate: props.backtest.stt_rate,

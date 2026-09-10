@@ -108,11 +108,11 @@
                 />
                 <div>
                     <Toggle v-model="form.exit_before_demerger" label="Exit Before Demerger" />
-                    <p class="mt-1 text-xs text-gray-500">Sell a held stock one trading day before its demerger ex-date and buy a replacement. When disabled, the ex-date price drop is booked as a loss — spun-off shares are not credited.</p>
+                    <p class="mt-1 text-xs text-gray-500">Sell a held stock one trading day before its demerger ex-date. The cash call rule controls whether the proceeds buy a replacement, buy gold, or stay in cash. When disabled, spun-off shares are not credited.</p>
                 </div>
                 <div>
                     <Toggle v-model="form.exit_on_be_series" label="Exit on Move to BE Series" />
-                    <p class="mt-1 text-xs text-gray-500">Sell a held stock the day its series changes to BE (trade-to-trade) and buy a replacement. BE stocks are also skipped on entry while this is on.</p>
+                    <p class="mt-1 text-xs text-gray-500">Sell a held stock the day its series changes to BE (trade-to-trade). The cash call rule controls the use of the proceeds. BE stocks are also skipped on entry while this is on.</p>
                 </div>
             </div>
         </div>
@@ -156,8 +156,17 @@
                         :options="dmaPeriodOptions"
                         :error="form.errors.cash_call_dma_period"
                     />
+                    <SelectInput
+                        v-if="goldDmaBasedCashCall"
+                        v-model="form.cash_call_gold_dma_period"
+                        label="GOLDBEES DMA Period"
+                        name="cash_call_gold_dma_period"
+                        :options="dmaPeriodOptions"
+                        :error="form.errors.cash_call_gold_dma_period"
+                    />
                 </div>
             </div>
+            <p v-if="dmaBasedCashCall" class="mt-4 text-xs text-gray-500">Cash call signals use the rebalance decision date. Trades follow the selected execution schedule. Replacement purchases after demerger or BE-series exits also follow the cash call rule.</p>
         </div>
 
         <!-- Transaction Costs -->
@@ -958,26 +967,30 @@ const dmaBasedCashCalls = [
     'only_exits_below_index_dma',
     'allocate_to_gold_below_index_dma',
     'only_exits_allocate_to_gold_below_index_dma',
+    'only_exits_allocate_to_gold_above_dma_below_index_dma',
 ];
 
 const dmaBasedCashCall = computed(() => dmaBasedCashCalls.includes(props.form.cash_call));
+const goldDmaBasedCashCall = computed(() => props.form.cash_call === 'only_exits_allocate_to_gold_above_dma_below_index_dma');
 
 const cashCallLabels: Record<string, string> = {
     no_cash_call: 'No cash call',
-    cash_call_if_not_enough_stocks: 'Hold cash when not enough stocks qualify',
+    cash_call_if_not_enough_stocks: 'Hold cash when not enough stocks qualify (existing setting)',
     full_cash_below_index_dma: 'Full cash below index DMA',
     only_exits_below_index_dma: 'Only exits below index DMA (no new buys)',
     allocate_to_gold_below_index_dma: 'Rotate to gold below index DMA',
     only_exits_allocate_to_gold_below_index_dma: 'Exits to gold below index DMA',
+    only_exits_allocate_to_gold_above_dma_below_index_dma: 'Exits to gold below index DMA and gold above its DMA',
 };
 
 const cashCallHelp: Record<string, string> = {
-    no_cash_call: 'Always stay fully invested — a replacement is bought whenever a stock is sold',
+    no_cash_call: 'Keep capital in stocks. Use eligible replacements or add to existing stocks. Keep holdings if no replacement is available. Whole-share quantities and trade restrictions can leave unused cash.',
     cash_call_if_not_enough_stocks: 'When fewer stocks qualify than the portfolio size, the shortfall stays in cash instead of forcing entries',
     full_cash_below_index_dma: 'Sell everything and hold cash while the index trades below its DMA',
     only_exits_below_index_dma: 'While the index is below its DMA, exits still happen but no new stocks are bought',
     allocate_to_gold_below_index_dma: 'Sell everything and hold gold while the index trades below its DMA',
     only_exits_allocate_to_gold_below_index_dma: 'While the index is below its DMA, exit proceeds are parked in gold and no new stocks are bought',
+    only_exits_allocate_to_gold_above_dma_below_index_dma: 'Below the index DMA, only exit stocks. Buy GOLDBEES with available cash only when its adjusted close is above its selected DMA. Otherwise, keep the cash and any existing gold. Sell gold when the index recovers.',
 };
 
 const cashCallSelectOptions = computed(() =>
@@ -1326,6 +1339,7 @@ const fieldLabels: Record<string, string> = {
     cash_call: 'Cash Call',
     cash_call_index: 'Cash Call Index / Benchmark',
     cash_call_dma_period: 'Cash Call DMA Period',
+    cash_call_gold_dma_period: 'GOLDBEES DMA Period',
     cash_return_rate: 'Cash Return Rate (% p.a.)',
     brokerage_rate: 'Brokerage (%)',
     stt_rate: 'STT (%)',

@@ -20,6 +20,10 @@ class Backtest extends Model
     /** @use HasFactory<BacktestFactory> */
     use HasFactory;
 
+    protected $attributes = [
+        'cash_call_gold_dma_period' => 50,
+    ];
+
     protected function casts(): array
     {
         return [
@@ -27,6 +31,7 @@ class Backtest extends Model
             'rebalance_frequency' => BacktestRebalanceFrequencyEnum::class,
             'weightage' => BacktestWeightageEnum::class,
             'cash_call' => BacktestCashCallEnum::class,
+            'cash_call_gold_dma_period' => 'integer',
             'index' => NseIndexEnum::class,
             'apply_filters_on' => ApplyFiltersOnOptionEnum::class,
             'apply_hold_above_dma' => 'boolean',
