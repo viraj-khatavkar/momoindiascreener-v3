@@ -2,17 +2,25 @@
 
 namespace App\Http\Controllers;
 
+use App\Enums\AdminProcessRunStatusEnum;
 use App\Http\Resources\BacktestNseInstrumentViewResource;
+use App\Models\AdminProcessRun;
 use App\Models\BacktestNseCorporateAction;
 use App\Models\BacktestNseInstrumentPrice;
 use Inertia\Inertia;
+use Inertia\Response;
 
 class BacktestNseInstrumentViewController extends Controller
 {
-    public function __invoke(string $symbol)
+    public function __invoke(string $symbol): Response
     {
+        $unfinishedProcessDates = AdminProcessRun::query()
+            ->select('process_date')
+            ->where('status', '!=', AdminProcessRunStatusEnum::Completed->value);
+
         $instrument = BacktestNseInstrumentPrice::query()
             ->where('symbol', $symbol)
+            ->whereNotIn('date', $unfinishedProcessDates)
             ->latest('date')
             ->firstOrFail();
 
@@ -22,12 +30,14 @@ class BacktestNseInstrumentViewController extends Controller
             'cons' => $this->generateCons($instrument),
             'priceHistory' => Inertia::defer(fn () => BacktestNseInstrumentPrice::query()
                 ->where('symbol', $symbol)
+                ->whereNotIn('date', $unfinishedProcessDates)
                 ->select('date', 'open_adjusted', 'high_adjusted', 'low_adjusted', 'close_adjusted', 'volume_adjusted')
                 ->orderBy('date', 'asc')
                 ->get()
                 ->toArray(), 'chart'),
             'dividends' => Inertia::defer(fn () => BacktestNseCorporateAction::query()
                 ->where('symbol', $symbol)
+                ->whereNotIn('date', $unfinishedProcessDates)
                 ->whereNotNull('description')
                 ->whereNotNull('dividend_adjustment_factor')
                 ->select('date', 'description', 'dividend')
@@ -43,6 +53,7 @@ class BacktestNseInstrumentViewController extends Controller
                 ->toArray(), 'extras'),
             'corporateActions' => Inertia::defer(fn () => BacktestNseCorporateAction::query()
                 ->where('symbol', $symbol)
+                ->whereNotIn('date', $unfinishedProcessDates)
                 ->whereNotNull('description')
                 ->whereNotNull('price_adjustment_factor')
                 ->select('date', 'description')

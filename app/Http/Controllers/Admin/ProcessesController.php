@@ -19,7 +19,7 @@ class ProcessesController extends Controller
         ]);
         $date = $validated['date'] ?? now()->format('Y-m-d');
 
-        $requiredFiles = collect($buildDailyProcessSteps->requiredFiles())
+        $requiredFiles = collect($buildDailyProcessSteps->requiredFiles($date))
             ->map(fn (array $file): array => [
                 ...$file,
                 'filename' => $file['key'].'.csv',

@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Actions\Backtest\LoadBenchmarkSeriesAction;
+use App\Actions\Backtest\LoadMarketCapAllocationAction;
 use App\Actions\Backtest\StartBacktestRunAction;
 use App\Actions\CreateDefaultBacktestAction;
 use App\Enums\ApplyFiltersOnOptionEnum;
@@ -18,6 +19,7 @@ use App\Http\Requests\UpdateBacktestRequest;
 use App\Models\Backtest;
 use Illuminate\Http\Request;
 use Inertia\Inertia;
+use Inertia\Response;
 
 class BacktestsController extends Controller
 {
@@ -55,7 +57,7 @@ class BacktestsController extends Controller
         return redirect()->to('/backtests/'.$backtest->getKey().'?tab=settings');
     }
 
-    public function show(Request $request, Backtest $backtest, LoadBenchmarkSeriesAction $loadBenchmark)
+    public function show(Request $request, Backtest $backtest, LoadBenchmarkSeriesAction $loadBenchmark, LoadMarketCapAllocationAction $marketCapAllocation): Response
     {
         if ($request->user()->cannot('view', $backtest)) {
             abort(404);
@@ -67,11 +69,16 @@ class BacktestsController extends Controller
             'backtest' => $backtest,
             'summaryMetrics' => fn () => $backtest->summaryMetrics,
             'dailySnapshots' => $isCompleted
-                ? Inertia::defer(fn () => $backtest->dailySnapshots()->orderBy('date')->get(), 'charts')
+                ? Inertia::defer(fn () => $backtest->dailySnapshots()->orderBy('date')->get([
+                    'id', 'backtest_id', 'date', 'nav', 'portfolio_value', 'cash', 'total_value', 'holdings_count',
+                ]), 'charts')
                 : [],
             'defaultBenchmark' => $isCompleted
                 ? Inertia::defer(fn () => $loadBenchmark->execute($backtest, 'nifty-50'), 'charts')
                 : [],
+            'marketCapAllocation' => $isCompleted
+                ? Inertia::defer(fn () => $marketCapAllocation->execute($backtest), 'allocation')
+                : null,
             'trades' => $isCompleted
                 ? Inertia::defer(fn () => $backtest->trades()->orderBy('date')->orderBy('trade_type')->get(), 'trades')
                 : [],

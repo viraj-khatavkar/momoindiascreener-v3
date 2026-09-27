@@ -42,7 +42,7 @@ class StoreAdminProcessRunRequest extends FormRequest
                 }
 
                 $date = (string) $this->input('date');
-                $missingFiles = collect(app(BuildDailyProcessStepsAction::class)->requiredFiles())
+                $missingFiles = collect(app(BuildDailyProcessStepsAction::class)->requiredFiles($date))
                     ->reject(fn (array $file): bool => Storage::disk('local')->exists(
                         "uploads/{$date}/{$file['key']}.csv",
                     ))

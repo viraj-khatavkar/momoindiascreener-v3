@@ -13,6 +13,8 @@ class BacktestDailySnapshot extends Model
     {
         return [
             'date' => 'date',
+            'market_cap_allocation' => 'array',
+            'market_cap_allocation_calculated_at' => 'datetime',
         ];
     }
 

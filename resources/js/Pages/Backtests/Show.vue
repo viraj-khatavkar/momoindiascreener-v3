@@ -648,6 +648,18 @@
                 </Deferred>
                 </div>
 
+                <div id="bt-market-cap" class="scroll-mt-28">
+                    <Deferred data="marketCapAllocation">
+                        <template #fallback>
+                            <div class="rounded-xl bg-white p-6 shadow-xs ring-1 ring-gray-200" role="status" aria-label="Loading market cap allocation">
+                                <div class="mb-4 h-4 w-56 animate-pulse rounded bg-gray-200"></div>
+                                <div class="h-[400px] animate-pulse rounded-lg bg-gray-100"></div>
+                            </div>
+                        </template>
+                        <MarketCapAllocationChart v-if="marketCapAllocation" :allocation="marketCapAllocation" />
+                    </Deferred>
+                </div>
+
                 <!-- Monthly Returns Heatmap (DEFERRED — dailySnapshots) -->
                 <div id="bt-monthly" class="scroll-mt-28">
                 <Deferred data="dailySnapshots">
@@ -1027,6 +1039,7 @@ import BacktestSettingsForm from '@/Pages/Backtests/partials/BacktestSettingsFor
 import BacktestStrategyRules from '@/Pages/Backtests/partials/BacktestStrategyRules.vue';
 import CashAllocationChart from '@/Pages/Backtests/partials/CashAllocationChart.vue';
 import DrawdownChart from '@/Pages/Backtests/partials/DrawdownChart.vue';
+import MarketCapAllocationChart from '@/Pages/Backtests/partials/MarketCapAllocationChart.vue';
 import RollingReturnsChart from '@/Pages/Backtests/partials/RollingReturnsChart.vue';
 import TradeLogTable from '@/Pages/Backtests/partials/TradeLogTable.vue';
 import { ChartSyncGroup } from '@/utils/chartSyncGroup';
@@ -1035,6 +1048,7 @@ import type { BacktestSummaryMetric } from '@/types/app/Models/BacktestSummaryMe
 import type { BacktestDailySnapshot } from '@/types/app/Models/BacktestDailySnapshot';
 import type { BacktestTrade } from '@/types/app/Models/BacktestTrade';
 import type { SelectOption } from '@/types/SelectOption';
+import type { MarketCapAllocation } from '@/types/MarketCapAllocation';
 
 interface BenchmarkPoint {
     date: string;
@@ -1049,6 +1063,7 @@ const props = withDefaults(
         dailySnapshots?: BacktestDailySnapshot[];
         defaultBenchmark?: BenchmarkPoint[];
         trades?: BacktestTrade[];
+        marketCapAllocation?: MarketCapAllocation | null;
         benchmarkOptions: SelectOption[];
         indices: SelectOption[];
         sortByOptions: SelectOption[];
@@ -1259,6 +1274,7 @@ const resultSections = computed(() => {
         { id: 'bt-nav', label: 'NAV' },
         { id: 'bt-drawdown', label: 'Drawdown' },
         { id: 'bt-cash', label: 'Cash' },
+        { id: 'bt-market-cap', label: 'Market caps' },
     ];
     if (monthlyReturns.value.length > 0) sections.push({ id: 'bt-monthly', label: 'Monthly' });
     if (hasRollingReturns.value) sections.push({ id: 'bt-rolling', label: 'Rolling' });

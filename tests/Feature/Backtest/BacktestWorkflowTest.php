@@ -2,6 +2,7 @@
 
 use App\Actions\Backtest\CalculateBacktestMetricsAction;
 use App\Actions\Backtest\RunBacktestAction;
+use App\Actions\Backtest\StoreMarketCapAllocationAction;
 use App\Enums\BacktestCashCallEnum;
 use App\Enums\BacktestStatusEnum;
 use App\Jobs\RunBacktestJob;
@@ -398,7 +399,7 @@ it('reports preparation progress when a queue worker starts the run', function (
         });
     $metricsAction->shouldReceive('execute')->once();
 
-    (new RunBacktestJob($backtest))->handle($runAction, $metricsAction);
+    (new RunBacktestJob($backtest))->handle($runAction, $metricsAction, app(StoreMarketCapAllocationAction::class));
 
     expect($backtest->refresh()->status)->toBe(BacktestStatusEnum::Completed)
         ->and($backtest->progress)->toBe(100);

@@ -6,6 +6,27 @@ use App\Enums\AdminProcessStepStatusEnum;
 use App\Models\AdminProcessOutputChunk;
 use App\Models\User;
 
+it('shows market cap and adjusted PE imports before marking ETFs', function () {
+    $admin = User::factory()->create(['is_admin' => true]);
+    $run = app(CreateAdminProcessRunAction::class)->execute($admin, '2024-03-01');
+    $run->steps()->where('position', '<=', 13)->update([
+        'status' => AdminProcessStepStatusEnum::Completed->value,
+    ]);
+
+    $this->actingAs($admin);
+
+    visit("/admin/process-runs/{$run->id}")
+        ->assertSee('13. Apply corporate action adjustments')
+        ->assertSee('14. Import market cap')
+        ->assertSee('15. Import price to earnings')
+        ->assertSee('16. Mark ETFs')
+        ->assertSee('save values in crores')
+        ->assertSee('Import ADJUSTED P/E values')
+        ->assertSee('php artisan backtest:import-marketcap --date=2024-03-01')
+        ->assertSee('php artisan backtest:import-price-to-earnings --date=2024-03-01')
+        ->assertNoJavaScriptErrors();
+});
+
 it('adds several symbol name changes to the instrument check', function () {
     $admin = User::factory()->create(['is_admin' => true]);
     $run = app(CreateAdminProcessRunAction::class)->execute($admin, '2022-02-04');

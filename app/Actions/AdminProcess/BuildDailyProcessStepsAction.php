@@ -49,6 +49,20 @@ class BuildDailyProcessStepsAction
                 arguments: ['--series=SM', "--date={$date}"],
             ),
             $this->step(
+                key: 'import-corporate-actions-st',
+                name: 'Import ST corporate actions',
+                description: 'Import corporate actions for the ST series.',
+                command: 'backtest:import-corporate-actions',
+                arguments: ['--series=ST', "--date={$date}"],
+            ),
+            $this->step(
+                key: 'import-corporate-actions-bz',
+                name: 'Import BZ corporate actions',
+                description: 'Import corporate actions for the BZ series.',
+                command: 'backtest:import-corporate-actions',
+                arguments: ['--series=BZ', "--date={$date}"],
+            ),
+            $this->step(
                 key: 'calculate-dividend-adjustment-factor',
                 name: 'Preview dividend adjustment factors',
                 description: 'Calculate dividend adjustment factors without saving changes.',
@@ -93,6 +107,22 @@ class BuildDailyProcessStepsAction
                 command: 'backtest:adjust-corporate-action',
                 arguments: ["--date={$date}"],
             ),
+            ...($date >= '2024-03-01' ? [
+                $this->step(
+                    key: 'import-marketcap',
+                    name: 'Import market cap',
+                    description: 'Import market cap for the selected date and save values in crores.',
+                    command: 'backtest:import-marketcap',
+                    arguments: ["--date={$date}"],
+                ),
+                $this->step(
+                    key: 'import-price-to-earnings',
+                    name: 'Import price to earnings',
+                    description: 'Import ADJUSTED P/E values for the selected date.',
+                    command: 'backtest:import-price-to-earnings',
+                    arguments: ["--date={$date}"],
+                ),
+            ] : []),
             $this->step(
                 key: 'mark-etfs',
                 name: 'Mark ETFs',
@@ -141,12 +171,16 @@ class BuildDailyProcessStepsAction
     /**
      * @return list<array{key: string, name: string}>
      */
-    public function requiredFiles(): array
+    public function requiredFiles(string $date): array
     {
         return [
             ['key' => NseFileEnum::Bhavcopy->value, 'name' => 'Bhavcopy'],
             ['key' => NseFileEnum::CorporateActions->value, 'name' => 'Corporate actions'],
             ['key' => NseFileEnum::Etf->value, 'name' => 'ETF list'],
+            ...($date >= '2024-03-01' ? [
+                ['key' => NseFileEnum::Marketcap->value, 'name' => 'Market cap'],
+                ['key' => NseFileEnum::PriceToEarnings->value, 'name' => 'Price to earnings'],
+            ] : []),
         ];
     }
 

@@ -4,6 +4,7 @@ namespace App\Jobs;
 
 use App\Actions\Backtest\CalculateBacktestMetricsAction;
 use App\Actions\Backtest\RunBacktestAction;
+use App\Actions\Backtest\StoreMarketCapAllocationAction;
 use App\Enums\BacktestStatusEnum;
 use App\Models\Backtest;
 use Illuminate\Contracts\Queue\ShouldQueue;
@@ -19,7 +20,7 @@ class RunBacktestJob implements ShouldQueue
 
     public function __construct(public Backtest $backtest) {}
 
-    public function handle(RunBacktestAction $runAction, CalculateBacktestMetricsAction $metricsAction): void
+    public function handle(RunBacktestAction $runAction, CalculateBacktestMetricsAction $metricsAction, StoreMarketCapAllocationAction $storeAllocation): void
     {
         try {
             $this->backtest->update([
@@ -31,6 +32,7 @@ class RunBacktestJob implements ShouldQueue
 
             $runAction->execute($this->backtest);
             $metricsAction->execute($this->backtest);
+            $storeAllocation->execute($this->backtest);
 
             $this->backtest->update([
                 'status' => BacktestStatusEnum::Completed,
