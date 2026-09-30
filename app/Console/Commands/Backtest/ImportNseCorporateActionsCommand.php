@@ -150,7 +150,7 @@ class ImportNseCorporateActionsCommand extends Command
 
         $rows = $readCsvAction->execute($filePath)->toCollection();
         $exDate = (new Carbon($date))->format('d/m/Y');
-        $searchKeys = ['BONUS', 'BON', 'FV SPL', 'FVSPLT', 'FV SPLT', 'SPLIT', 'DIV', 'INTDV', 'SPDV', 'DV', 'RIGHTS', 'RIGHT', 'RGHTS', 'RHT', 'DEMERGER'];
+        $searchKeys = ['BONUS', 'BON', 'FV SPL', 'FVSPLT', 'FV SPLT', 'SPLIT', 'DIV', 'INTDV', 'SPDV', 'DV', 'RIGHTS', 'RIGHT', 'RGHTS', 'RHT', 'RGTS', 'DEMERGER'];
 
         $rows = $rows->reject(function ($row) {
             return ! isset($row[6]);
@@ -170,7 +170,7 @@ class ImportNseCorporateActionsCommand extends Command
             } elseif (Str::contains($row[9], ['DIV', 'DV', 'INTDV', 'SPDV'])) {
                 $ratio = $this->parseSentenceForDividend($row[9]);
                 $type = CorporateActionTypeEnum::DIVIDEND;
-            } elseif (Str::contains($row[9], ['RIGHTS', 'RIGHT', 'RGHTS', 'RHT'])) {
+            } elseif (Str::contains($row[9], ['RIGHTS', 'RIGHT', 'RGHTS', 'RHT', 'RGTS'])) {
                 $ratio = 'RIGHTS';
                 $type = CorporateActionTypeEnum::RIGHTS;
             } elseif (Str::contains($row[9], 'DEMERGER')) {
