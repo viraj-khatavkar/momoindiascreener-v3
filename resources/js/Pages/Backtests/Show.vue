@@ -400,7 +400,7 @@
                                 </div>
                                 <div class="flex items-baseline justify-between gap-4 py-3">
                                     <dt class="text-sm font-medium text-gray-600" title="Excess return per unit of downside volatility only; ≥1 is good">Sortino ratio</dt>
-                                    <dd class="text-xl font-bold tabular-nums" :class="sortinoValueClass">
+                                    <dd data-test="sortino-ratio" class="text-xl font-bold tabular-nums" :class="sortinoValueClass">
                                         {{ sortinoRatio !== null ? sortinoRatio.toFixed(2) : '—' }}
                                     </dd>
                                 </div>
@@ -1257,6 +1257,10 @@ function retryRun(): void {
         preserveScroll: true,
         onStart: () => (retrying.value = true),
         onFinish: () => (retrying.value = false),
+        onError: (errors) => {
+            form.setError(errors);
+            setTab('settings');
+        },
     });
 }
 
@@ -1652,7 +1656,7 @@ const calmarRatio = computed<number | null>(() => {
     return Number(m.cagr) / Math.abs(Number(m.max_drawdown));
 });
 
-// Daily NAV return series — shared by Sortino and volatility below.
+// Daily NAV return series for volatility.
 const dailyReturns = computed<number[]>(() => {
     const snaps = props.dailySnapshots;
     if (!snaps || snaps.length < 3) return [];
@@ -1667,17 +1671,10 @@ const dailyReturns = computed<number[]>(() => {
     return returns;
 });
 
-// Sortino = (annualized return − risk-free) / downside deviation
+// Read the value saved with this run, independent of later settings changes.
 const sortinoRatio = computed<number | null>(() => {
-    const returns = dailyReturns.value;
-    if (returns.length < 2) return null;
-
-    const mean = returns.reduce((a, b) => a + b, 0) / returns.length;
-    const downside = Math.sqrt(returns.reduce((a, r) => a + Math.min(0, r) ** 2, 0) / returns.length) * Math.sqrt(252);
-    if (downside === 0) return null;
-
-    const riskFree = Number(props.backtest.cash_return_rate) / 100;
-    return (mean * 252 - riskFree) / downside;
+    const value = props.summaryMetrics?.sortino_ratio;
+    return value === null || value === undefined ? null : Number(value);
 });
 
 const annualizedVolatility = computed<number | null>(() => {
@@ -1733,7 +1730,7 @@ const topDrawdowns = computed<DrawdownEpisode[]>(() => {
     if (!snaps || snaps.length === 0) return [];
 
     const episodes: DrawdownEpisode[] = [];
-    let peakNav = Number(snaps[0].nav);
+    let peakNav = 100;
     let peakDate = snaps[0].date.substring(0, 10);
     let current: { depth: number; peakDate: string; troughDate: string } | null = null;
 
@@ -1767,15 +1764,12 @@ const topDrawdowns = computed<DrawdownEpisode[]>(() => {
     return episodes.sort((a, b) => a.depth - b.depth).slice(0, 5);
 });
 
-// The drawdown episode matching the stored max drawdown. Matched by peak date
-// with a trough-date fallback — the two detectors can disagree on the peak
-// when NAV exactly retouches a prior high. Null until snapshots load.
+// Match the saved peak and trough. The initial peak is NAV 100 before entry costs.
 const maxDrawdownEpisode = computed<DrawdownEpisode | null>(() => {
     const start = props.summaryMetrics?.max_drawdown_start_date?.substring(0, 10);
     const end = props.summaryMetrics?.max_drawdown_end_date?.substring(0, 10);
     if (!start) return null;
-    return topDrawdowns.value.find((d) => d.peakDate === start)
-        ?? topDrawdowns.value.find((d) => d.troughDate === end)
+    return topDrawdowns.value.find((d) => d.peakDate === start && d.troughDate === end)
         ?? null;
 });
 
@@ -1967,7 +1961,7 @@ const monthlyReturns = computed(() => {
     const monthlyData: Record<string, number> = {};
     for (let i = 0; i < sortedKeys.length; i++) {
         const key = sortedKeys[i];
-        const prevNav = i > 0 ? byMonth[sortedKeys[i - 1]].lastNav : byMonth[key].firstNav;
+        const prevNav = i > 0 ? byMonth[sortedKeys[i - 1]].lastNav : 100;
         monthlyData[key] = (byMonth[key].lastNav - prevNav) / prevNav;
     }
 
@@ -1982,7 +1976,7 @@ const monthlyReturns = computed(() => {
                 months.push(monthlyData[key]);
                 if (!yearStartNav) {
                     const prevKey = sortedKeys[sortedKeys.indexOf(key) - 1];
-                    yearStartNav = prevKey ? byMonth[prevKey].lastNav : byMonth[key].firstNav;
+                    yearStartNav = prevKey ? byMonth[prevKey].lastNav : 100;
                 }
                 yearEndNav = byMonth[key].lastNav;
             } else {

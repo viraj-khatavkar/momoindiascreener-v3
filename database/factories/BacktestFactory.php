@@ -50,7 +50,7 @@ class BacktestFactory extends Factory
             'brokerage_rate' => 0,
             'stt_rate' => 0.1,
             'transaction_charges_rate' => 0.00307,
-            'sebi_charges_rate' => 0.00001,
+            'sebi_charges_rate' => 0.0001,
             'gst_rate' => 18,
             'stamp_charges_rate' => 0.015,
             'initial_capital' => 5000000.00,

@@ -660,13 +660,14 @@ it('exits a held demerger stock one trading day before ex-date outside scheduled
         ->and($dBuy->reason)->toBe('Replacement after demerger exit');
 });
 
-it('forces the demerger exit when the held stock is in a stale circuit set', function () {
+it('gives the demerger exit priority over stale and current circuit restrictions', function (int $circuitDay, float $circuitPercent, bool $nextDay) {
     $dates = tradingDates(10);
     seedIndexRange('2010-01-01', end($dates), 5000);
 
     foreach ($dates as $date) {
-        $aTPercent = $date === $dates[3] ? 5.00 : 1.0;
-        seedInstrument($date, 'A', 100, ['sharpe_return_one_year' => 5.0, 't_percent' => $aTPercent]);
+        $aTPercent = $date === $dates[$circuitDay] ? $circuitPercent : 1.0;
+        $aPrice = $date === $dates[$circuitDay] ? 100 * (1 + $circuitPercent / 100) : 100;
+        seedInstrument($date, 'A', $aPrice, ['sharpe_return_one_year' => 5.0, 't_percent' => $aTPercent]);
         seedInstrument($date, 'B', 200, ['sharpe_return_one_year' => 4.0]);
         seedInstrument($date, 'C', 150, ['sharpe_return_one_year' => 3.0]);
         seedInstrument($date, 'D', 250, ['sharpe_return_one_year' => 2.0]);
@@ -679,12 +680,19 @@ it('forces the demerger exit when the held stock is in a stale circuit set', fun
     ]);
 
     $user = User::factory()->create(['is_paid' => true]);
-    $bt = makeBacktest($user);
+    $bt = makeBacktest($user, ['skip_circuit_trades' => true, 'exit_before_demerger' => true, 'execute_next_trading_day' => $nextDay]);
     run($bt);
 
-    expect($bt->trades()->where('symbol', 'A')->where('trade_type', 'sell')->where('date', $dates[4])->count())->toBe(1)
+    $sale = $bt->trades()->where('symbol', 'A')->where('trade_type', 'sell')->where('date', $dates[4])->sole();
+
+    expect((float) $sale->price)->toBe($circuitDay === 4 ? 100 * (1 + $circuitPercent / 100) : 100.0)
+        ->and($sale->reason)->toContain('Demerger ex-date on '.$dates[5])
         ->and($bt->trades()->where('symbol', 'D')->where('trade_type', 'buy')->where('date', $dates[4])->count())->toBe(1);
-});
+})->with([
+    'earlier circuit' => [3, 5.0],
+    'exit-day upper circuit' => [4, 5.0],
+    'exit-day lower circuit' => [4, -5.0],
+])->with([false, true]);
 
 it('holds through a demerger when exit before demerger is disabled', function () {
     $dates = tradingDates(10);

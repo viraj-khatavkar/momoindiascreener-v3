@@ -145,6 +145,24 @@ it('carries the last known price and membership when a held stock has no new quo
         ->and($points[1]['cash'])->toBe(20.0);
 });
 
+it('keeps the last valid allocation price when a new quote is zero', function () {
+    $backtest = Backtest::factory()->create();
+    foreach (['2017-07-31', '2017-08-01'] as $date) {
+        seedAllocationCoverage($date);
+        seedAllocationSnapshot($backtest, $date);
+        createBacktestPriceRow('LARGE', $date, ['close_adjusted' => $date === '2017-07-31' ? 100 : 0, 'is_nifty_100' => true]);
+        createBacktestPriceRow('MID', $date, ['close_adjusted' => 100, 'is_nifty_midcap_150' => true]);
+    }
+    seedAllocationTrade($backtest, '2017-07-31', 'LARGE', 6, 100);
+    seedAllocationTrade($backtest, '2017-07-31', 'MID', 2, 100);
+
+    $points = app(CalculateMarketCapAllocationAction::class)->execute($backtest)['points'];
+
+    expect($points[1]['large_cap'])->toBe(60.0)
+        ->and($points[1]['mid_cap'])->toBe(20.0)
+        ->and($points[1]['cash'])->toBe(20.0);
+});
+
 it('carries holdings and membership across allocation batches with sales and same day reentry', function () {
     $backtest = Backtest::factory()->create();
     $dates = [];
@@ -395,6 +413,7 @@ it('saves allocation before a new backtest job is marked complete', function () 
     $backtest = Backtest::factory()->create(['status' => BacktestStatusEnum::Running]);
     seedAllocationCoverage('2017-07-31');
     $runAction = $this->mock(RunBacktestAction::class);
+    $runAction->shouldReceive('validateDataAvailability')->once()->with($backtest);
     $runAction->shouldReceive('execute')->once()->andReturnUsing(function (Backtest $running): void {
         seedAllocationSnapshot($running, '2017-07-31', cash: 1000);
     });

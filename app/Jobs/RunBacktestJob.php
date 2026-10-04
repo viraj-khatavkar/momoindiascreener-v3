@@ -40,6 +40,7 @@ class RunBacktestJob implements ShouldQueue
                 'error_message' => null,
             ]);
 
+            $runAction->validateDataAvailability($this->backtest);
             $runAction->execute($this->backtest);
             $metricsAction->execute($this->backtest);
             $this->backtest->update(['progress' => 98]);

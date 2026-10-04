@@ -46,3 +46,27 @@ A position starts when a stock holding changes from zero to positive and ends on
 
 ## Duplicate saved settings into a fresh pending backtest
 Duplication copies every saved strategy setting into a new backtest owned by the same user. Clear run status, progress, timestamps, errors, and loaded result relations; do not copy trades, snapshots, or metrics, and do not queue a run. Use numbered Copy names within the owner scope. The UI opens the new settings with fresh Inertia page state and requires unsaved edits to be saved first.
+
+## Require a current quote for each trade
+User rule: if a stock does not trade on the execution date, skip its sale and retain its shares. For a new purchase, skip the unavailable stock before limiting candidates and try the next eligible unheld rank. Last-known prices may value retained holdings but must not create trade fills. Apply this across scheduled, cash-call, stop-loss, BE-series, and demerger exits.
+
+## Apply the agreed delivery charge schedule
+Use the user-supplied delivery schedule as NSE defaults: brokerage 0%, STT 0.1% on buys and sells, exchange 0.00307%, SEBI 0.0001% (Rs 10 per crore), GST 18% on brokerage plus exchange plus SEBI, and stamp duty 0.015% on buys only. Include buy STT in order budgets and the form estimate. Rates remain configurable. A default correction must not overwrite saved custom rates or completed results.
+
+## Give pre-demerger exits priority over circuit restrictions
+When exit_before_demerger is enabled, the scheduled pre-demerger sale overrides skip_circuit_trades, including a circuit hit on the exit date. This is intended behavior, not an engine defect. It does not override the separate rule requiring a valid positive execution-date quote: if the stock is not trading that day, keep the holding and record no sale or proceeds.
+
+## Restore equal weights for all retained holdings only in rebalanced mode
+EqualWeightRebalanced includes every retained holding in its target set, including DMA-protected stocks outside entry filters and the no-candidate cash fallback. EqualWeight keeps its existing non-rebalanced allocation behavior. A holding without a positive execution-date quote retains its shares and reserves its last valid market value and occupied slot before allocations to tradable stocks. Apply the quote reserve to every weighting method.
+
+## Rebalance retained holdings when no new stock qualifies
+Under NoCashCall, an empty eligible entry list preserves held stocks but must still apply the selected scheduled weighting method. EqualWeightRebalanced restores equal targets; inverse volatility and price weighting use their decision-date factors even when every holding fails entry filters. Rank weighting leaves holdings without ranks unchanged. Plain EqualWeight uses its existing cash allocation and does not restore target weights.
+
+## Keep performance baselines and saved Sortino consistent
+Start drawdown and Ulcer Index from NAV 100 before entry charges. Use the latest date when NAV retouches a peak; match the result-page drawdown episode by both peak and trough dates. First-month and first-year returns also start from NAV 100. Calculate Sortino once per run with the compounded daily cash target in both excess return and downside deviation, and divide downside squares by all daily returns. Save sortino_ratio; never recompute it from edited settings on page load. Old results remain null until rerun.
+
+## Do not move a rebalance into an incomplete data period
+Weekly and monthly holiday fallback to the last available trading day requires later-period trading data to prove the period has ended. The last imported date alone must not cause an early rebalance when the configured day has not arrived. Exact configured-day matches and monthly on-or-after matches keep their existing behavior.
+
+## Reject insufficient backtest data before clearing results
+A full user run needs at least two distinct selected-universe trading dates from its start date. Validate before deleting saved results or queueing the job; repeat validation inside the job. Metrics must throw for fewer than two snapshots or no elapsed date span, so incomplete runs cannot be marked completed. Show the start_date validation error for both run and retry requests.

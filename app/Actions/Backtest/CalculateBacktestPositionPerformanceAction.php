@@ -206,6 +206,7 @@ class CalculateBacktestPositionPerformanceAction
         $table = (new BacktestNseInstrumentPrice)->getTable();
         $lastDates = BacktestNseInstrumentPrice::query()
             ->select('symbol')->selectRaw('MAX(date) as last_date')
+            ->where('close_adjusted', '>', 0)
             ->whereIn('symbol', $symbols)
             ->where('date', '<=', $lastDate->toDateString())
             ->whereIn('date', $backtest->dailySnapshots()->select('date'))

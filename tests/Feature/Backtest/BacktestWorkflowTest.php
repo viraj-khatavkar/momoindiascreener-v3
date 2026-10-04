@@ -17,6 +17,13 @@ use Inertia\Testing\AssertableInertia as Assert;
 
 use function Pest\Laravel\mock;
 
+function seedRunAvailability(Backtest $backtest): void
+{
+    foreach (['2024-01-08', '2024-01-09'] as $date) {
+        createScreenResultRow('AVAILABLE', 'Available stock', $date, [$backtest->index->isIndexFieldName() => true]);
+    }
+}
+
 /**
  * Build a full valid update payload from the backtest's current attributes,
  * since StoreBacktestRequest requires every settings field.
@@ -69,7 +76,13 @@ it('redirects to the settings tab after creating a backtest', function () {
     $response = $this->actingAs($user)->post('/backtests', ['name' => 'My Strategy']);
 
     $backtest = Backtest::query()->latest('id')->first();
-    expect($backtest->name)->toBe('My Strategy');
+    expect($backtest->name)->toBe('My Strategy')
+        ->and((float) $backtest->brokerage_rate)->toBe(0.0)
+        ->and((float) $backtest->stt_rate)->toBe(0.1)
+        ->and((float) $backtest->transaction_charges_rate)->toBe(0.00307)
+        ->and((float) $backtest->sebi_charges_rate)->toBe(0.0001)
+        ->and((float) $backtest->gst_rate)->toBe(18.0)
+        ->and((float) $backtest->stamp_charges_rate)->toBe(0.015);
     $response->assertRedirect('/backtests/'.$backtest->id.'?tab=settings');
 });
 
@@ -171,6 +184,7 @@ it('offers and queues rank and price weighting settings', function (string $weig
     Queue::fake();
     $user = User::factory()->create(['is_paid' => true]);
     $backtest = Backtest::factory()->create(['user_id' => $user->id]);
+    seedRunAvailability($backtest);
 
     $this->actingAs($user)->get('/backtests/'.$backtest->id)
         ->assertInertia(fn (Assert $page) => $page
@@ -353,6 +367,7 @@ it('queues the saved gold DMA configuration with save and run', function () {
     Queue::fake();
     $user = User::factory()->create(['is_paid' => true]);
     $backtest = Backtest::factory()->create(['user_id' => $user->id]);
+    seedRunAvailability($backtest);
 
     $this->actingAs($user)->put('/backtests/'.$backtest->id, validBacktestUpdatePayload($backtest, [
         'cash_call' => 'only_exits_allocate_to_gold_above_dma_below_index_dma',
@@ -380,6 +395,7 @@ it('saves settings, clears old results, and queues a run when the run flag is se
     $user = User::factory()->create(['is_paid' => true]);
     $backtest = Backtest::factory()->create(['user_id' => $user->id, 'status' => BacktestStatusEnum::Completed]);
     seedBacktestResults($backtest);
+    seedRunAvailability($backtest);
 
     $response = $this->actingAs($user)->put(
         '/backtests/'.$backtest->id,
@@ -465,6 +481,7 @@ it('queues a run from the standalone run endpoint', function () {
         'user_id' => $user->id, 'status' => BacktestStatusEnum::Completed, 'completed_at' => now()->subDay(),
     ]);
     seedBacktestResults($backtest);
+    seedRunAvailability($backtest);
 
     $response = $this->actingAs($user)->post('/backtests/'.$backtest->id.'/run');
 
@@ -486,6 +503,7 @@ it('reports preparation progress when a queue worker starts the run', function (
         'started_at' => $startedAt,
     ]);
     $runAction = mock(RunBacktestAction::class);
+    $runAction->shouldReceive('validateDataAvailability')->once()->with($backtest);
     $metricsAction = mock(CalculateBacktestMetricsAction::class);
 
     $runAction->shouldReceive('execute')
@@ -553,6 +571,7 @@ it('marks an ordinary exception as failed at each execution stage', function (st
         'metrics' => mock(CalculateBacktestMetricsAction::class),
         'allocation' => mock(StoreMarketCapAllocationAction::class),
     ];
+    $actions['simulation']->shouldReceive('validateDataAvailability')->once()->with($backtest);
     $afterFailure = false;
 
     foreach ($actions as $stage => $action) {

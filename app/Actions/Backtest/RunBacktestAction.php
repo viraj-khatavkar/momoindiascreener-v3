@@ -14,6 +14,7 @@ use App\Models\BacktestTrade;
 use App\Models\NseIndex;
 use Carbon\Carbon;
 use Illuminate\Support\Collection;
+use Illuminate\Validation\ValidationException;
 
 class RunBacktestAction
 {
@@ -203,6 +204,20 @@ class RunBacktestAction
         $backtest->update(['progress' => 95]);
     }
 
+    public function validateDataAvailability(Backtest $backtest): void
+    {
+        $dates = BacktestNseInstrumentPrice::query()
+            ->where($backtest->index->isIndexFieldName(), true)
+            ->where('date', '>=', $backtest->start_date?->toDateString() ?? self::DEFAULT_START_DATE)
+            ->select('date')->distinct()->limit(2)->pluck('date');
+
+        if ($dates->count() < 2) {
+            throw ValidationException::withMessages([
+                'start_date' => 'Insufficient trading data. At least two trading dates are required from the selected start date.',
+            ]);
+        }
+    }
+
     private function loadTradingDates(Backtest $backtest)
     {
         return BacktestNseInstrumentPrice::query()
@@ -265,8 +280,8 @@ class RunBacktestAction
                     }
                 }
 
-                // Fallback: if chosen day not available this week, use last trading day of week
-                if ($matched === null && $dates->isNotEmpty()) {
+                /** Later-period data must confirm the week is complete before using its last trading day. */
+                if ($matched === null && $dates->last()->copy()->endOfWeek()->lt($tradingDates->last())) {
                     $matched = $dates->last()->format('Y-m-d');
                 }
 
@@ -286,8 +301,8 @@ class RunBacktestAction
                     }
                 }
 
-                // Fallback: use last trading day of month
-                if ($matched === null && $dates->isNotEmpty()) {
+                /** Do not bring a rebalance forward because the latest imported month is incomplete. */
+                if ($matched === null && $dates->last()->copy()->endOfMonth()->lt($tradingDates->last())) {
                     $matched = $dates->last()->format('Y-m-d');
                 }
 
@@ -478,7 +493,9 @@ class RunBacktestAction
             ->filter(fn (BacktestNseInstrumentPrice $stock): bool => $this->hasWeightingData($backtest, $stock));
 
         if ($cashCall === BacktestCashCallEnum::NoCashCall && $eligibleStocks->isEmpty()) {
-            if (! $backtest->weightage->usesRankOrPriceWeights()) {
+            if ($backtest->weightage->rebalancesHoldings()) {
+                $this->rebalanceWeights($backtest, $date, $rankedBySymbol, collect(), $filterDate);
+            } else {
                 $this->topUpHeldStocks($backtest, $date, $this->cash);
             }
 
@@ -859,16 +876,17 @@ class RunBacktestAction
 
         $unrankedHeldStocks = collect();
 
-        if (in_array($backtest->weightage, [BacktestWeightageEnum::InverseVolatility, BacktestWeightageEnum::PriceWeighted], true)) {
+        if (in_array($backtest->weightage, [BacktestWeightageEnum::EqualWeightRebalanced, BacktestWeightageEnum::InverseVolatility, BacktestWeightageEnum::PriceWeighted], true)) {
             $unrankedHeldSymbols = array_diff(array_keys($this->holdings), $rankedBySymbol->keys()->all(), ['GOLDBEES']);
 
             if ($unrankedHeldSymbols !== []) {
+                $quoteDate = $backtest->weightage === BacktestWeightageEnum::EqualWeightRebalanced ? $date->format('Y-m-d') : $decisionDate;
                 $decisionStocks = BacktestNseInstrumentPrice::query()
-                    ->where('date', $decisionDate)
+                    ->where('date', $quoteDate)
                     ->whereIn('symbol', $unrankedHeldSymbols)
                     ->get(['symbol', 'name', 'series', 'close_adjusted', 'close_raw', 'volatility_one_year']);
 
-                $unrankedHeldStocks = $this->withExecutionPrices($decisionStocks, $date->format('Y-m-d'), $decisionDate)
+                $unrankedHeldStocks = $this->withExecutionPrices($decisionStocks, $date->format('Y-m-d'), $quoteDate)
                     ->keyBy('symbol');
             }
         }
@@ -976,6 +994,17 @@ class RunBacktestAction
 
         $targets = [];
         $cashCall = $backtest->cash_call;
+        $allTargetStocks = $allTargetStocks->filter(fn ($stock): bool => (float) $stock->close_adjusted > 0);
+        $retainedValue = 0.0;
+        $retainedCount = 0;
+        foreach ($this->holdings as $symbol => $holding) {
+            if (! $allTargetStocks->has($symbol)) {
+                $retainedValue += $holding['quantity'] * $holding['last_known_price'];
+                $retainedCount++;
+            }
+        }
+        $totalValue = max($totalValue - $retainedValue, 0);
+        $availableSlots = max($backtest->max_stocks_to_hold - $retainedCount, 1);
         $n = $allTargetStocks->count();
 
         if ($backtest->weightage === BacktestWeightageEnum::InverseVolatility) {
@@ -991,7 +1020,7 @@ class RunBacktestAction
                 $weight = (1.0 / (float) $stock->volatility_one_year) / $invVolSum;
 
                 if ($cashCall === BacktestCashCallEnum::CashCallIfNotEnoughStocks) {
-                    $scale = $validStocks->count() / $backtest->max_stocks_to_hold;
+                    $scale = min($validStocks->count() / $availableSlots, 1);
                     $targets[$symbol] = $totalValue * $weight * $scale;
                 } else {
                     $targets[$symbol] = $totalValue * $weight;
@@ -1000,7 +1029,7 @@ class RunBacktestAction
         } else {
             // Equal weight rebalanced
             if ($cashCall === BacktestCashCallEnum::CashCallIfNotEnoughStocks) {
-                $targetPerStock = $totalValue / $backtest->max_stocks_to_hold;
+                $targetPerStock = $totalValue / $availableSlots;
             } else {
                 $targetPerStock = $totalValue / max($n, 1);
             }
@@ -1294,6 +1323,10 @@ class RunBacktestAction
         }
 
         $holding = $this->holdings[$symbol];
+        if ($holding['last_price_date'] !== $date->format('Y-m-d') || $holding['last_known_price'] <= 0) {
+            return;
+        }
+
         $sellPrice = $holding['last_known_price'];
         $grossAmount = $quantity * $sellPrice;
         $costs = $this->costsAction->execute($grossAmount, 'sell', $backtest);
@@ -1433,6 +1466,8 @@ class RunBacktestAction
             ];
         }
 
+        $this->holdings[$symbol]['last_price_date'] = $date->format('Y-m-d');
+
         if (count($this->tradeBatch) >= 100) {
             $this->flushTrades();
         }
@@ -1454,9 +1489,10 @@ class RunBacktestAction
             ->keyBy('symbol');
 
         foreach ($this->holdings as $symbol => &$holding) {
-            if ($prices->has($symbol)) {
+            if ($prices->has($symbol) && (float) $prices->get($symbol)->close_adjusted > 0) {
                 $holding['last_known_price'] = (float) $prices->get($symbol)->close_adjusted;
                 $holding['last_known_raw_price'] = (float) $prices->get($symbol)->close_raw;
+                $holding['last_price_date'] = $dateStr;
             }
         }
         unset($holding);

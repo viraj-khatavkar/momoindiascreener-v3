@@ -213,10 +213,13 @@ it('spends only net stop loss proceeds on a replacement', function () {
     $sale = $backtest->trades()->where('trade_type', 'sell')->sole();
     $entry = $backtest->trades()->where('symbol', 'B')->sole();
     $snapshot = $backtest->dailySnapshots()->where('date', $dates[2])->sole();
-    expect((float) $sale->net_amount)->toBe(87120.0)
-        ->and((int) $entry->quantity)->toBe(871)
-        ->and((float) $snapshot->cash)->toBe(20.0)
-        ->and((float) $snapshot->total_value + (float) $sale->total_charges)->toBe(88000.0);
+    expect((int) $sale->quantity)->toBe(990)
+        ->and((float) $sale->net_amount)->toBe(86248.8)
+        ->and((int) $entry->quantity)->toBe(853)
+        ->and((float) $entry->stt)->toBe(853.0)
+        ->and((float) $entry->net_amount)->toBeLessThanOrEqual((float) $sale->net_amount)
+        ->and((float) $snapshot->cash)->toBe(105.8)
+        ->and((float) $snapshot->total_value + (float) $backtest->trades()->sum('total_charges'))->toBe(88120.0);
 });
 
 it('keeps replacement cash when no unheld stock qualifies instead of topping up an existing holding', function () {

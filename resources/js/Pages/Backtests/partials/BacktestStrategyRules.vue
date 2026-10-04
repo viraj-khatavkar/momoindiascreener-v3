@@ -382,7 +382,7 @@ const defaultCostRates: { key: keyof Backtest; label: string; default: number }[
     { key: 'brokerage_rate', label: 'Brokerage', default: 0 },
     { key: 'stt_rate', label: 'STT', default: 0.1 },
     { key: 'transaction_charges_rate', label: 'Exchange txn', default: 0.00307 },
-    { key: 'sebi_charges_rate', label: 'SEBI', default: 0.00001 },
+    { key: 'sebi_charges_rate', label: 'SEBI', default: 0.0001 },
     { key: 'gst_rate', label: 'GST', default: 18 },
     { key: 'stamp_charges_rate', label: 'Stamp', default: 0.015 },
 ];

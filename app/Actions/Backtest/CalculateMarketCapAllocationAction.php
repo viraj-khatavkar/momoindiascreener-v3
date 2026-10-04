@@ -72,7 +72,9 @@ class CalculateMarketCapAllocationAction
                     $price = $dailyPrices->get($symbol);
 
                     if ($price) {
-                        $holding['price'] = (float) $price->close_adjusted;
+                        if ((float) $price->close_adjusted > 0) {
+                            $holding['price'] = (float) $price->close_adjusted;
+                        }
 
                         if ($hasCoverage) {
                             $holding['category'] = $this->category($price);

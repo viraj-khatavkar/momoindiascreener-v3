@@ -5,6 +5,8 @@ namespace App\Actions\Backtest;
 use App\Models\Backtest;
 use App\Models\BacktestSummaryMetric;
 use App\Models\BacktestTrade;
+use Illuminate\Support\Collection;
+use RuntimeException;
 
 class CalculateBacktestMetricsAction
 {
@@ -17,7 +19,7 @@ class CalculateBacktestMetricsAction
             ->get(['date', 'nav', 'total_value']);
 
         if ($snapshots->count() < 2) {
-            return;
+            throw new RuntimeException('Insufficient trading data. At least two daily snapshots are required to calculate backtest metrics.');
         }
 
         $firstSnapshot = $snapshots->first();
@@ -26,7 +28,7 @@ class CalculateBacktestMetricsAction
         $years = $firstSnapshot->date->diffInDays($lastSnapshot->date) / 365.25;
 
         if ($years <= 0) {
-            return;
+            throw new RuntimeException('Insufficient trading data. Backtest snapshots must cover at least two different dates.');
         }
 
         // CAGR
@@ -62,6 +64,7 @@ class CalculateBacktestMetricsAction
             'max_drawdown_start_date' => $ddStartDate,
             'max_drawdown_end_date' => $ddEndDate,
             'sharpe_ratio' => $sharpeRatio,
+            'sortino_ratio' => $this->calculateSortinoRatio($snapshots, (float) $backtest->cash_return_rate),
             'winners_percentage' => $winnersPercentage,
             'ulcer_index' => $ulcerIndex,
             'k_ratio' => $kRatio,
@@ -83,16 +86,16 @@ class CalculateBacktestMetricsAction
      */
     private function calculateMaxDrawdown($snapshots): array
     {
-        $peak = 0;
+        $peak = 100.0;
         $maxDd = 0;
         $ddStart = null;
         $ddEnd = null;
-        $currentPeakDate = null;
+        $currentPeakDate = $snapshots->first()->date->format('Y-m-d');
 
         foreach ($snapshots as $snapshot) {
             $nav = (float) $snapshot->nav;
 
-            if ($nav > $peak) {
+            if ($nav >= $peak) {
                 $peak = $nav;
                 $currentPeakDate = $snapshot->date->format('Y-m-d');
             }
@@ -198,6 +201,36 @@ class CalculateBacktestMetricsAction
     }
 
     /**
+     * Use the same compounded daily cash target for excess return and downside deviation.
+     */
+    private function calculateSortinoRatio(Collection $snapshots, float $annualTarget): ?float
+    {
+        if ($snapshots->count() < 3) {
+            return null;
+        }
+
+        $dailyTarget = pow(1 + $annualTarget / 100, 1 / 252) - 1;
+        $excessReturns = [];
+        for ($i = 1; $i < $snapshots->count(); $i++) {
+            $previousNav = (float) $snapshots[$i - 1]->nav;
+            if ($previousNav > 0) {
+                $excessReturns[] = (float) $snapshots[$i]->nav / $previousNav - 1 - $dailyTarget;
+            }
+        }
+
+        if (count($excessReturns) < 2) {
+            return null;
+        }
+
+        $downsideVariance = array_sum(array_map(fn (float $excess): float => min(0, $excess) ** 2, $excessReturns)) / count($excessReturns);
+        if ($downsideVariance <= 0) {
+            return null;
+        }
+
+        return round(array_sum($excessReturns) / count($excessReturns) / sqrt($downsideVariance) * sqrt(252), 4);
+    }
+
+    /**
      * Ulcer Index = sqrt(mean(drawdown^2))
      * Measures downside risk — lower is better
      */
@@ -207,7 +240,7 @@ class CalculateBacktestMetricsAction
             return null;
         }
 
-        $peak = 0;
+        $peak = 100.0;
         $squaredDrawdowns = [];
 
         foreach ($snapshots as $snapshot) {

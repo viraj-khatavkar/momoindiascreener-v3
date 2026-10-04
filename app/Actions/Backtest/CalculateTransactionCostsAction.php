@@ -12,8 +12,7 @@ class CalculateTransactionCostsAction
     public function execute(float $grossAmount, string $type, Backtest $backtest): array
     {
         $brokerage = $grossAmount * ((float) $backtest->brokerage_rate / 100);
-        // STT applies only on the sell side for equity delivery trades.
-        $stt = ($type === 'sell') ? $grossAmount * ((float) $backtest->stt_rate / 100) : 0;
+        $stt = $grossAmount * ((float) $backtest->stt_rate / 100);
         $transactionCharges = $grossAmount * ((float) $backtest->transaction_charges_rate / 100);
         $sebiCharges = $grossAmount * ((float) $backtest->sebi_charges_rate / 100);
         $gst = ($brokerage + $sebiCharges + $transactionCharges) * ((float) $backtest->gst_rate / 100);
@@ -32,18 +31,19 @@ class CalculateTransactionCostsAction
     }
 
     /**
-     * Buy-side charges as a fraction of gross amount (no STT on buys for
-     * delivery), used to size orders so cost-inclusive spend fits a budget.
+     * Buy-side charges as a fraction of gross amount, used to size orders
+     * so cost-inclusive spend fits a budget.
      */
     public function buyCostRate(Backtest $backtest): float
     {
         $brokerage = (float) $backtest->brokerage_rate / 100;
+        $stt = (float) $backtest->stt_rate / 100;
         $transactionCharges = (float) $backtest->transaction_charges_rate / 100;
         $sebiCharges = (float) $backtest->sebi_charges_rate / 100;
         $gst = (float) $backtest->gst_rate / 100;
         $stampCharges = (float) $backtest->stamp_charges_rate / 100;
 
-        return $brokerage + $stampCharges + $transactionCharges + $sebiCharges
+        return $brokerage + $stt + $stampCharges + $transactionCharges + $sebiCharges
             + $gst * ($brokerage + $transactionCharges + $sebiCharges);
     }
 }

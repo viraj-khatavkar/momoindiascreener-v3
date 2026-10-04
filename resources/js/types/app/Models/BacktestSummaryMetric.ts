@@ -49,6 +49,7 @@ export interface BacktestSummaryMetric {
     max_drawdown_start_date: string | null;
     max_drawdown_end_date: string | null;
     sharpe_ratio: number | null;
+    sortino_ratio: number | string | null;
     winners_percentage: number | null;
     ulcer_index: number | null;
     k_ratio: number | null;

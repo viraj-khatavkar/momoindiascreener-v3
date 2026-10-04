@@ -107,7 +107,7 @@ function initChart(container: HTMLDivElement): void {
 function setData(): void {
     if (!series) return;
 
-    let peak = 0;
+    let peak = 100;
     const data = props.dailySnapshots.map((s) => {
         const nav = Number(s.nav);
         if (nav > peak) peak = nav;

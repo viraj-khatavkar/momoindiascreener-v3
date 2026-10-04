@@ -8,8 +8,12 @@ use App\Models\Backtest;
 
 class StartBacktestRunAction
 {
+    public function __construct(private RunBacktestAction $runAction) {}
+
     public function execute(Backtest $backtest): void
     {
+        $this->runAction->validateDataAvailability($backtest);
+
         $backtest->trades()->delete();
         $backtest->dailySnapshots()->delete();
         $backtest->summaryMetrics()->delete();

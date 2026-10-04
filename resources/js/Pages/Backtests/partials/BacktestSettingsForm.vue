@@ -231,7 +231,7 @@
                         name="stt_rate"
                         :error="form.errors.stt_rate"
                     />
-                    <p class="mt-1 text-xs text-gray-500">Securities Transaction Tax, charged on sells only</p>
+                    <p class="mt-1 text-xs text-gray-500">Securities Transaction Tax, charged on both buys and sells</p>
                 </div>
                 <div>
                     <TextInput
@@ -251,7 +251,7 @@
                         name="transaction_charges_rate"
                         :error="form.errors.transaction_charges_rate"
                     />
-                    <p class="mt-1 text-xs text-gray-500">NSE turnover charges, on both sides</p>
+                    <p class="mt-1 text-xs text-gray-500">NSE: 0.00307% on both buys and sells</p>
                 </div>
                 <div>
                     <TextInput
@@ -261,7 +261,7 @@
                         name="sebi_charges_rate"
                         :error="form.errors.sebi_charges_rate"
                     />
-                    <p class="mt-1 text-xs text-gray-500">SEBI turnover fees, on both sides</p>
+                    <p class="mt-1 text-xs text-gray-500">0.0001% (₹10 per crore), on both buys and sells</p>
                 </div>
                 <div>
                     <TextInput
@@ -1059,7 +1059,7 @@ const costEstimate = computed(() => {
     const stamp = Number(props.form.stamp_charges_rate) || 0;
 
     const gstCharge = (gst / 100) * (brokerage + txn + sebi);
-    const buy = brokerage + stamp + txn + sebi + gstCharge;
+    const buy = brokerage + stt + stamp + txn + sebi + gstCharge;
     const sell = brokerage + stt + txn + sebi + gstCharge;
 
     return { buy, sell, roundTrip: buy + sell };
