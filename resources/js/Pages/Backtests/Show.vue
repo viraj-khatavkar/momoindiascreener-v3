@@ -3,17 +3,22 @@
         <Head :title="backtest.name" />
 
         <!-- Header -->
-        <div class="flex items-start justify-between">
-            <PageHeader :description="backtest.status === 'completed' ? backtestPeriod : 'Configure, run, and analyze your backtest'">
+        <div class="flex flex-wrap items-start justify-between gap-x-4 gap-y-2">
+            <PageHeader class="min-w-0 break-words" :description="backtest.status === 'completed' ? backtestPeriod : 'Configure, run, and analyze your backtest'">
                 {{ backtest.name }}
             </PageHeader>
-            <div class="flex items-center gap-3">
+            <div class="flex flex-wrap items-center gap-3">
                 <span
                     :class="statusBadgeClass(backtest.status)"
                     class="rounded-full px-2.5 py-0.5 text-xs font-medium capitalize"
                 >
                     {{ backtest.status }}
                 </span>
+                <DuplicateBacktestButton
+                    :backtest-id="backtest.id"
+                    :disabled="form.isDirty || form.processing"
+                    :title="form.isDirty ? 'Save settings before duplicating' : 'Copy saved settings to a new backtest'"
+                />
                 <button
                     type="button"
                     :disabled="backtest.status === 'running' || form.processing"
@@ -25,6 +30,7 @@
                 </button>
             </div>
         </div>
+        <p v-if="form.isDirty" class="mt-2 text-sm text-gray-500">Save settings before you duplicate this backtest.</p>
 
         <!-- Tabs -->
         <div class="mt-2 border-b border-gray-200">
@@ -414,7 +420,7 @@
                         </div>
 
                         <!-- Quality column -->
-                        <div class="relative overflow-hidden border-t border-gray-200/60 bg-linear-to-br from-sky-50/70 via-white to-white px-8 py-6 lg:border-t-0">
+                        <div data-test="position-statistics" class="relative overflow-hidden border-t border-gray-200/60 bg-linear-to-br from-sky-50/70 via-white to-white px-8 py-6 lg:border-t-0">
                             <div class="pointer-events-none absolute -right-12 -top-12 h-32 w-32 rounded-full bg-sky-200/30 blur-3xl" aria-hidden="true" />
                             <div class="relative mb-3 flex items-center gap-2 border-b border-sky-200/50 pb-3">
                                 <span class="flex h-6 w-6 items-center justify-center rounded-md bg-sky-100 ring-1 ring-sky-200/70">
@@ -422,12 +428,13 @@
                                 </span>
                                 <h3 class="text-xs font-bold uppercase tracking-[0.14em] text-sky-700">Quality</h3>
                             </div>
+                            <p class="relative mb-2 text-xs text-gray-500">Win/loss figures use completed positions after charges.</p>
                             <dl class="relative divide-y divide-sky-100/60">
                                 <div class="flex items-baseline justify-between gap-4 py-3">
-                                    <dt class="text-sm font-medium text-gray-600" title="Share of trade cycles that closed (or are sitting) in profit">Win rate</dt>
+                                    <dt class="text-sm font-medium text-gray-600" title="Profitable completed positions divided by all completed positions, including breakeven positions">Win rate</dt>
                                     <dd class="text-right">
                                         <div class="text-xl font-bold tabular-nums" :class="winRateValueClass">
-                                            {{ summaryMetrics.winners_percentage !== null ? Number(summaryMetrics.winners_percentage).toFixed(1) + '%' : '—' }}
+                                            {{ winRate !== null ? winRate.toFixed(1) + '%' : '—' }}
                                         </div>
                                         <div v-if="winnersLosersLabel" class="mt-0.5 text-[11px] font-medium text-sky-600/70">
                                             {{ winnersLosersLabel }}
@@ -435,30 +442,30 @@
                                     </dd>
                                 </div>
                                 <div class="flex items-baseline justify-between gap-4 py-3">
-                                    <dt class="text-sm font-medium text-gray-600" title="Gross profits ÷ gross losses across trade cycles; ≥1.5 is good, below 1 loses money">Profit factor</dt>
+                                    <dt class="text-sm font-medium text-gray-600" title="Total net profits divided by total net losses from completed positions. Infinity means there were profits and no losses.">Profit factor</dt>
                                     <dd class="text-xl font-bold tabular-nums" :class="profitFactorValueClass">
-                                        {{ summaryMetrics.profit_factor !== null ? Number(summaryMetrics.profit_factor).toFixed(2) + '×' : '—' }}
+                                        {{ hasProfitsWithoutLosses ? '∞' : profitFactor !== null ? profitFactor.toFixed(2) + '×' : '—' }}
                                     </dd>
                                 </div>
                                 <div class="flex items-baseline justify-between gap-4 py-3">
-                                    <dt class="text-sm font-medium text-gray-600" title="Average P&L of winning positions vs losing positions">Avg win / loss</dt>
+                                    <dt class="text-sm font-medium text-gray-600" title="Average net profit and loss of completed positions. An absent group has no average.">Avg win / loss</dt>
                                     <dd class="text-right text-xl font-bold tabular-nums text-slate-900">
                                         <template v-if="avgWinLoss !== null">
-                                            <span class="text-emerald-700">{{ formatCurrencyShort(avgWinLoss.win) }}</span>
+                                            <span class="text-emerald-700">{{ avgWinLoss.win !== null ? formatCurrencyShort(avgWinLoss.win) : '—' }}</span>
                                             <span class="mx-1 font-normal text-gray-300">/</span>
-                                            <span class="text-red-700">{{ formatCurrencyShort(avgWinLoss.loss) }}</span>
+                                            <span class="text-red-700">{{ avgWinLoss.loss !== null ? formatCurrencyShort(avgWinLoss.loss) : '—' }}</span>
                                         </template>
                                         <template v-else>—</template>
                                     </dd>
                                 </div>
                                 <div class="flex items-baseline justify-between gap-4 py-3">
-                                    <dt class="text-sm font-medium text-gray-600" title="Average net P&L per trade cycle — what a typical position earned">Expectancy</dt>
+                                    <dt class="text-sm font-medium text-gray-600" title="Total net profit or loss divided by the number of completed positions">Avg profit / position</dt>
                                     <dd class="text-xl font-bold tabular-nums" :class="expectancy !== null && expectancy >= 0 ? 'text-emerald-700' : 'text-red-700'">
                                         {{ expectancy !== null ? formatCurrencyShort(expectancy) : '—' }}
                                     </dd>
                                 </div>
                                 <div class="flex items-baseline justify-between gap-4 py-3">
-                                    <dt class="text-sm font-medium text-gray-600" title="Average time a position stays held — sanity check on your rebalance settings">Avg holding</dt>
+                                    <dt class="text-sm font-medium text-gray-600" title="Average time from the first purchase to the full exit, for completed positions only">Avg completed holding</dt>
                                     <dd class="text-xl font-bold tabular-nums text-slate-900">
                                         {{ avgHoldingDays !== null ? formatHoldingPeriod(avgHoldingDays) : '—' }}
                                     </dd>
@@ -477,9 +484,13 @@
                     <div class="relative flex flex-wrap items-center gap-x-4 gap-y-2 border-t border-gray-100 bg-gray-50/60 px-6 py-3 text-xs text-gray-500">
                         <span>
                             <span class="font-semibold text-gray-800">{{ summaryMetrics.total_trades }}</span>
-                            trades
-                            <span v-if="trades && trades.length > 0" class="text-gray-400">({{ buyCount }} buys · {{ sellCount }} sells)</span>
+                            transactions
+                            <span v-if="tradeLogSummary && tradeLogSummary.total > 0" class="text-gray-400">({{ tradeLogSummary.buys }} buys · {{ tradeLogSummary.sells }} sells)</span>
                         </span>
+                        <template v-if="closedPositions">
+                            <span class="text-gray-300" aria-hidden="true">·</span>
+                            <span><span class="font-semibold text-gray-800">{{ closedPositions.count }}</span> completed positions</span>
+                        </template>
                         <span class="text-gray-300" aria-hidden="true">·</span>
                         <span>
                             <span class="font-semibold text-amber-700">{{ formatCurrencyShort(summaryMetrics.total_charges_paid) }}</span>
@@ -510,13 +521,13 @@
                         </div>
                     </template>
                     <div class="rounded-xl bg-white p-6 shadow-xs ring-1 ring-gray-200">
-                        <div class="mb-4 flex items-center justify-between">
+                        <div class="mb-4 flex flex-wrap items-center justify-between gap-2">
                             <h2 class="text-sm font-semibold uppercase tracking-wide text-gray-500">NAV Chart</h2>
-                            <div class="flex items-center gap-2">
+                            <div class="flex w-full min-w-0 flex-wrap items-center gap-2 sm:w-auto">
                                 <label class="text-xs text-gray-500">Benchmark:</label>
                                 <select
                                     v-model="selectedBenchmark"
-                                    class="rounded-md border-gray-300 py-1 pl-2 pr-8 text-sm text-gray-700 shadow-xs focus:border-purple-500 focus:ring-purple-500"
+                                    class="min-w-0 flex-1 rounded-md border-gray-300 py-1 pl-2 pr-8 text-sm text-gray-700 shadow-xs focus:border-purple-500 focus:ring-purple-500"
                                 >
                                     <option value="">None</option>
                                     <option v-for="opt in benchmarkOptions" :key="opt.id" :value="opt.id">
@@ -782,13 +793,14 @@
                 <div id="bt-positions" class="scroll-mt-28 space-y-6">
 
                 <!-- Final Holdings (IMMEDIATE — from summaryMetrics) -->
-                <div v-if="finalHoldings.length > 0" class="rounded-xl bg-white p-6 shadow-xs ring-1 ring-gray-200">
+                <div v-if="finalHoldings.length > 0" data-test="final-holdings" class="rounded-xl bg-white p-6 shadow-xs ring-1 ring-gray-200">
                     <div class="mb-4 flex flex-wrap items-baseline justify-between gap-2">
                         <h2 class="text-sm font-semibold uppercase tracking-wide text-gray-500">
                             Final Holdings
                             <span class="ml-2 text-xs font-normal normal-case text-gray-400">({{ finalHoldings.length }} positions on the last day)</span>
                         </h2>
                     </div>
+                    <p class="mb-3 text-xs text-gray-500">Cost held covers the remaining shares. Total P&L includes partial sales; its percentage uses all purchase costs for the position.</p>
                     <div class="overflow-x-auto">
                         <table class="min-w-full text-sm">
                             <thead>
@@ -803,14 +815,16 @@
                                         <button type="button" class="cursor-pointer hover:text-gray-700" @click="setHoldingsSort('holding_days')">Held{{ holdingsSortIndicator('holding_days') }}</button>
                                     </th>
                                     <th class="px-4 pb-2 text-right font-medium text-gray-500">
-                                        <button type="button" class="cursor-pointer hover:text-gray-700" @click="setHoldingsSort('buy_value')">Invested{{ holdingsSortIndicator('buy_value') }}</button>
+                                        <button type="button" class="cursor-pointer hover:text-gray-700" @click="setHoldingsSort('remaining_cost')">Cost held{{ holdingsSortIndicator('remaining_cost') }}</button>
                                     </th>
                                     <th class="px-4 pb-2 text-right font-medium text-gray-500">
                                         <button type="button" class="cursor-pointer hover:text-gray-700" @click="setHoldingsSort('unrealized_value')">Value{{ holdingsSortIndicator('unrealized_value') }}</button>
                                     </th>
                                     <th class="px-4 pb-2 text-right font-medium text-gray-500">Weight</th>
-                                    <th class="pb-2 pl-4 text-right font-medium text-gray-500">
-                                        <button type="button" class="cursor-pointer hover:text-gray-700" @click="setHoldingsSort('pnl_pct')">P&L{{ holdingsSortIndicator('pnl_pct') }}</button>
+                                    <th class="px-4 pb-2 text-right font-medium text-gray-500" title="Net profit or loss from partial sales within this open position">Realised P&L</th>
+                                    <th class="px-4 pb-2 text-right font-medium text-gray-500" title="Current value less the cost of the remaining shares, including buy charges">Unrealised P&L</th>
+                                    <th class="pb-2 pl-4 text-right font-medium text-gray-500" title="Realised plus unrealised P&L. Percentage uses total purchase cost, including buy charges.">
+                                        <button type="button" class="cursor-pointer hover:text-gray-700" @click="setHoldingsSort('pnl_pct')">Total P&L{{ holdingsSortIndicator('pnl_pct') }}</button>
                                     </th>
                                 </tr>
                             </thead>
@@ -827,9 +841,11 @@
                                     </td>
                                     <td class="whitespace-nowrap px-4 py-2 text-gray-600">{{ formatMonthYear(position.entry_date) }}</td>
                                     <td class="whitespace-nowrap px-4 py-2 text-right text-gray-600">{{ formatHoldingPeriod(position.holding_days) }}</td>
-                                    <td class="whitespace-nowrap px-4 py-2 text-right tabular-nums text-gray-600">{{ formatCurrencyShort(position.buy_value) }}</td>
+                                    <td class="whitespace-nowrap px-4 py-2 text-right tabular-nums text-gray-600">{{ formatCurrencyShort(position.remaining_cost) }}</td>
                                     <td class="whitespace-nowrap px-4 py-2 text-right font-medium tabular-nums text-gray-900">{{ formatCurrencyShort(position.unrealized_value) }}</td>
                                     <td class="whitespace-nowrap px-4 py-2 text-right tabular-nums text-gray-700">{{ holdingWeight(position.unrealized_value) }}</td>
+                                    <td class="whitespace-nowrap px-4 py-2 text-right tabular-nums" :class="position.realized_pnl >= 0 ? 'text-emerald-700' : 'text-red-700'">{{ formatCurrencyShort(position.realized_pnl) }}</td>
+                                    <td class="whitespace-nowrap px-4 py-2 text-right tabular-nums" :class="position.unrealized_pnl >= 0 ? 'text-emerald-700' : 'text-red-700'">{{ formatCurrencyShort(position.unrealized_pnl) }}</td>
                                     <td class="whitespace-nowrap py-2 pl-4 text-right">
                                         <div
                                             class="font-semibold tabular-nums"
@@ -848,14 +864,14 @@
                                     <td class="py-2 pr-4 font-medium text-gray-500" colspan="4">Cash</td>
                                     <td class="whitespace-nowrap px-4 py-2 text-right font-medium tabular-nums text-gray-900">{{ formatCurrencyShort(finalCash) }}</td>
                                     <td class="whitespace-nowrap px-4 py-2 text-right tabular-nums text-gray-700">{{ holdingWeight(finalCash) }}</td>
-                                    <td></td>
+                                    <td colspan="3"></td>
                                 </tr>
                                 <tr class="border-t border-gray-200">
                                     <td class="py-2 pr-4 font-semibold text-gray-700" colspan="3">Total</td>
                                     <td class="whitespace-nowrap px-4 py-2 text-right font-semibold tabular-nums text-gray-900">{{ formatCurrencyShort(holdingsTotals.invested) }}</td>
                                     <td class="whitespace-nowrap px-4 py-2 text-right font-semibold tabular-nums text-gray-900">{{ formatCurrencyShort(summaryMetrics.final_value) }}</td>
                                     <td class="whitespace-nowrap px-4 py-2 text-right font-semibold tabular-nums text-gray-700">100.0%</td>
-                                    <td></td>
+                                    <td colspan="3"></td>
                                 </tr>
                             </tfoot>
                         </table>
@@ -863,7 +879,10 @@
                 </div>
 
                 <!-- Top Gainers & Losers (IMMEDIATE — from summaryMetrics) -->
-                <div v-if="summaryMetrics.stock_performance && summaryMetrics.stock_performance.length > 0">
+                <div v-if="positionPerformance" data-test="completed-positions">
+                    <p class="mb-3 text-sm text-gray-600">Each position runs from its first purchase to its full exit. Open holdings are excluded from these lists.</p>
+                    <p class="mb-3 text-xs text-gray-500">Percentages show profit as a share of total purchase cost, including buy charges. This cost can include cash reused after partial sales.</p>
+                    <p v-if="closedPositions?.count === 0" class="mb-3 text-sm text-gray-500">No positions were fully exited during this backtest.</p>
                     <div class="mb-3 flex items-center justify-end gap-2 text-xs">
                         <span class="text-gray-500">Rank by:</span>
                         <div class="inline-flex rounded-md border border-gray-300 bg-white">
@@ -874,7 +893,7 @@
                                 :aria-pressed="gainersSortMode === 'pct'"
                                 @click="gainersSortMode = 'pct'"
                             >
-                                % return
+                                % purchase cost
                             </button>
                             <button
                                 type="button"
@@ -890,8 +909,9 @@
                     <div class="grid grid-cols-1 gap-6 lg:grid-cols-2">
                     <!-- Top 20 Gainers -->
                     <div class="rounded-xl bg-white p-6 shadow-xs ring-1 ring-gray-200">
-                        <h2 class="mb-4 text-sm font-semibold uppercase tracking-wide text-emerald-700">Top 20 Gainers</h2>
-                        <ul class="divide-y divide-gray-100">
+                        <h2 class="mb-4 text-sm font-semibold uppercase tracking-wide text-emerald-700">Top 20 Winners</h2>
+                        <p v-if="topGainers.length === 0" class="text-sm text-gray-500">No completed winning positions.</p>
+                        <ul data-test="top-winners" class="divide-y divide-gray-100">
                             <li
                                 v-for="(position, index) in topGainers"
                                 :key="`g-${index}-${position.symbol}-${position.entry_date}`"
@@ -904,20 +924,16 @@
                                             target="_blank"
                                             class="truncate font-medium text-gray-900 hover:text-purple-700 hover:underline"
                                         >{{ position.symbol }}</a>
-                                        <span
-                                            v-if="position.still_held"
-                                            class="rounded-full bg-blue-50 px-1.5 py-0.5 text-[10px] font-medium text-blue-600"
-                                        >held</span>
                                     </div>
                                     <div class="mt-0.5 text-xs text-gray-500">
                                         {{ formatMonthYear(position.entry_date) }}
                                         <span class="text-gray-300">→</span>
-                                        {{ position.exit_date ? formatMonthYear(position.exit_date) : 'now' }}
+                                        {{ position.exit_date ? formatMonthYear(position.exit_date) : '—' }}
                                         <span class="mx-1 text-gray-300">·</span>
                                         <span class="font-medium text-gray-600">{{ formatHoldingPeriod(position.holding_days) }}</span>
                                     </div>
                                     <div class="mt-0.5 text-[11px] text-gray-400">
-                                        {{ formatCurrencyShort(position.buy_value) }} invested
+                                        {{ formatCurrencyShort(position.purchase_cost) }} purchase cost
                                     </div>
                                 </div>
                                 <div class="shrink-0 text-right">
@@ -931,7 +947,8 @@
                     <!-- Top 20 Losers -->
                     <div class="rounded-xl bg-white p-6 shadow-xs ring-1 ring-gray-200">
                         <h2 class="mb-4 text-sm font-semibold uppercase tracking-wide text-red-700">Top 20 Losers</h2>
-                        <ul class="divide-y divide-gray-100">
+                        <p v-if="topLosers.length === 0" class="text-sm text-gray-500">No completed losing positions.</p>
+                        <ul data-test="top-losers" class="divide-y divide-gray-100">
                             <li
                                 v-for="(position, index) in topLosers"
                                 :key="`l-${index}-${position.symbol}-${position.entry_date}`"
@@ -944,20 +961,16 @@
                                             target="_blank"
                                             class="truncate font-medium text-gray-900 hover:text-purple-700 hover:underline"
                                         >{{ position.symbol }}</a>
-                                        <span
-                                            v-if="position.still_held"
-                                            class="rounded-full bg-blue-50 px-1.5 py-0.5 text-[10px] font-medium text-blue-600"
-                                        >held</span>
                                     </div>
                                     <div class="mt-0.5 text-xs text-gray-500">
                                         {{ formatMonthYear(position.entry_date) }}
                                         <span class="text-gray-300">→</span>
-                                        {{ position.exit_date ? formatMonthYear(position.exit_date) : 'now' }}
+                                        {{ position.exit_date ? formatMonthYear(position.exit_date) : '—' }}
                                         <span class="mx-1 text-gray-300">·</span>
                                         <span class="font-medium text-gray-600">{{ formatHoldingPeriod(position.holding_days) }}</span>
                                     </div>
                                     <div class="mt-0.5 text-[11px] text-gray-400">
-                                        {{ formatCurrencyShort(position.buy_value) }} invested
+                                        {{ formatCurrencyShort(position.purchase_cost) }} purchase cost
                                     </div>
                                 </div>
                                 <div class="shrink-0 text-right">
@@ -974,7 +987,7 @@
 
                 <!-- Trade Log (DEFERRED — trades, separate parallel group) -->
                 <div id="bt-trades" class="scroll-mt-28">
-                <Deferred data="trades">
+                <Deferred :data="['trades', 'tradeLogSummary']">
                     <template #fallback>
                         <div class="rounded-xl bg-white p-6 shadow-xs ring-1 ring-gray-200">
                             <div class="mb-4 h-4 w-24 animate-pulse rounded bg-gray-200"></div>
@@ -987,7 +1000,7 @@
                         <div class="mb-4 flex flex-wrap items-center justify-between gap-2">
                             <h2 class="text-sm font-semibold uppercase tracking-wide text-gray-500">
                                 Trade Log
-                                <span class="ml-2 text-xs font-normal normal-case text-gray-400">({{ trades.length }} trades)</span>
+                                <span class="ml-2 text-xs font-normal normal-case text-gray-400">({{ tradeLogSummary?.total ?? 0 }} transactions)</span>
                             </h2>
                             <a
                                 :href="`/backtests/${backtest.id}/csv/trades`"
@@ -996,7 +1009,7 @@
                                 Download CSV
                             </a>
                         </div>
-                        <TradeLogTable :trades="trades" />
+                        <TradeLogTable v-if="trades && tradeLogSummary" :trades="trades" :summary="tradeLogSummary" :filters="tradeFilters" />
                     </div>
                 </Deferred>
                 </div>
@@ -1017,6 +1030,7 @@
                 :rebalance-frequency-options="rebalanceFrequencyOptions"
                 :weightage-options="weightageOptions"
                 :cash-call-options="cashCallOptions"
+                :stop-loss-proceeds-options="stopLossProceedsOptions"
                 :cash-call-index-options="cashCallIndexOptions"
                 @save="save"
                 @save-and-run="saveAndRun"
@@ -1039,6 +1053,7 @@ import BacktestSettingsForm from '@/Pages/Backtests/partials/BacktestSettingsFor
 import BacktestStrategyRules from '@/Pages/Backtests/partials/BacktestStrategyRules.vue';
 import CashAllocationChart from '@/Pages/Backtests/partials/CashAllocationChart.vue';
 import DrawdownChart from '@/Pages/Backtests/partials/DrawdownChart.vue';
+import DuplicateBacktestButton from '@/Pages/Backtests/partials/DuplicateBacktestButton.vue';
 import MarketCapAllocationChart from '@/Pages/Backtests/partials/MarketCapAllocationChart.vue';
 import RollingReturnsChart from '@/Pages/Backtests/partials/RollingReturnsChart.vue';
 import TradeLogTable from '@/Pages/Backtests/partials/TradeLogTable.vue';
@@ -1046,7 +1061,7 @@ import { ChartSyncGroup } from '@/utils/chartSyncGroup';
 import type { Backtest } from '@/types/app/Models/Backtest';
 import type { BacktestSummaryMetric } from '@/types/app/Models/BacktestSummaryMetric';
 import type { BacktestDailySnapshot } from '@/types/app/Models/BacktestDailySnapshot';
-import type { BacktestTrade } from '@/types/app/Models/BacktestTrade';
+import type { PaginatedBacktestTrades, TradeLogFilters, TradeLogSummary } from '@/types/BacktestTradeLog';
 import type { SelectOption } from '@/types/SelectOption';
 import type { MarketCapAllocation } from '@/types/MarketCapAllocation';
 
@@ -1062,7 +1077,9 @@ const props = withDefaults(
         // Deferred Inertia props — absent on the first render while their groups load.
         dailySnapshots?: BacktestDailySnapshot[];
         defaultBenchmark?: BenchmarkPoint[];
-        trades?: BacktestTrade[];
+        trades?: PaginatedBacktestTrades | null;
+        tradeLogSummary?: TradeLogSummary | null;
+        tradeFilters: TradeLogFilters;
         marketCapAllocation?: MarketCapAllocation | null;
         benchmarkOptions: SelectOption[];
         indices: SelectOption[];
@@ -1073,12 +1090,12 @@ const props = withDefaults(
         rebalanceFrequencyOptions: SelectOption[];
         weightageOptions: SelectOption[];
         cashCallOptions: SelectOption[];
+        stopLossProceedsOptions: SelectOption[];
         cashCallIndexOptions: SelectOption[];
     }>(),
     {
         dailySnapshots: () => [],
         defaultBenchmark: () => [],
-        trades: () => [],
     },
 );
 
@@ -1117,6 +1134,10 @@ const form = useForm({
     skip_circuit_trades: props.backtest.skip_circuit_trades,
     exit_before_demerger: props.backtest.exit_before_demerger,
     exit_on_be_series: props.backtest.exit_on_be_series,
+    apply_stop_loss: props.backtest.apply_stop_loss,
+    stop_loss_percentage: props.backtest.stop_loss_percentage,
+    trail_stop_loss: props.backtest.trail_stop_loss,
+    stop_loss_proceeds: props.backtest.stop_loss_proceeds,
     rebalance_frequency: props.backtest.rebalance_frequency,
     rebalance_day: props.backtest.rebalance_day,
     weightage: props.backtest.weightage,
@@ -1278,7 +1299,7 @@ const resultSections = computed(() => {
     ];
     if (monthlyReturns.value.length > 0) sections.push({ id: 'bt-monthly', label: 'Monthly' });
     if (hasRollingReturns.value) sections.push({ id: 'bt-rolling', label: 'Rolling' });
-    if ((props.summaryMetrics?.stock_performance?.length ?? 0) > 0) sections.push({ id: 'bt-positions', label: 'Positions' });
+    if (positionPerformance.value) sections.push({ id: 'bt-positions', label: 'Positions' });
     sections.push({ id: 'bt-trades', label: 'Trades' });
 
     return sections;
@@ -1472,13 +1493,14 @@ function rollingReturnColor(value: number): string {
 // --- Computed: derived metrics ---
 
 // Honest stages: 0% is the queue wait, 1-4% is preparation, 5-94% is the
-// trading-day simulation, and 95-99% is metric computation.
+// trading-day simulation, 95-97% is metrics, and 98-99% is market cap allocation.
 const progressStageLabel = computed(() => {
     const p = props.backtest.progress;
     if (p === 0) return 'Waiting for a worker';
     if (p < 5) return 'Preparing market data';
     if (p < 95) return 'Simulating trades';
-    return 'Computing metrics';
+    if (p < 98) return 'Computing metrics';
+    return 'Calculating market cap allocation';
 });
 
 const simulatedDaysPct = computed(() => Math.max(0, Math.min(100, Math.round(((props.backtest.progress - 5) / 89) * 100))));
@@ -1514,9 +1536,6 @@ const backtestYears = computed(() => {
     const last = new Date(periodBounds.value.end);
     return ((last.getTime() - first.getTime()) / (365.25 * 24 * 60 * 60 * 1000)).toFixed(1);
 });
-
-const buyCount = computed(() => (props.trades ?? []).filter((t) => t.trade_type === 'buy').length);
-const sellCount = computed(() => (props.trades ?? []).filter((t) => t.trade_type === 'sell').length);
 
 const cashStats = computed(() => {
     if (!props.dailySnapshots || props.dailySnapshots.length === 0) return { min: 0, avg: 0, max: 0 };
@@ -1567,6 +1586,12 @@ const benchmarkMaxDrawdownHero = computed<number | null>(() => {
     return maxDd;
 });
 
+const positionPerformance = computed(() => props.summaryMetrics?.stock_performance ?? null);
+const closedPositions = computed(() => positionPerformance.value?.closed ?? null);
+const winRate = computed(() => closedPositions.value?.winners_percentage ?? null);
+const profitFactor = computed(() => closedPositions.value?.profit_factor ?? null);
+const hasProfitsWithoutLosses = computed(() => (closedPositions.value?.total_profit ?? 0) > 0 && closedPositions.value?.total_loss === 0);
+
 // --- Scorecard value classes ---
 
 const sharpeValueClass = computed<string>(() => {
@@ -1579,13 +1604,14 @@ const sharpeValueClass = computed<string>(() => {
 });
 
 const winRateValueClass = computed<string>(() => {
-    const v = props.summaryMetrics?.winners_percentage;
+    const v = winRate.value;
     if (v === null || v === undefined) return 'text-gray-400';
     return Number(v) >= 50 ? 'text-emerald-700' : 'text-red-700';
 });
 
 const profitFactorValueClass = computed<string>(() => {
-    const v = props.summaryMetrics?.profit_factor;
+    if (hasProfitsWithoutLosses.value) return 'text-emerald-700';
+    const v = profitFactor.value;
     if (v === null || v === undefined) return 'text-gray-400';
     const n = Number(v);
     if (n >= 1.5) return 'text-emerald-700';
@@ -1600,10 +1626,9 @@ const kRatioValueClass = computed<string>(() => {
 });
 
 const winnersLosersLabel = computed<string | null>(() => {
-    const perf = props.summaryMetrics?.stock_performance;
-    if (!perf || perf.length === 0) return null;
-    const winners = perf.filter((s) => s.net_pnl > 0).length;
-    return `${winners} winners of ${perf.length} positions`;
+    const closed = closedPositions.value;
+    if (!closed) return null;
+    return `${closed.winners} winning / ${closed.count} completed · ${closed.breakeven} breakeven`;
 });
 
 const totalReturn = computed<number>(() =>
@@ -1664,30 +1689,15 @@ const annualizedVolatility = computed<number | null>(() => {
     return Math.sqrt(variance) * Math.sqrt(252);
 });
 
-const avgWinLoss = computed<{ win: number; loss: number } | null>(() => {
-    const perf = props.summaryMetrics?.stock_performance;
-    if (!perf || perf.length === 0) return null;
-    const wins = perf.filter((s) => s.net_pnl > 0);
-    const losses = perf.filter((s) => s.net_pnl < 0);
-    if (wins.length === 0 || losses.length === 0) return null;
-
-    return {
-        win: wins.reduce((a, s) => a + s.net_pnl, 0) / wins.length,
-        loss: losses.reduce((a, s) => a + s.net_pnl, 0) / losses.length,
-    };
+const avgWinLoss = computed(() => {
+    const closed = closedPositions.value;
+    return closed && closed.count > 0 ? { win: closed.average_win, loss: closed.average_loss } : null;
 });
 
-// Average net P&L per trade cycle — what a typical position earned.
-const expectancy = computed<number | null>(() => {
-    const perf = props.summaryMetrics?.stock_performance;
-    if (!perf || perf.length === 0) return null;
-    return perf.reduce((a, s) => a + s.net_pnl, 0) / perf.length;
-});
-
+const expectancy = computed<number | null>(() => closedPositions.value?.expectancy ?? null);
 const avgHoldingDays = computed<number | null>(() => {
-    const perf = props.summaryMetrics?.stock_performance;
-    if (!perf || perf.length === 0) return null;
-    return Math.round(perf.reduce((a, s) => a + s.holding_days, 0) / perf.length);
+    const days = closedPositions.value?.average_holding_days;
+    return days === null || days === undefined ? null : Math.round(days);
 });
 
 const sortinoValueClass = computed<string>(() => {
@@ -1791,7 +1801,7 @@ const maxDrawdownRecoveryLabel = computed<string | null>(() => {
 
 // --- Final holdings (still-open positions at the end of the run) ---
 
-type HoldingsSortKey = 'symbol' | 'entry_date' | 'holding_days' | 'buy_value' | 'unrealized_value' | 'pnl_pct';
+type HoldingsSortKey = 'symbol' | 'entry_date' | 'holding_days' | 'remaining_cost' | 'unrealized_value' | 'pnl_pct';
 
 const holdingsSortKey = ref<HoldingsSortKey>('unrealized_value');
 const holdingsSortDir = ref<'asc' | 'desc'>('desc');
@@ -1811,12 +1821,11 @@ function holdingsSortIndicator(key: HoldingsSortKey): string {
 }
 
 const finalHoldings = computed(() => {
-    const perf = props.summaryMetrics?.stock_performance;
-    if (!perf) return [];
+    const holdings = positionPerformance.value?.open_positions ?? [];
     const key = holdingsSortKey.value;
     const dir = holdingsSortDir.value === 'asc' ? 1 : -1;
 
-    return perf.filter((s) => s.still_held).sort((a, b) => {
+    return [...holdings].sort((a, b) => {
         const av = a[key];
         const bv = b[key];
         if (typeof av === 'string' || typeof bv === 'string') {
@@ -1827,7 +1836,7 @@ const finalHoldings = computed(() => {
 });
 
 const holdingsTotals = computed(() => ({
-    invested: finalHoldings.value.reduce((sum, p) => sum + Number(p.buy_value), 0),
+    invested: finalHoldings.value.reduce((sum, p) => sum + Number(p.remaining_cost), 0),
 }));
 
 const finalCash = computed<number>(() => {
@@ -1870,27 +1879,9 @@ function rollingStats(period: 'one_year' | 'three_year' | 'five_year'): { min: n
 
 // --- Computed: gainers/losers + monthly returns heatmap ---
 
-// '%' ranks by return on the position; '₹' ranks by the trades that actually
-// moved the equity curve (pure % overweights tiny early positions).
-const gainersSortMode = ref<'pct' | 'abs'>('pct');
-
-const topGainers = computed(() => {
-    const perf = props.summaryMetrics?.stock_performance;
-    if (!perf) return [];
-    return [...perf]
-        .filter((s) => s.net_pnl > 0)
-        .sort((a, b) => (gainersSortMode.value === 'pct' ? b.pnl_pct - a.pnl_pct : b.net_pnl - a.net_pnl))
-        .slice(0, 20);
-});
-
-const topLosers = computed(() => {
-    const perf = props.summaryMetrics?.stock_performance;
-    if (!perf) return [];
-    return [...perf]
-        .filter((s) => s.net_pnl < 0)
-        .sort((a, b) => (gainersSortMode.value === 'pct' ? a.pnl_pct - b.pnl_pct : a.net_pnl - b.net_pnl))
-        .slice(0, 20);
-});
+const gainersSortMode = ref<'pct' | 'abs'>('abs');
+const topGainers = computed(() => positionPerformance.value?.top_winners[gainersSortMode.value === 'pct' ? 'pnl_pct' : 'net_pnl'] ?? []);
+const topLosers = computed(() => positionPerformance.value?.top_losers[gainersSortMode.value === 'pct' ? 'pnl_pct' : 'net_pnl'] ?? []);
 
 const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 

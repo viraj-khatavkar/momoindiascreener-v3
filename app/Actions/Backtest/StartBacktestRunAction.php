@@ -17,6 +17,7 @@ class StartBacktestRunAction
         $backtest->update([
             'status' => BacktestStatusEnum::Running,
             'started_at' => now(),
+            'completed_at' => null,
             'progress' => 0,
             'error_message' => null,
         ]);

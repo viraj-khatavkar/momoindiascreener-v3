@@ -4,6 +4,7 @@ use App\Actions\Backtest\ApplyBacktestFiltersAction;
 use App\Actions\Backtest\CalculateBacktestMetricsAction;
 use App\Actions\Backtest\CalculateTransactionCostsAction;
 use App\Actions\Backtest\RunBacktestAction;
+use App\Enums\BacktestWeightageEnum;
 use App\Enums\CorporateActionTypeEnum;
 use App\Models\Backtest;
 use App\Models\BacktestNseInstrumentPrice;
@@ -142,12 +143,43 @@ function run(Backtest $bt): void
 {
     $action = new RunBacktestAction(new ApplyBacktestFiltersAction, new CalculateTransactionCostsAction);
     $action->execute($bt);
-    (new CalculateBacktestMetricsAction)->execute($bt);
+    app(CalculateBacktestMetricsAction::class)->execute($bt);
 }
 
 // ==========================================================================
 // MONEY CONSERVATION
 // ==========================================================================
+
+it('reconciles position results with the trade log and final value for each weighting method', function (BacktestWeightageEnum $weightage, bool $nextDay) {
+    $dates = tradingDates(20);
+    foreach ($dates as $index => $date) {
+        seedInstrument($date, 'A', 100 + 5 * $index, [
+            'sharpe_return_one_year' => $index < 8 || $index >= 13 ? 5 : 0.1,
+            'volatility_one_year' => 0.2 + $index / 100,
+        ]);
+        seedInstrument($date, 'B', 200 - 3 * $index, ['sharpe_return_one_year' => 4, 'volatility_one_year' => 0.4]);
+        seedInstrument($date, 'C', 150 + $index, ['sharpe_return_one_year' => 3, 'volatility_one_year' => 0.3]);
+    }
+    $backtest = makeBacktest(User::factory()->create(['is_paid' => true]), [
+        'weightage' => $weightage, 'max_stocks_to_hold' => 2, 'worst_rank_held' => 2,
+        'execute_next_trading_day' => $nextDay, 'brokerage_rate' => 0.1,
+    ]);
+
+    run($backtest);
+
+    $metrics = $backtest->summaryMetrics;
+    $performance = $metrics->stock_performance;
+    $open = collect($performance['open_positions']);
+    $lastSnapshot = $backtest->dailySnapshots()->orderByDesc('date')->first();
+    $realized = (float) $backtest->trades()->where('trade_type', 'sell')->sum('realized_pnl');
+
+    expect($performance['closed']['count'])->toBeGreaterThan(0)
+        ->and($performance['closed']['net_pnl'] + $open->sum('net_pnl'))
+        ->toEqualWithDelta((float) $metrics->final_value - (float) $backtest->initial_capital, 0.05)
+        ->and($performance['closed']['net_pnl'] + $open->sum('realized_pnl'))->toEqualWithDelta($realized, 0.05)
+        ->and($open->sum('unrealized_value'))->toEqualWithDelta((float) $lastSnapshot->portfolio_value, 0.01)
+        ->and($performance['closed']['count'])->toBe($performance['closed']['winners'] + $performance['closed']['losers'] + $performance['closed']['breakeven']);
+})->with(BacktestWeightageEnum::cases())->with([false, true]);
 
 it('conserves money on day one: total value plus charges equals initial capital', function () {
     $dates = tradingDates(10);
@@ -321,7 +353,7 @@ it('nets buy-side charges out of realized pnl on a flat-price round trip', funct
 
     // The trade log and the position metrics agree on this closed cycle —
     // same net P&L and the same charge-inclusive percentage.
-    $aPosition = collect($bt->summaryMetrics->stock_performance)->firstWhere('symbol', 'A');
+    $aPosition = collect($bt->summaryMetrics->stock_performance['top_losers']['net_pnl'])->firstWhere('symbol', 'A');
 
     expect($aPosition)->not->toBeNull()
         ->and((float) $aPosition['net_pnl'])->toEqualWithDelta((float) $aSell->realized_pnl, 0.01)
@@ -387,6 +419,103 @@ it('rotates to goldbees when index drops below dma', function () {
 // HOLD ABOVE DMA OVERRIDE
 // ==========================================================================
 
+it('keeps moving average filters unchanged after a later corporate action', function (string $average, int $period, string $direction) {
+    $column = $average.'_'.$period;
+    $date = '2011-01-05';
+
+    foreach (['BELOW' => 90, 'EQUAL' => 100, 'ABOVE' => 110] as $symbol => $price) {
+        seedInstrument($date, $symbol, $price, ['close_raw' => $price, $column => 100]);
+        createCorporateAction($symbol, '2011-01-06', ['price_adjustment_factor' => 2]);
+    }
+
+    $backtest = makeBacktest(User::factory()->create(), [
+        'apply_'.$average => true,
+        $direction.'_'.$column => true,
+    ]);
+    $filters = new ApplyBacktestFiltersAction;
+    $expectedSymbols = [strtoupper($direction)];
+
+    expect($filters->execute($backtest, $date)->pluck('symbol')->all())->toBe($expectedSymbols);
+
+    $this->artisan('backtest:adjust-corporate-action', ['--date' => '2011-01-06'])
+        ->assertSuccessful();
+
+    expect($filters->execute($backtest, $date)->pluck('symbol')->all())->toBe($expectedSymbols);
+})->with(['ma', 'ema'])->with([20, 50, 100, 200])->with(['above', 'below']);
+
+it('keeps past drawdown unchanged when later data adjusts prices used by the hold above dma rule', function (int $period) {
+    $dates = tradingDates(10);
+    $column = 'ma_'.$period;
+
+    foreach ($dates as $index => $date) {
+        $price = $index < 5 ? 100 : ($index < 9 ? 70 : 30);
+        seedInstrument($date, 'A', $price, [
+            'close_raw' => $price,
+            'sharpe_return_one_year' => $index < 5 ? 5 : 1,
+            $column => $price * 1.1,
+        ]);
+        seedInstrument($date, 'B', 100, ['sharpe_return_one_year' => 4]);
+    }
+
+    $settings = [
+        'max_stocks_to_hold' => 1,
+        'worst_rank_held' => 1,
+        'apply_hold_above_dma' => true,
+        'hold_above_dma_period' => $period,
+        'brokerage_rate' => 0,
+        'stt_rate' => 0,
+        'transaction_charges_rate' => 0,
+        'sebi_charges_rate' => 0,
+        'stamp_charges_rate' => 0,
+    ];
+    $user = User::factory()->create();
+    $original = makeBacktest($user, $settings);
+    run($original);
+
+    expect((float) $original->summaryMetrics->max_drawdown)->toBe(-0.3)
+        ->and($original->trades()->where('symbol', 'A')->where('trade_type', 'sell')->count())->toBe(1);
+
+    createCorporateAction('A', '2011-01-19', ['price_adjustment_factor' => 2]);
+    $this->artisan('backtest:adjust-corporate-action', ['--date' => '2011-01-19'])
+        ->assertSuccessful();
+    seedInstrument('2011-01-19', 'A', 15, [
+        'close_raw' => 15, 'sharpe_return_one_year' => 1, $column => 16.5,
+    ]);
+    seedInstrument('2011-01-19', 'B', 100, ['sharpe_return_one_year' => 4]);
+
+    $extended = makeBacktest($user, $settings);
+    run($extended);
+
+    expect($extended->dailySnapshots()->where('date', '<=', end($dates))->orderBy('date')->pluck('nav')->all())
+        ->toBe($original->dailySnapshots()->orderBy('date')->pluck('nav')->all())
+        ->and($extended->summaryMetrics->max_drawdown)->toBe($original->summaryMetrics->max_drawdown)
+        ->and($extended->summaryMetrics->max_drawdown_start_date->toDateString())
+        ->toBe($original->summaryMetrics->max_drawdown_start_date->toDateString())
+        ->and($extended->summaryMetrics->max_drawdown_end_date->toDateString())
+        ->toBe($original->summaryMetrics->max_drawdown_end_date->toDateString());
+})->with([20, 50, 100, 200]);
+
+it('reports a moving average exit using adjusted prices', function (string $average, string $label) {
+    foreach (tradingDates(10) as $index => $date) {
+        seedInstrument($date, 'A', $index < 5 ? 110 : 90, [
+            $average.'_200' => 100, 'sharpe_return_one_year' => 5,
+        ]);
+        seedInstrument($date, 'B', 110, [$average.'_200' => 100, 'sharpe_return_one_year' => 4]);
+    }
+
+    $backtest = makeBacktest(User::factory()->create(), [
+        'max_stocks_to_hold' => 1,
+        'apply_'.$average => true,
+        'above_'.$average.'_200' => true,
+    ]);
+    run($backtest);
+
+    $sell = $backtest->trades()->where('symbol', 'A')->where('trade_type', 'sell')->first();
+
+    expect($sell)->not->toBeNull()
+        ->and($sell->reason)->toBe('Below 200-day '.$label);
+})->with(['simple average' => ['ma', 'MA'], 'exponential average' => ['ema', 'EMA']]);
+
 it('protects a stock from selling when it is above its own dma', function () {
     $dates = tradingDates(20);
     seedIndexRange('2010-01-01', end($dates), 5000);
@@ -420,6 +549,45 @@ it('protects a stock from selling when it is above its own dma', function () {
 // ==========================================================================
 // EXECUTE NEXT TRADING DAY
 // ==========================================================================
+
+it('uses the decision day for the hold above dma rule and the execution day for the sale', function (int $period, bool $executeNextDay, float $decisionPrice, float $executionPrice, bool $shouldSell) {
+    $dates = tradingDates(8);
+
+    foreach ($dates as $index => $date) {
+        $price = match ($index) {
+            6 => $decisionPrice,
+            7 => $executionPrice,
+            default => 110,
+        };
+        seedInstrument($date, 'A', $price, [
+            'ma_'.$period => 100,
+            'sharpe_return_one_year' => $index < 6 ? 5 : 1,
+        ]);
+        seedInstrument($date, 'B', 100, ['sharpe_return_one_year' => 4]);
+    }
+
+    $backtest = makeBacktest(User::factory()->create(), [
+        'max_stocks_to_hold' => 1,
+        'worst_rank_held' => 1,
+        'rebalance_day' => 4,
+        'apply_hold_above_dma' => true,
+        'hold_above_dma_period' => $period,
+        'execute_next_trading_day' => $executeNextDay,
+    ]);
+    run($backtest);
+
+    $sales = $backtest->trades()->where('symbol', 'A')->where('trade_type', 'sell')->get();
+
+    expect($sales)->toHaveCount($shouldSell ? 1 : 0);
+
+    if ($shouldSell) {
+        expect($sales->first()->date->toDateString())->toBe($dates[$executeNextDay ? 7 : 6])
+            ->and((float) $sales->first()->price)->toBe($executeNextDay ? $executionPrice : $decisionPrice);
+    }
+})->with([20, 50, 100, 200])->with([false, true])->with([
+    'above only on decision day' => [110.0, 90.0, false],
+    'above only on execution day' => [90.0, 110.0, true],
+]);
 
 it('buys at next days price when execute next trading day is enabled', function () {
     $dates = tradingDates(10);
@@ -883,6 +1051,100 @@ it('trims overweight positions when using equal weight rebalanced', function () 
 // INVERSE VOLATILITY
 // ==========================================================================
 
+it('includes dma-protected holdings that fail entry filters in inverse volatility allocations', function (bool $executeNextDay, float $decisionVolatility, int $sameDayQuantity, int $nextDayQuantity) {
+    $dates = tradingDates(5);
+
+    foreach ($dates as $index => $date) {
+        seedInstrument($date, 'A', $executeNextDay && $index === 4 ? 200 : 100, [
+            'sharpe_return_one_year' => 5,
+            'median_volume_one_year' => $index < 3 ? 50000000 : 0,
+            'ma_50' => 90,
+            'volatility_one_year' => match ($index) {
+                3 => $decisionVolatility,
+                4 => null,
+                default => 0.4,
+            },
+        ]);
+        seedInstrument($date, 'B', 100, ['sharpe_return_one_year' => 4, 'volatility_one_year' => 0.4]);
+    }
+
+    $backtest = makeBacktest(User::factory()->create(), [
+        'initial_capital' => 120000,
+        'max_stocks_to_hold' => 2,
+        'weightage' => 'inverse_volatility',
+        'cash_call' => 'cash_call_if_not_enough_stocks',
+        'apply_hold_above_dma' => true,
+        'hold_above_dma_period' => 50,
+        'execute_next_trading_day' => $executeNextDay,
+        'brokerage_rate' => 0,
+        'stt_rate' => 0,
+        'transaction_charges_rate' => 0,
+        'sebi_charges_rate' => 0,
+        'stamp_charges_rate' => 0,
+    ]);
+    app(RunBacktestAction::class)->execute($backtest);
+
+    $expectedQuantity = $executeNextDay ? $nextDayQuantity : $sameDayQuantity;
+    $executionPrice = $executeNextDay ? 200.0 : 100.0;
+    $expectedTotalValue = $executeNextDay ? 180000.0 : 120000.0;
+    $trades = $backtest->trades()->where('symbol', 'A')->orderBy('id')->get();
+    $heldQuantity = $trades->where('trade_type', 'buy')->sum('quantity') - $trades->where('trade_type', 'sell')->sum('quantity');
+    $adjustment = $backtest->trades()->where('symbol', 'A')->where('date', $dates[$executeNextDay ? 4 : 3])->first();
+    $snapshot = $backtest->dailySnapshots()->orderByDesc('date')->first();
+
+    expect((int) $trades->first()->quantity)->toBe(600)
+        ->and((int) $heldQuantity)->toBe($expectedQuantity)
+        ->and($adjustment)->not->toBeNull()
+        ->and($adjustment->trade_type)->toBe($expectedQuantity > 600 ? 'buy' : 'sell')
+        ->and((int) $adjustment->quantity)->toBe(abs($expectedQuantity - 600))
+        ->and((float) $adjustment->price)->toBe($executionPrice)
+        ->and($snapshot->holdings_count)->toBe(2)
+        ->and((float) $snapshot->cash)->toBe(0.0)
+        ->and((float) $snapshot->total_value)->toBe($expectedTotalValue);
+})->with([false, true])->with([
+    'lower volatility increases the allocation' => [0.1, 960, 720],
+    'higher volatility reduces the allocation' => [0.8, 400, 300],
+]);
+
+it('still exits filtered inverse volatility holdings without dma protection or valid volatility', function (bool $executeNextDay, bool $holdAboveDma, float $dma, ?float $volatility) {
+    $dates = tradingDates(5);
+
+    foreach ($dates as $index => $date) {
+        seedInstrument($date, 'A', 100, [
+            'sharpe_return_one_year' => 5,
+            'median_volume_one_year' => $index < 3 ? 50000000 : 0,
+            'ma_50' => $dma,
+            'volatility_one_year' => $index < 3 ? 0.4 : $volatility,
+        ]);
+        seedInstrument($date, 'B', 100, ['sharpe_return_one_year' => 4, 'volatility_one_year' => 0.4]);
+    }
+
+    $backtest = makeBacktest(User::factory()->create(), [
+        'max_stocks_to_hold' => 2,
+        'weightage' => 'inverse_volatility',
+        'cash_call' => 'cash_call_if_not_enough_stocks',
+        'apply_hold_above_dma' => $holdAboveDma,
+        'hold_above_dma_period' => 50,
+        'execute_next_trading_day' => $executeNextDay,
+    ]);
+    app(RunBacktestAction::class)->execute($backtest);
+
+    $trades = $backtest->trades()->where('symbol', 'A')->get();
+    $sales = $trades->where('trade_type', 'sell');
+
+    expect($trades->where('trade_type', 'buy'))->not->toBeEmpty()
+        ->and($sales)->toHaveCount(1)
+        ->and($sales->first()->date->toDateString())->toBe($dates[$executeNextDay ? 4 : 3])
+        ->and((int) $sales->sum('quantity'))->toBe((int) $trades->where('trade_type', 'buy')->sum('quantity'))
+        ->and($backtest->dailySnapshots()->orderByDesc('date')->first()->holdings_count)->toBe(1);
+})->with([false, true])->with([
+    'hold rule disabled' => [false, 90.0, 0.4],
+    'below dma' => [true, 110.0, 0.4],
+    'equal to dma' => [true, 100.0, 0.4],
+    'missing volatility' => [true, 90.0, null],
+    'zero volatility' => [true, 90.0, 0.0],
+]);
+
 it('sells stocks whose volatility becomes null under inverse volatility weighting', function () {
     $dates = tradingDates(20);
     seedIndexRange('2010-01-01', end($dates), 5000);
@@ -1181,7 +1443,7 @@ it('keeps no-cash-call holdings when no stocks pass the entry filters', function
         ->and((float) $bt->dailySnapshots()->orderByDesc('date')->first()->cash)->toBeLessThan(500);
 })->with(['equal_weight', 'equal_weight_rebalanced', 'inverse_volatility']);
 
-it('allocates no-cash-call exit proceeds to remaining stocks when there is no new candidate', function (string $exitType) {
+it('keeps replacement cash until rebalance when there is no unheld candidate', function (string $exitType) {
     $dates = tradingDates(10);
     foreach ($dates as $i => $date) {
         seedInstrument($date, 'A', 100, [
@@ -1200,8 +1462,14 @@ it('allocates no-cash-call exit proceeds to remaining stocks when there is no ne
     run($bt);
 
     $exitDate = $dates[$exitType === 'filter' ? 8 : 4];
-    expect($bt->trades()->where('date', $exitDate)->where('symbol', 'B')->where('trade_type', 'buy')->exists())->toBeTrue()
-        ->and((float) $bt->dailySnapshots()->where('date', $exitDate)->first()->cash)->toBeLessThan(500);
+    $cash = (float) $bt->dailySnapshots()->where('date', $exitDate)->first()->cash;
+    expect($bt->trades()->where('date', $exitDate)->where('symbol', 'B')->where('trade_type', 'buy')->exists())->toBe($exitType === 'filter');
+
+    if ($exitType === 'filter') {
+        expect($cash)->toBeLessThan(500);
+    } else {
+        expect($cash)->toBeGreaterThan(400000);
+    }
 })->with(['filter', 'demerger', 'BE']);
 
 it('keeps proportional cash when fewer stocks available than max slots', function () {
@@ -1498,7 +1766,7 @@ it('records entry date, exit date, and holding days for a still-held position', 
     $bt = makeBacktest($user, ['max_stocks_to_hold' => 2]);
     run($bt);
 
-    $perf = $bt->summaryMetrics?->stock_performance ?? [];
+    $perf = $bt->summaryMetrics->stock_performance['open_positions'];
     $a = collect($perf)->firstWhere('symbol', 'A');
 
     expect($a)->not->toBeNull()
@@ -1530,7 +1798,8 @@ it('produces a separate trade cycle for each buy-sell round-trip on the same sto
     $bt = makeBacktest($user, ['max_stocks_to_hold' => 2, 'worst_rank_held' => 2]);
     run($bt);
 
-    $perf = $bt->summaryMetrics?->stock_performance ?? [];
+    $performance = $bt->summaryMetrics->stock_performance;
+    $perf = [...$performance['top_losers']['net_pnl'], ...$performance['open_positions']];
     $aPositions = collect($perf)->where('symbol', 'A')->values();
 
     expect($aPositions)->toHaveCount(2);

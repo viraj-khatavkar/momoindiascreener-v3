@@ -38,19 +38,20 @@ class CalculateMarketCapAllocationAction
             return $result;
         }
 
-        $tradesByDate = $backtest->trades()->orderBy('date')->orderBy('id')
-            ->toBase()->get(['date', 'symbol', 'trade_type', 'quantity', 'price'])->groupBy('date');
         $firstCoveredDate = $coveredDates->keys()->min();
         $holdings = [];
 
-        foreach ($snapshots->chunk(126) as $chunk) {
-            $chunkTrades = $tradesByDate->only($chunk->pluck('date')->all());
+        foreach ($snapshots->chunk(21) as $chunk) {
+            $chunkTrades = $backtest->trades()
+                ->whereIn('date', $chunk->pluck('date')->all())
+                ->orderBy('date')->orderBy('id')
+                ->toBase()->get(['date', 'symbol', 'trade_type', 'quantity', 'price'])->groupBy('date');
             $symbols = array_unique([...array_keys($holdings), ...$chunkTrades->flatten(1)->pluck('symbol')->all()]);
             $dates = $chunk->pluck('date')->filter(fn (string $date): bool => $date >= $firstCoveredDate)->values()->all();
             $pricesByDate = $this->loadPrices($symbols, $dates);
 
             foreach ($chunk as $snapshot) {
-                foreach ($tradesByDate->get($snapshot->date, []) as $trade) {
+                foreach ($chunkTrades->get($snapshot->date, []) as $trade) {
                     $holding = $holdings[$trade->symbol] ?? ['quantity' => 0, 'price' => 0.0, 'category' => null];
                     $holding['quantity'] += $trade->trade_type === 'buy' ? (int) $trade->quantity : -(int) $trade->quantity;
 
@@ -112,6 +113,8 @@ class CalculateMarketCapAllocationAction
                 $result['start_date'] ??= $snapshot->date;
                 $result['points'][] = $point;
             }
+
+            unset($chunkTrades, $pricesByDate, $dailyPrices);
         }
 
         return $result;

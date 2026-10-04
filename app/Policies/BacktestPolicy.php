@@ -23,6 +23,11 @@ class BacktestPolicy
         return $backtest->user_id === $user->id;
     }
 
+    public function duplicate(User $user, Backtest $backtest): bool
+    {
+        return $this->view($user, $backtest) && $this->create($user);
+    }
+
     public function delete(User $user, Backtest $backtest): bool
     {
         return $backtest->user_id === $user->id;

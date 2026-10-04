@@ -3,6 +3,7 @@
 namespace App\Actions\Backtest;
 
 use App\Enums\BacktestCashCallEnum;
+use App\Enums\BacktestStopLossProceedsEnum;
 use App\Enums\BacktestWeightageEnum;
 use App\Enums\CorporateActionTypeEnum;
 use App\Models\Backtest;
@@ -32,6 +33,11 @@ class RunBacktestAction
     private array $holdings = [];
 
     private float $cash;
+
+    private float $stopLossCash = 0;
+
+    /** @var array<string, array{date: string, close: float}> */
+    private array $stopLossSignals = [];
 
     private float $navBase = 100.0;
 
@@ -72,6 +78,8 @@ class RunBacktestAction
             : self::DEFAULT_START_DATE;
         $this->initialCapital = (float) $backtest->initial_capital;
         $this->cash = $this->initialCapital;
+        $this->stopLossCash = 0;
+        $this->stopLossSignals = [];
         $this->holdings = [];
         $this->indexData = [];
         $this->dmaData = [];
@@ -120,6 +128,7 @@ class RunBacktestAction
 
         $totalDays = $tradingDates->count();
         $dayIndex = 0;
+        $previousTradingDate = null;
         $lastReportedProgress = 5;
 
         $backtest->update(['progress' => $lastReportedProgress]);
@@ -129,27 +138,39 @@ class RunBacktestAction
             $dayIndex++;
 
             // Step A: Mark-to-market FIRST (loads today's prices for held stocks)
-            $this->markToMarket($date);
+            $dailyPrices = $this->markToMarket($date);
 
             $isRebalanceDate = isset($this->rebalanceDates[$dateStr]);
-            $demergerExitSymbols = $this->handleDemergerExits($backtest, $date, $isRebalanceDate);
-            $beExitSymbols = $this->handleBeSeriesExits($backtest, $date, $isRebalanceDate, $demergerExitSymbols);
-            $blockedBuySymbols = [...$demergerExitSymbols, ...$beExitSymbols];
+            $stopLossExits = $this->handleStopLossExits($backtest, $date, $previousTradingDate, $dailyPrices);
+            $demergerExitSymbols = $this->handleDemergerExits($backtest, $date, $isRebalanceDate, $stopLossExits['symbols']);
+            $beExitSymbols = $this->handleBeSeriesExits($backtest, $date, $isRebalanceDate, [...$stopLossExits['symbols'], ...$demergerExitSymbols]);
+            $blockedBuySymbols = [...$stopLossExits['symbols'], ...$demergerExitSymbols, ...$beExitSymbols];
 
             // Step B: Rebalance (if applicable)
             // rebalanceDates[executionDate] = decisionDate (filter date)
             if ($isRebalanceDate) {
+                $this->cash += $this->stopLossCash;
+                $this->stopLossCash = 0;
                 $filterDate = $this->rebalanceDates[$dateStr];
                 $this->rebalance($backtest, $date, $filterDate, $blockedBuySymbols);
+            } elseif ($backtest->stop_loss_proceeds === BacktestStopLossProceedsEnum::ReplaceImmediately && $stopLossExits['symbols'] !== []) {
+                $this->buyReplacements($backtest, $date, $stopLossExits['symbols'], $stopLossExits['proceeds'], 'Replacement after stop-loss exit', [...$demergerExitSymbols, ...$beExitSymbols]);
             }
+
+            $this->recordStopLossSignals($backtest, $dateStr, $dailyPrices);
+            $previousTradingDate = $dateStr;
 
             // Accrue interest on end-of-day cash (overnight carry, post-rebalance).
             if ($this->cash > 0 && $this->dailyCashReturnRate > 0) {
                 $this->cash += $this->cash * $this->dailyCashReturnRate;
             }
+            if ($this->stopLossCash > 0 && $this->dailyCashReturnRate > 0) {
+                $this->stopLossCash += $this->stopLossCash * $this->dailyCashReturnRate;
+            }
 
             $portfolioValue = $this->calculatePortfolioValue();
-            $totalValue = $portfolioValue + $this->cash;
+            $totalCash = $this->cash + $this->stopLossCash;
+            $totalValue = $portfolioValue + $totalCash;
             $nav = $this->navBase * ($totalValue / $this->initialCapital);
 
             // Step C: Save snapshot
@@ -158,7 +179,7 @@ class RunBacktestAction
                 'date' => $dateStr,
                 'nav' => $nav,
                 'portfolio_value' => round($portfolioValue, 2),
-                'cash' => round($this->cash, 2),
+                'cash' => round($totalCash, 2),
                 'total_value' => round($totalValue, 2),
                 'holdings_count' => count($this->holdings),
             ];
@@ -338,9 +359,18 @@ class RunBacktestAction
     {
         $rankedStocks = $this->filtersAction->execute($backtest, $decisionDate);
 
+        return $this->withExecutionPrices($rankedStocks, $executionDate, $decisionDate);
+    }
+
+    private function withExecutionPrices(Collection $stocks, string $executionDate, string $decisionDate): Collection
+    {
+        $stocks->each(function (BacktestNseInstrumentPrice $stock): void {
+            $stock->decision_close_raw = $stock->close_raw;
+        });
+
         // When executing next day, reload prices from execution date for buy candidates
         if ($decisionDate !== $executionDate) {
-            $symbols = $rankedStocks->pluck('symbol')->toArray();
+            $symbols = $stocks->pluck('symbol')->toArray();
             $executionPrices = BacktestNseInstrumentPrice::query()
                 ->where('date', $executionDate)
                 ->whereIn('symbol', $symbols)
@@ -349,7 +379,7 @@ class RunBacktestAction
 
             // Series is refreshed alongside prices so the BE entry block is
             // anchored to the execution day, matching the circuit check.
-            $rankedStocks = $rankedStocks->map(function ($stock) use ($executionPrices) {
+            $stocks = $stocks->map(function ($stock) use ($executionPrices) {
                 $execData = $executionPrices->get($stock->symbol);
                 if ($execData) {
                     $stock->close_adjusted = $execData->close_adjusted;
@@ -364,7 +394,7 @@ class RunBacktestAction
             });
         }
 
-        return $rankedStocks;
+        return $stocks;
     }
 
     private function indexIsBelowDma(string $decisionDate): bool
@@ -436,7 +466,7 @@ class RunBacktestAction
 
         // Hold Above DMA override: protect stocks that are still above their own DMA
         if ($backtest->apply_hold_above_dma && ! empty($symbolsToSell)) {
-            $symbolsToSell = $this->applyHoldAboveDmaOverride($backtest, $date, $symbolsToSell);
+            $symbolsToSell = $this->applyHoldAboveDmaOverride($backtest, $filterDate, $symbolsToSell);
         }
 
         $eligibleStocks = $rankedStocks
@@ -444,21 +474,16 @@ class RunBacktestAction
             ->filter(fn (BacktestNseInstrumentPrice $stock): bool => ! in_array($stock->symbol, $blockedBuySymbols, true))
             ->filter(fn (BacktestNseInstrumentPrice $stock): bool => ! isset($this->circuitSymbols[$stock->symbol]))
             ->filter(fn (BacktestNseInstrumentPrice $stock): bool => ! $this->isBeSeriesEntryBlocked($backtest, $stock))
-            ->filter(fn (BacktestNseInstrumentPrice $stock): bool => $backtest->weightage !== BacktestWeightageEnum::InverseVolatility
-                || (float) $stock->volatility_one_year > 0);
+            ->filter(fn (BacktestNseInstrumentPrice $stock): bool => ! $this->isDemergerEntryBlocked($stock->symbol, $executionDateStr))
+            ->filter(fn (BacktestNseInstrumentPrice $stock): bool => $this->hasWeightingData($backtest, $stock));
 
         if ($cashCall === BacktestCashCallEnum::NoCashCall && $eligibleStocks->isEmpty()) {
-            $this->topUpHeldStocks($backtest, $date, $this->cash);
+            if (! $backtest->weightage->usesRankOrPriceWeights()) {
+                $this->topUpHeldStocks($backtest, $date, $this->cash);
+            }
 
             return;
         }
-
-        // For equal_weight_rebalanced and inverse_volatility, determine trims
-        $weightage = $backtest->weightage;
-        $needsRebalancing = in_array($weightage, [
-            BacktestWeightageEnum::EqualWeightRebalanced,
-            BacktestWeightageEnum::InverseVolatility,
-        ]);
 
         // Execute full sells first
         foreach ($symbolsToSell as $symbol => $reason) {
@@ -480,13 +505,13 @@ class RunBacktestAction
             ->filter(fn ($stock) => ! isset($this->holdings[$stock->symbol]))
             ->take(max($remainingSlots, 0));
 
-        if ($needsRebalancing) {
-            $this->rebalanceWeights($backtest, $date, $rankedBySymbol, $buyCandidates);
+        if ($backtest->weightage->rebalancesHoldings()) {
+            $this->rebalanceWeights($backtest, $date, $rankedBySymbol, $buyCandidates, $filterDate);
         } else {
             $this->equalWeightBuy($backtest, $date, $buyCandidates);
         }
 
-        if ($cashCall === BacktestCashCallEnum::NoCashCall) {
+        if ($cashCall === BacktestCashCallEnum::NoCashCall && ! $backtest->weightage->usesRankOrPriceWeights()) {
             $this->topUpHeldStocks($backtest, $date, $this->cash);
         }
     }
@@ -511,7 +536,7 @@ class RunBacktestAction
         }
     }
 
-    private function handleDemergerExits(Backtest $backtest, Carbon $date, bool $isRebalanceDate): array
+    private function handleDemergerExits(Backtest $backtest, Carbon $date, bool $isRebalanceDate, array $sameDayExitedSymbols = []): array
     {
         if (empty($this->holdings)) {
             return [];
@@ -551,10 +576,92 @@ class RunBacktestAction
         }
 
         if (! $isRebalanceDate) {
-            $this->buyReplacements($backtest, $date, $exitedSymbols, $this->cash - $cashBeforeExits, 'Replacement after demerger exit');
+            $this->buyReplacements($backtest, $date, $exitedSymbols, $this->cash - $cashBeforeExits, 'Replacement after demerger exit', $sameDayExitedSymbols);
         }
 
         return $exitedSymbols;
+    }
+
+    /**
+     * @param  Collection<string, BacktestNseInstrumentPrice>  $dailyPrices
+     * @return array{symbols: list<string>, proceeds: float}
+     */
+    private function handleStopLossExits(Backtest $backtest, Carbon $date, ?string $previousTradingDate, Collection $dailyPrices): array
+    {
+        $exits = ['symbols' => [], 'proceeds' => 0.0];
+
+        if (! $backtest->apply_stop_loss || $previousTradingDate === null) {
+            return $exits;
+        }
+
+        $cashBeforeExits = $this->cash;
+
+        foreach ($this->stopLossSignals as $symbol => $signal) {
+            $price = $dailyPrices->get($symbol);
+
+            if (! isset($this->holdings[$symbol]) || $signal['date'] !== $previousTradingDate || ! $price) {
+                continue;
+            }
+
+            $close = (float) $price->close_adjusted;
+
+            if ($close <= 0 || $close >= $signal['close']) {
+                continue;
+            }
+
+            if ($backtest->skip_circuit_trades && in_array((float) $price->t_percent, self::CIRCUIT_PERCENTAGES, true)) {
+                continue;
+            }
+
+            $reason = ($backtest->trail_stop_loss ? 'Trailing stop loss' : 'Stop loss')
+                .' confirmed - close below '.$signal['close'].' on '.$signal['date'];
+
+            /** Today's quote and circuit status have been checked; the cached circuit set may belong to an earlier rebalance. */
+            $this->executeSell($backtest, $date, $symbol, $this->holdings[$symbol]['quantity'], $reason, force: true);
+
+            if (! isset($this->holdings[$symbol])) {
+                $exits['symbols'][] = $symbol;
+            }
+        }
+
+        $exits['proceeds'] = $this->cash - $cashBeforeExits;
+
+        if ($backtest->stop_loss_proceeds === BacktestStopLossProceedsEnum::WaitForRebalance) {
+            $this->cash -= $exits['proceeds'];
+            $this->stopLossCash += $exits['proceeds'];
+        }
+
+        return $exits;
+    }
+
+    /** @param Collection<string, BacktestNseInstrumentPrice> $dailyPrices */
+    private function recordStopLossSignals(Backtest $backtest, string $date, Collection $dailyPrices): void
+    {
+        $this->stopLossSignals = [];
+
+        if (! $backtest->apply_stop_loss) {
+            return;
+        }
+
+        $stopFraction = 1 - (float) $backtest->stop_loss_percentage / 100;
+
+        foreach ($this->holdings as $symbol => &$holding) {
+            $price = $dailyPrices->get($symbol);
+
+            if ($symbol === 'GOLDBEES' || ! $price || (float) $price->close_adjusted <= 0) {
+                continue;
+            }
+
+            $close = (float) $price->close_adjusted;
+            $holding['highest_close'] = max($holding['highest_close'], $close);
+            $referencePrice = $backtest->trail_stop_loss ? $holding['highest_close'] : $holding['average_entry_price'];
+            $stopPrice = round($referencePrice * $stopFraction, 10);
+
+            if ($close < $stopPrice) {
+                $this->stopLossSignals[$symbol] = ['date' => $date, 'close' => $close];
+            }
+        }
+        unset($holding);
     }
 
     /**
@@ -676,26 +783,20 @@ class RunBacktestAction
                 ->filter(fn ($stock) => ! in_array($stock->symbol, $blockedSymbols, true))
                 ->filter(fn ($stock) => ! isset($this->circuitSymbols[$stock->symbol]))
                 ->filter(fn ($stock) => ! $this->isBeSeriesEntryBlocked($backtest, $stock))
+                ->filter(fn ($stock) => ! $this->isDemergerEntryBlocked($stock->symbol, $dateStr))
+                ->filter(fn (BacktestNseInstrumentPrice $stock): bool => $this->hasWeightingData($backtest, $stock))
                 ->take($replacementCount);
 
             if ($replacementCandidates->isEmpty()) {
-                if ($backtest->cash_call === BacktestCashCallEnum::NoCashCall) {
-                    $this->topUpHeldStocks($backtest, $date, $replacementBudget);
-                }
-
                 return;
             }
 
-            $cashBeforeBuys = $this->cash;
             $perStockBudget = $replacementBudget / $replacementCandidates->count();
 
             foreach ($replacementCandidates as $stock) {
                 $this->executeBuy($backtest, $date, $stock, $perStockBudget, $reason);
             }
 
-            if ($backtest->cash_call === BacktestCashCallEnum::NoCashCall) {
-                $this->topUpHeldStocks($backtest, $date, $replacementBudget - ($cashBeforeBuys - $this->cash));
-            }
         } finally {
             $this->circuitSymbols = $previousCircuitSymbols;
         }
@@ -736,16 +837,47 @@ class RunBacktestAction
         return $backtest->exit_on_be_series && ($stock->series ?? null) === 'BE';
     }
 
-    private function rebalanceWeights(Backtest $backtest, Carbon $date, $rankedBySymbol, $buyCandidates): void
+    private function isDemergerEntryBlocked(string $symbol, string $executionDate): bool
+    {
+        return isset($this->demergerExDatesByExitDate[$executionDate][$symbol]);
+    }
+
+    private function hasWeightingData(Backtest $backtest, BacktestNseInstrumentPrice $stock): bool
+    {
+        return match ($backtest->weightage) {
+            BacktestWeightageEnum::InverseVolatility => (float) $stock->volatility_one_year > 0,
+            BacktestWeightageEnum::RankWeighted => (int) $stock->rank > 0,
+            BacktestWeightageEnum::PriceWeighted => (float) $stock->decision_close_raw > 0,
+            default => true,
+        };
+    }
+
+    private function rebalanceWeights(Backtest $backtest, Carbon $date, Collection $rankedBySymbol, Collection $buyCandidates, string $decisionDate): void
     {
         $portfolioValue = $this->calculatePortfolioValue();
         $totalValue = $portfolioValue + $this->cash;
+
+        $unrankedHeldStocks = collect();
+
+        if (in_array($backtest->weightage, [BacktestWeightageEnum::InverseVolatility, BacktestWeightageEnum::PriceWeighted], true)) {
+            $unrankedHeldSymbols = array_diff(array_keys($this->holdings), $rankedBySymbol->keys()->all(), ['GOLDBEES']);
+
+            if ($unrankedHeldSymbols !== []) {
+                $decisionStocks = BacktestNseInstrumentPrice::query()
+                    ->where('date', $decisionDate)
+                    ->whereIn('symbol', $unrankedHeldSymbols)
+                    ->get(['symbol', 'name', 'series', 'close_adjusted', 'close_raw', 'volatility_one_year']);
+
+                $unrankedHeldStocks = $this->withExecutionPrices($decisionStocks, $date->format('Y-m-d'), $decisionDate)
+                    ->keyBy('symbol');
+            }
+        }
 
         $allTargetStocks = collect();
 
         // Add kept holdings
         foreach ($this->holdings as $symbol => $holding) {
-            $stockData = $rankedBySymbol->get($symbol);
+            $stockData = $rankedBySymbol->get($symbol) ?? $unrankedHeldStocks->get($symbol);
             if ($stockData) {
                 $allTargetStocks->put($symbol, $stockData);
             }
@@ -829,15 +961,19 @@ class RunBacktestAction
         }
 
         // Execute buys (in rank order)
-        $sortedOrders = collect($buyOrders)->sortBy(fn ($order) => $order['stock']->rank);
+        $sortedOrders = collect($buyOrders)->sortBy(fn ($order) => $order['stock']->rank ?? PHP_INT_MAX);
         foreach ($sortedOrders as $symbol => $order) {
-            $budget = $order['budget'] * $scaleFactor;
+            $budget = $order['budget'] * (1 + $this->buyCostRate) * $scaleFactor;
             $this->executeBuy($backtest, $date, $order['stock'], $budget, $order['reason']);
         }
     }
 
-    private function calculateTargetAllocations(Backtest $backtest, float $totalValue, $allTargetStocks): array
+    private function calculateTargetAllocations(Backtest $backtest, float $totalValue, Collection $allTargetStocks): array
     {
+        if ($backtest->weightage->usesRankOrPriceWeights()) {
+            return $this->calculateRankOrPriceTargets($backtest, $totalValue, $allTargetStocks);
+        }
+
         $targets = [];
         $cashCall = $backtest->cash_call;
         $n = $allTargetStocks->count();
@@ -875,6 +1011,44 @@ class RunBacktestAction
         }
 
         return $targets;
+    }
+
+    /**
+     * @param  Collection<string, BacktestNseInstrumentPrice>  $stocks
+     * @return array<string, float>
+     */
+    private function calculateRankOrPriceTargets(Backtest $backtest, float $totalValue, Collection $stocks): array
+    {
+        $factors = $stocks
+            ->filter(fn (BacktestNseInstrumentPrice $stock): bool => (float) $stock->close_adjusted > 0 && $this->hasWeightingData($backtest, $stock))
+            ->map(fn (BacktestNseInstrumentPrice $stock): float => $backtest->weightage === BacktestWeightageEnum::RankWeighted
+                ? 1.0 / (int) $stock->rank
+                : (float) $stock->decision_close_raw);
+
+        if ($factors->isEmpty()) {
+            return [];
+        }
+
+        $retainedValue = 0.0;
+        $retainedCount = 0;
+
+        foreach ($this->holdings as $symbol => $holding) {
+            if (! $factors->has($symbol)) {
+                $retainedValue += $holding['quantity'] * $holding['last_known_price'];
+                $retainedCount++;
+            }
+        }
+
+        $availableValue = max($totalValue - $retainedValue, 0);
+
+        if ($backtest->cash_call === BacktestCashCallEnum::CashCallIfNotEnoughStocks) {
+            $availableSlots = max($backtest->max_stocks_to_hold - $retainedCount, 1);
+            $availableValue *= min($factors->count() / $availableSlots, 1);
+        }
+
+        $factorSum = $factors->sum();
+
+        return $factors->map(fn (float $factor): float => $availableValue * $factor / $factorSum)->all();
     }
 
     private function diagnoseExclusions(Backtest $backtest, Carbon $date, array $symbols): array
@@ -927,31 +1101,31 @@ class RunBacktestAction
             }
 
             if ($backtest->apply_ma) {
-                if ($backtest->above_ma_200 && $stock->close_raw <= $stock->ma_200) {
+                if ($backtest->above_ma_200 && $stock->close_adjusted <= $stock->ma_200) {
                     $failures[] = 'Below 200-day MA';
                 }
-                if ($backtest->above_ma_100 && $stock->close_raw <= $stock->ma_100) {
+                if ($backtest->above_ma_100 && $stock->close_adjusted <= $stock->ma_100) {
                     $failures[] = 'Below 100-day MA';
                 }
-                if ($backtest->above_ma_50 && $stock->close_raw <= $stock->ma_50) {
+                if ($backtest->above_ma_50 && $stock->close_adjusted <= $stock->ma_50) {
                     $failures[] = 'Below 50-day MA';
                 }
-                if ($backtest->above_ma_20 && $stock->close_raw <= $stock->ma_20) {
+                if ($backtest->above_ma_20 && $stock->close_adjusted <= $stock->ma_20) {
                     $failures[] = 'Below 20-day MA';
                 }
             }
 
             if ($backtest->apply_ema) {
-                if ($backtest->above_ema_200 && $stock->close_raw <= $stock->ema_200) {
+                if ($backtest->above_ema_200 && $stock->close_adjusted <= $stock->ema_200) {
                     $failures[] = 'Below 200-day EMA';
                 }
-                if ($backtest->above_ema_100 && $stock->close_raw <= $stock->ema_100) {
+                if ($backtest->above_ema_100 && $stock->close_adjusted <= $stock->ema_100) {
                     $failures[] = 'Below 100-day EMA';
                 }
-                if ($backtest->above_ema_50 && $stock->close_raw <= $stock->ema_50) {
+                if ($backtest->above_ema_50 && $stock->close_adjusted <= $stock->ema_50) {
                     $failures[] = 'Below 50-day EMA';
                 }
-                if ($backtest->above_ema_20 && $stock->close_raw <= $stock->ema_20) {
+                if ($backtest->above_ema_20 && $stock->close_adjusted <= $stock->ema_20) {
                     $failures[] = 'Below 20-day EMA';
                 }
             }
@@ -1019,9 +1193,8 @@ class RunBacktestAction
         $this->circuitSymbols = array_flip($hits);
     }
 
-    private function applyHoldAboveDmaOverride(Backtest $backtest, Carbon $date, array $symbolsToSell): array
+    private function applyHoldAboveDmaOverride(Backtest $backtest, string $decisionDate, array $symbolsToSell): array
     {
-        $dateStr = $date->format('Y-m-d');
         $dmaColumn = match ($backtest->hold_above_dma_period) {
             20 => 'ma_20',
             50 => 'ma_50',
@@ -1032,9 +1205,9 @@ class RunBacktestAction
         $symbols = array_keys($symbolsToSell);
 
         $stockData = BacktestNseInstrumentPrice::query()
-            ->where('date', $dateStr)
+            ->where('date', $decisionDate)
             ->whereIn('symbol', $symbols)
-            ->get(['symbol', 'close_raw', $dmaColumn])
+            ->get(['symbol', 'close_adjusted', $dmaColumn])
             ->keyBy('symbol');
 
         foreach ($symbols as $symbol) {
@@ -1044,10 +1217,10 @@ class RunBacktestAction
                 continue;
             }
 
-            $closeRaw = (float) $data->close_raw;
+            $adjustedClose = (float) $data->close_adjusted;
             $dmaValue = (float) $data->$dmaColumn;
 
-            if ($dmaValue > 0 && $closeRaw > $dmaValue) {
+            if ($dmaValue > 0 && $adjustedClose > $dmaValue) {
                 unset($symbolsToSell[$symbol]);
             }
         }
@@ -1159,6 +1332,7 @@ class RunBacktestAction
 
         if ($quantity >= $holding['quantity']) {
             unset($this->holdings[$symbol]);
+            unset($this->stopLossSignals[$symbol]);
         } else {
             $this->holdings[$symbol]['quantity'] -= $quantity;
         }
@@ -1241,6 +1415,8 @@ class RunBacktestAction
             $oldQty = $this->holdings[$symbol]['quantity'];
             $oldCost = $this->holdings[$symbol]['cost_basis'];
             $newQty = $oldQty + $quantity;
+            $this->holdings[$symbol]['average_entry_price'] = (($this->holdings[$symbol]['average_entry_price'] * $oldQty) + $grossAmount) / $newQty;
+            $this->holdings[$symbol]['highest_close'] = max($this->holdings[$symbol]['highest_close'], $buyPrice);
             $this->holdings[$symbol]['quantity'] = $newQty;
             $this->holdings[$symbol]['cost_basis'] = (($oldCost * $oldQty) + $netCost) / $newQty;
             $this->holdings[$symbol]['last_known_price'] = $buyPrice;
@@ -1249,6 +1425,8 @@ class RunBacktestAction
             $this->holdings[$symbol] = [
                 'quantity' => $quantity,
                 'cost_basis' => $netCost / $quantity,
+                'average_entry_price' => $buyPrice,
+                'highest_close' => $buyPrice,
                 'last_known_price' => $buyPrice,
                 'last_known_raw_price' => $rawPrice,
                 'name' => $stock->name ?? null,
@@ -1260,10 +1438,10 @@ class RunBacktestAction
         }
     }
 
-    private function markToMarket(Carbon $date): void
+    private function markToMarket(Carbon $date): Collection
     {
         if (empty($this->holdings)) {
-            return;
+            return collect();
         }
 
         $symbols = array_keys($this->holdings);
@@ -1272,7 +1450,7 @@ class RunBacktestAction
         $prices = BacktestNseInstrumentPrice::query()
             ->where('date', $dateStr)
             ->whereIn('symbol', $symbols)
-            ->get(['symbol', 'close_adjusted', 'close_raw'])
+            ->get(['symbol', 'close_adjusted', 'close_raw', 't_percent'])
             ->keyBy('symbol');
 
         foreach ($this->holdings as $symbol => &$holding) {
@@ -1282,6 +1460,8 @@ class RunBacktestAction
             }
         }
         unset($holding);
+
+        return $prices;
     }
 
     private function calculatePortfolioValue(): float

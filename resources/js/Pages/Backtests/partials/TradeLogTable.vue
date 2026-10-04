@@ -1,5 +1,5 @@
 <template>
-    <div>
+    <div :aria-busy="isFiltering || pendingFilters">
         <!-- Filters -->
         <div class="mb-4 flex flex-wrap items-center gap-3">
             <div class="inline-flex rounded-md border border-gray-300 bg-white">
@@ -21,6 +21,7 @@
                 <input
                     v-model="search"
                     type="text"
+                    maxlength="100"
                     placeholder="Search symbol..."
                     aria-label="Search trades by symbol"
                     class="w-44 rounded-md border border-gray-300 bg-white py-1.5 pl-8 pr-3 text-sm text-gray-900 placeholder:text-gray-400 focus:border-purple-500 focus:outline-none focus:ring-1 focus:ring-purple-500"
@@ -56,7 +57,7 @@
                     class="cursor-pointer font-medium text-purple-600 hover:underline"
                     @click="expandAll"
                 >
-                    Expand all
+                    Expand loaded
                 </button>
                 <span class="text-gray-300">·</span>
                 <button
@@ -69,22 +70,38 @@
             </div>
         </div>
 
-        <!-- Year jump -->
+        <!-- The year filter also finds trades that have not been loaded. -->
         <div v-if="availableYears.length > 0" class="mb-3 flex flex-wrap items-center gap-1.5">
-            <span class="text-xs font-medium text-gray-400">Jump to</span>
+            <span class="text-xs font-medium text-gray-400">Year</span>
+            <button
+                type="button"
+                class="cursor-pointer rounded-full border border-gray-300 bg-white px-2.5 py-0.5 text-xs font-medium text-gray-600 hover:border-purple-400 hover:text-purple-700"
+                :class="selectedYear === null ? 'ring-2 ring-purple-500' : ''"
+                :aria-pressed="selectedYear === null"
+                @click="selectedYear = null"
+            >
+                All years
+            </button>
             <button
                 v-for="year in availableYears"
                 :key="year"
                 type="button"
                 class="cursor-pointer rounded-full border border-gray-300 bg-white px-2.5 py-0.5 text-xs font-medium text-gray-600 hover:border-purple-400 hover:text-purple-700"
-                @click="jumpToYear(year)"
+                :class="selectedYear === year ? 'ring-2 ring-purple-500' : ''"
+                :aria-pressed="selectedYear === year"
+                @click="selectedYear = year"
             >
                 {{ year }}
             </button>
         </div>
 
-        <!-- Grouped by rebalance date -->
-        <div class="space-y-2">
+        <p class="mb-3 text-xs text-gray-500" role="status" aria-live="polite">
+            <template v-if="isFiltering || pendingFilters">Updating trades...</template>
+            <template v-else>Loaded {{ trades.data.length }} of {{ trades.total }} matching trades. Date totals include loaded trades.</template>
+        </p>
+
+        <!-- Grouped by trade date; more rows for the same date join the existing group. -->
+        <InfiniteScroll data="trades" only-next preserve-url :buffer="200" :manual="isFiltering || pendingFilters" class="space-y-2">
             <div v-for="group in filteredGroups" :id="'tl-' + group.date" :key="group.date" class="scroll-mt-28 rounded-lg border border-gray-200">
                 <!-- Group header (clickable) -->
                 <button
@@ -159,10 +176,10 @@
                                 <td class="max-w-[24rem] px-3 py-2 text-gray-600" :title="trade.reason">
                                     <div class="flex items-center gap-2">
                                         <span
-                                            :class="categorizeReason(trade.reason).chipClass"
+                                            :class="categorizeReason(trade.reason_category).chipClass"
                                             class="shrink-0 rounded-full px-2 py-0.5 text-xs font-medium"
                                         >
-                                            {{ categorizeReason(trade.reason).label }}
+                                            {{ categorizeReason(trade.reason_category).label }}
                                         </span>
                                         <span class="min-w-0 truncate">{{ trade.reason }}</span>
                                     </div>
@@ -189,53 +206,134 @@
                     </table>
                 </div>
             </div>
-        </div>
+            <template #next="{ loading, hasMore, fetch }">
+                <div class="py-4 text-center text-sm text-gray-500">
+                    <p v-if="loading" role="status">Loading more trades...</p>
+                    <button
+                        v-else-if="hasMore"
+                        type="button"
+                        class="cursor-pointer font-medium text-purple-600 hover:underline disabled:cursor-wait"
+                        :disabled="isFiltering || pendingFilters"
+                        @click="fetch()"
+                    >
+                        Load more trades
+                    </button>
+                    <p v-else-if="trades.total > 0">All matching trades are loaded.</p>
+                </div>
+            </template>
+        </InfiniteScroll>
 
         <p v-if="filteredGroups.length === 0" class="py-8 text-center text-sm text-gray-500">
-            {{ trades.length === 0 ? 'This run produced no trades — your filters may exclude every stock in the universe.' : 'No trades match the selected filter.' }}
+            {{ summary.total === 0 ? 'This run produced no trades — your filters may exclude every stock in the universe.' : 'No trades match the selected filter.' }}
         </p>
     </div>
 </template>
 
 <script setup lang="ts">
-import { computed, ref, watch } from 'vue';
+import { computed, onUnmounted, ref, watch } from 'vue';
+import { InfiniteScroll, router } from '@inertiajs/vue3';
+import type { CancelToken } from '@inertiajs/core';
 import { MagnifyingGlassIcon } from '@heroicons/vue/20/solid';
 import type { BacktestTrade } from '@/types/app/Models/BacktestTrade';
+import type { PaginatedBacktestTrades, TradeLogFilters, TradeLogSummary } from '@/types/BacktestTradeLog';
 import { formatCurrency, formatCurrencyShort, formatDate } from '@/utils/format';
 
 const props = defineProps<{
-    trades: BacktestTrade[];
+    trades: PaginatedBacktestTrades;
+    summary: TradeLogSummary;
+    filters: TradeLogFilters;
 }>();
 
 type TabKey = 'all' | 'buy' | 'sell';
-const activeTab = ref<TabKey>('all');
-const search = ref('');
-const sortOrder = ref<'desc' | 'asc'>('desc');
-const activeReasonCategory = ref<string | null>(null);
+const activeTab = ref<TabKey>(props.filters.type);
+const search = ref(props.filters.search);
+const sortOrder = ref<'desc' | 'asc'>(props.filters.sort);
+const activeReasonCategory = ref<string | null>(props.filters.reason);
+const selectedYear = ref<number | null>(props.filters.year);
+const isFiltering = ref(false);
+const pendingFilters = ref(false);
+let isLoadingPage = false;
+let filterTimer: ReturnType<typeof setTimeout> | undefined;
+let filterCancelToken: CancelToken | undefined;
+let disposed = false;
 
 const expandedGroups = ref<Set<string>>(new Set());
 
-const searchFilteredTrades = computed((): BacktestTrade[] => {
-    const query = search.value.trim().toLowerCase();
-    if (!query) {
-        return props.trades;
-    }
-    return props.trades.filter(
-        (t) => t.symbol.toLowerCase().includes(query) || (t.name ?? '').toLowerCase().includes(query),
-    );
-});
-
 const tabs = computed(() => [
-    { key: 'all' as TabKey, label: 'All', count: searchFilteredTrades.value.length },
-    { key: 'buy' as TabKey, label: 'Buys', count: searchFilteredTrades.value.filter((t) => t.trade_type === 'buy').length },
-    { key: 'sell' as TabKey, label: 'Sells', count: searchFilteredTrades.value.filter((t) => t.trade_type === 'sell').length },
+    { key: 'all' as TabKey, label: 'All', count: props.summary.counts.all },
+    { key: 'buy' as TabKey, label: 'Buys', count: props.summary.counts.buy },
+    { key: 'sell' as TabKey, label: 'Sells', count: props.summary.counts.sell },
 ]);
 
-const tabAndSearchFilteredTrades = computed((): BacktestTrade[] => {
-    if (activeTab.value === 'all') {
-        return searchFilteredTrades.value;
+function loadFilters(): void {
+    if (disposed || !pendingFilters.value || isLoadingPage || isFiltering.value || filterTimer !== undefined) {
+        return;
     }
-    return searchFilteredTrades.value.filter((t) => t.trade_type === activeTab.value);
+
+    pendingFilters.value = false;
+    isFiltering.value = true;
+    expandedGroups.value = new Set();
+
+    const url = new URL(window.location.href);
+    const parameters = {
+        trade_search: search.value.trim(),
+        trade_type: activeTab.value,
+        trade_reason: activeReasonCategory.value,
+        trade_sort: sortOrder.value,
+        trade_year: selectedYear.value,
+    };
+    url.searchParams.delete('trades_page');
+    for (const [key, value] of Object.entries(parameters)) {
+        if (value === null || value === '') {
+            url.searchParams.delete(key);
+        } else {
+            url.searchParams.set(key, String(value));
+        }
+    }
+
+    router.get(url.pathname + url.search, {}, {
+        only: ['trades', 'tradeLogSummary', 'tradeFilters'],
+        reset: ['trades'],
+        preserveState: true,
+        preserveScroll: true,
+        replace: true,
+        onCancelToken: (token) => { filterCancelToken = token; },
+        onFinish: () => {
+            isFiltering.value = false;
+            filterCancelToken = undefined;
+            loadFilters();
+        },
+    });
+}
+
+watch([search, activeTab, activeReasonCategory, sortOrder, selectedYear], (values, previous) => {
+    pendingFilters.value = true;
+    clearTimeout(filterTimer);
+    filterTimer = setTimeout(() => {
+        filterTimer = undefined;
+        loadFilters();
+    }, values[0] !== previous[0] ? 300 : 0);
+});
+
+/** Finish an active scroll request before resetting its filters, so its old rows cannot merge into the new result. */
+const removeStartListener = router.on('start', (event) => {
+    if (event.detail.visit.only.length === 1 && event.detail.visit.only[0] === 'trades') {
+        isLoadingPage = true;
+    }
+});
+const removeFinishListener = router.on('finish', (event) => {
+    if (event.detail.visit.only.length === 1 && event.detail.visit.only[0] === 'trades') {
+        isLoadingPage = false;
+        loadFilters();
+    }
+});
+
+onUnmounted(() => {
+    disposed = true;
+    clearTimeout(filterTimer);
+    filterCancelToken?.cancel();
+    removeStartListener();
+    removeFinishListener();
 });
 
 interface ReasonCategory {
@@ -254,46 +352,16 @@ const reasonCategories: ReasonCategory[] = [
     { key: 'replacement', label: 'Replacement', chipClass: 'bg-blue-100 text-blue-700' },
     { key: 'rebalance', label: 'Rebalance', chipClass: 'bg-sky-100 text-sky-700' },
     { key: 'filter-exit', label: 'Filter exit', chipClass: 'bg-rose-100 text-rose-700' },
+    { key: 'stop-loss', label: 'Stop loss', chipClass: 'bg-red-100 text-red-700' },
 ];
 
-function categorizeReason(reason: string): ReasonCategory {
-    const key = ((): string => {
-        // Gold first: rank/filter exits during a gold rotation carry suffixes
-        // like '- rotating to gold' and belong to the rotation, not their prefix.
-        if (reason.toLowerCase().includes('gold') || reason.startsWith('Index recovered')) return 'gold-rotation';
-        if (reason.startsWith('Rank exceeded')) return 'rank-exit';
-        if (reason.includes('Cash call')) return 'cash-call';
-        if (reason.startsWith('Demerger ex-date')) return 'demerger';
-        if (reason.startsWith('Series changed to BE')) return 'be-exit';
-        if (reason.startsWith('New entry')) return 'new-entry';
-        if (reason.startsWith('Replacement after')) return 'replacement';
-        if (reason.startsWith('Weight rebalance adjustment')) return 'rebalance';
-        if (reason.startsWith('No volatility data')) return 'rebalance';
-        return 'filter-exit';
-    })();
-
-    return reasonCategories.find((c) => c.key === key)!;
+function categorizeReason(key: string): ReasonCategory {
+    return reasonCategories.find((category) => category.key === key) ?? reasonCategories.find((category) => category.key === 'filter-exit')!;
 }
 
-const reasonCategoryCounts = computed((): Array<ReasonCategory & { count: number }> => {
-    const counts = new Map<string, number>();
-    for (const trade of tabAndSearchFilteredTrades.value) {
-        const key = categorizeReason(trade.reason).key;
-        counts.set(key, (counts.get(key) ?? 0) + 1);
-    }
-
-    return reasonCategories
-        .filter((category) => counts.has(category.key))
-        .map((category) => ({ ...category, count: counts.get(category.key)! }));
-});
-
-// If the active reason category disappears from the current tab+search selection, clear it
-// so the user is never stuck on an invisible filter.
-watch(reasonCategoryCounts, (categories) => {
-    if (activeReasonCategory.value && !categories.some((c) => c.key === activeReasonCategory.value)) {
-        activeReasonCategory.value = null;
-    }
-});
+const reasonCategoryCounts = computed((): Array<ReasonCategory & { count: number }> => reasonCategories
+    .filter((category) => (props.summary.reasons[category.key] ?? 0) > 0 || activeReasonCategory.value === category.key)
+    .map((category) => ({ ...category, count: props.summary.reasons[category.key] ?? 0 })));
 
 function toggleReasonCategory(key: string): void {
     activeReasonCategory.value = activeReasonCategory.value === key ? null : key;
@@ -310,14 +378,8 @@ interface TradeGroup {
 }
 
 const filteredGroups = computed((): TradeGroup[] => {
-    let filtered = tabAndSearchFilteredTrades.value;
-
-    if (activeReasonCategory.value) {
-        filtered = filtered.filter((t) => categorizeReason(t.reason).key === activeReasonCategory.value);
-    }
-
     const grouped: Record<string, BacktestTrade[]> = {};
-    for (const trade of filtered) {
+    for (const trade of props.trades.data) {
         const dateKey = trade.date.substring(0, 10);
         if (!grouped[dateKey]) grouped[dateKey] = [];
         grouped[dateKey].push(trade);
@@ -341,20 +403,7 @@ const filteredGroups = computed((): TradeGroup[] => {
         });
 });
 
-const availableYears = computed((): string[] => {
-    const years = new Set<string>();
-    for (const group of filteredGroups.value) {
-        years.add(group.date.substring(0, 4));
-    }
-    return [...years].sort((a, b) => b.localeCompare(a));
-});
-
-function jumpToYear(year: string): void {
-    const target = filteredGroups.value.find((g) => g.date.startsWith(year));
-    if (target) {
-        document.getElementById('tl-' + target.date)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-    }
-}
+const availableYears = computed(() => props.summary.years);
 
 // While searching, every matching group is auto-expanded so results are visible.
 function isExpanded(date: string): boolean {

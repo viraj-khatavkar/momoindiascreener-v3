@@ -4,6 +4,7 @@ namespace App\Http\Requests;
 
 use App\Enums\BacktestCashCallEnum;
 use App\Enums\BacktestRebalanceFrequencyEnum;
+use App\Enums\BacktestStopLossProceedsEnum;
 use App\Enums\BacktestWeightageEnum;
 use App\Enums\CustomFilterComparatorOptionEnum;
 use App\Enums\CustomFilterValueOptionEnum;
@@ -35,6 +36,10 @@ class StoreBacktestRequest extends FormRequest
             'skip_circuit_trades' => ['required', 'boolean'],
             'exit_before_demerger' => ['required', 'boolean'],
             'exit_on_be_series' => ['required', 'boolean'],
+            'apply_stop_loss' => ['required', 'boolean'],
+            'stop_loss_percentage' => ['exclude_unless:apply_stop_loss,true', 'required', 'numeric', 'between:0.01,99.99', 'decimal:0,2'],
+            'trail_stop_loss' => ['exclude_unless:apply_stop_loss,true', 'required', 'boolean'],
+            'stop_loss_proceeds' => ['exclude_unless:apply_stop_loss,true', 'required', Rule::enum(BacktestStopLossProceedsEnum::class)],
             'rebalance_frequency' => ['required', Rule::enum(BacktestRebalanceFrequencyEnum::class)],
             'rebalance_day' => ['required', 'integer', 'min:1', $this->input('rebalance_frequency') === 'weekly' ? 'max:5' : 'max:28'],
             'weightage' => ['required', Rule::enum(BacktestWeightageEnum::class)],

@@ -11,7 +11,7 @@ it('shows daily market cap allocation and supports date selection on desktop and
     $backtest->summaryMetrics()->create([
         'cagr' => 0.1, 'max_drawdown' => -0.1, 'total_trades' => 1, 'total_charges_paid' => 0,
         'final_value' => 1000, 'rolling_returns_one_year' => [], 'rolling_returns_three_year' => [],
-        'rolling_returns_five_year' => [], 'stock_performance' => [],
+        'rolling_returns_five_year' => [], 'stock_performance' => null,
     ]);
     for ($index = 0; $index < 280; $index++) {
         $backtest->dailySnapshots()->create([
@@ -60,7 +60,7 @@ it('explains when the backtest has no market cap coverage', function () {
     $backtest->summaryMetrics()->create([
         'cagr' => 0, 'max_drawdown' => 0, 'total_trades' => 0, 'total_charges_paid' => 0,
         'final_value' => 1000, 'rolling_returns_one_year' => [], 'rolling_returns_three_year' => [],
-        'rolling_returns_five_year' => [], 'stock_performance' => [],
+        'rolling_returns_five_year' => [], 'stock_performance' => null,
     ]);
 
     loginAs($user->email);

@@ -56,6 +56,21 @@
             </div>
         </div>
 
+        <div v-if="backtest.apply_stop_loss" class="flex items-baseline gap-2">
+            <span class="w-16 shrink-0 text-[11px] font-semibold uppercase tracking-wider text-gray-400">Stop loss</span>
+            <div class="space-y-1.5">
+                <div class="flex flex-wrap gap-1.5">
+                    <span class="rounded-md bg-red-50 px-2 py-0.5 text-xs text-red-700">
+                        {{ Number(backtest.stop_loss_percentage) }}% below {{ backtest.trail_stop_loss ? 'highest close since entry' : 'average buy price' }}
+                    </span>
+                    <span class="rounded-md bg-red-50 px-2 py-0.5 text-xs text-red-700">
+                        {{ backtest.stop_loss_proceeds === 'wait_for_rebalance' ? 'Hold cash until rebalance' : 'Buy next stock on exit day' }}
+                    </span>
+                </div>
+                <p class="text-xs text-gray-500">After a close below the stop, exit at the next trading day's close only if it is lower than the previous close. Cash-call and circuit rules apply.</p>
+            </div>
+        </div>
+
         <!-- Cash Call (only if active) -->
         <!-- Cash interest accrues on idle cash regardless of the cash-call mode -->
         <div v-if="backtest.cash_call !== 'no_cash_call' || Number(backtest.cash_return_rate) > 0" class="flex items-baseline gap-2">
@@ -197,6 +212,8 @@ function formatWeightage(value: string): string {
         equal_weight: 'Equal Weight',
         equal_weight_rebalanced: 'EW Rebalanced',
         inverse_volatility: 'Inverse Volatility',
+        rank_weighted: 'Rank Weighted · 1 / rank · Rebalanced',
+        price_weighted: 'Price Weighted · Unadjusted close · Rebalanced',
     };
     return labels[value] || formatSnakeCase(value);
 }

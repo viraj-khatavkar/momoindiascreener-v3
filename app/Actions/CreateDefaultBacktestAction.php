@@ -5,6 +5,7 @@ namespace App\Actions;
 use App\Enums\ApplyFiltersOnOptionEnum;
 use App\Enums\BacktestCashCallEnum;
 use App\Enums\BacktestRebalanceFrequencyEnum;
+use App\Enums\BacktestStopLossProceedsEnum;
 use App\Enums\BacktestWeightageEnum;
 use App\Enums\CustomFilterComparatorOptionEnum;
 use App\Enums\CustomFilterValueOptionEnum;
@@ -29,6 +30,10 @@ class CreateDefaultBacktestAction
             'skip_circuit_trades' => true,
             'exit_before_demerger' => true,
             'exit_on_be_series' => false,
+            'apply_stop_loss' => false,
+            'stop_loss_percentage' => 10,
+            'trail_stop_loss' => false,
+            'stop_loss_proceeds' => BacktestStopLossProceedsEnum::WaitForRebalance->value,
             'rebalance_frequency' => BacktestRebalanceFrequencyEnum::Monthly->value,
             'rebalance_day' => 1,
             'weightage' => BacktestWeightageEnum::EqualWeight->value,

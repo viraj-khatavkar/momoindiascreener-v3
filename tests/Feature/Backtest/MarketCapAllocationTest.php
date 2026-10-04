@@ -11,6 +11,7 @@ use App\Models\Backtest;
 use App\Models\BacktestDailySnapshot;
 use App\Models\BacktestNseInstrumentPrice;
 use App\Models\User;
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
 use Inertia\Testing\AssertableInertia as Assert;
 
@@ -144,6 +145,52 @@ it('carries the last known price and membership when a held stock has no new quo
         ->and($points[1]['cash'])->toBe(20.0);
 });
 
+it('carries holdings and membership across allocation batches with sales and same day reentry', function () {
+    $backtest = Backtest::factory()->create();
+    $dates = [];
+
+    for ($index = 0; $index < 44; $index++) {
+        $date = Carbon::parse('2017-07-31')->addDays($index)->toDateString();
+        $dates[] = $date;
+        seedAllocationCoverage($date);
+        seedAllocationSnapshot($backtest, $date, cash: $index < 42 ? 200 : 700);
+    }
+
+    createBacktestPriceRow('LARGE', $dates[0], ['close_adjusted' => 100, 'is_nifty_100' => true]);
+    createBacktestPriceRow('MID', $dates[21], ['close_adjusted' => 150, 'is_nifty_midcap_150' => true]);
+    seedAllocationTrade($backtest, $dates[0], 'LARGE', 8, 100);
+    seedAllocationTrade($backtest, $dates[21], 'LARGE', 3, 100, 'sell');
+    seedAllocationTrade($backtest, $dates[21], 'MID', 3, 100);
+    seedAllocationTrade($backtest, $dates[21], 'MID', 3, 100, 'sell');
+    seedAllocationTrade($backtest, $dates[21], 'MID', 2, 150);
+    seedAllocationTrade($backtest, $dates[42], 'LARGE', 5, 100, 'sell');
+
+    DB::enableQueryLog();
+    DB::flushQueryLog();
+
+    try {
+        $result = app(CalculateMarketCapAllocationAction::class)->execute($backtest);
+        $tradeQueries = collect(DB::getQueryLog())
+            ->filter(fn (array $query): bool => str_contains($query['query'], 'from `backtest_trades`'));
+    } finally {
+        DB::disableQueryLog();
+        DB::flushQueryLog();
+    }
+
+    expect($tradeQueries->count())->toBeGreaterThan(1)
+        ->and($result['excluded_days'])->toBe(0)
+        ->and($result['points'])->toHaveCount(44);
+
+    foreach ($result['points'] as $index => $point) {
+        expect($point)->toBe([
+            'date' => $dates[$index],
+            'large_cap' => $index < 21 ? 80.0 : ($index < 42 ? 50.0 : 0.0),
+            'mid_cap' => $index < 21 ? 0.0 : 30.0,
+            'small_cap' => 0.0, 'etf' => 0.0, 'cash' => $index < 42 ? 20.0 : 70.0,
+        ]);
+    }
+});
+
 it('excludes dates with unknown holding membership or zero portfolio value', function () {
     $backtest = Backtest::factory()->create();
     seedAllocationCoverage('2017-07-31');
@@ -195,7 +242,7 @@ it('carries holdings across price batches without querying for each trading day'
 
     expect($result['points'])->toHaveCount(127)
         ->and($result['points'][126]['small_cap'])->toBe(80.0)
-        ->and($queries)->toHaveCount(5);
+        ->and(count($queries))->toBeLessThanOrEqual(20);
 });
 
 it('loads allocation as a separate deferred prop for completed backtests', function () {

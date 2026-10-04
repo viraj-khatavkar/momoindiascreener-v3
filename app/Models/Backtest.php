@@ -6,6 +6,7 @@ use App\Enums\ApplyFiltersOnOptionEnum;
 use App\Enums\BacktestCashCallEnum;
 use App\Enums\BacktestRebalanceFrequencyEnum;
 use App\Enums\BacktestStatusEnum;
+use App\Enums\BacktestStopLossProceedsEnum;
 use App\Enums\BacktestWeightageEnum;
 use App\Enums\NseIndexEnum;
 use Database\Factories\BacktestFactory;
@@ -22,6 +23,10 @@ class Backtest extends Model
 
     protected $attributes = [
         'cash_call_gold_dma_period' => 50,
+        'apply_stop_loss' => false,
+        'stop_loss_percentage' => 10,
+        'trail_stop_loss' => false,
+        'stop_loss_proceeds' => BacktestStopLossProceedsEnum::WaitForRebalance->value,
     ];
 
     protected function casts(): array
@@ -39,6 +44,10 @@ class Backtest extends Model
             'skip_circuit_trades' => 'boolean',
             'exit_before_demerger' => 'boolean',
             'exit_on_be_series' => 'boolean',
+            'apply_stop_loss' => 'boolean',
+            'stop_loss_percentage' => 'decimal:2',
+            'trail_stop_loss' => 'boolean',
+            'stop_loss_proceeds' => BacktestStopLossProceedsEnum::class,
             'apply_ma' => 'boolean',
             'above_ma_200' => 'boolean',
             'above_ma_100' => 'boolean',

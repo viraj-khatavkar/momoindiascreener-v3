@@ -35,13 +35,19 @@
                     />
                     <p class="mt-1 text-xs text-gray-500">A held stock is sold when its rank falls beyond this</p>
                 </div>
-                <SelectInput
-                    v-model="form.weightage"
-                    label="Weightage"
-                    name="weightage"
-                    :options="weightageOptions"
-                    :error="form.errors.weightage"
-                />
+                <div>
+                    <SelectInput
+                        v-model="form.weightage"
+                        label="Weightage"
+                        name="weightage"
+                        :options="weightageOptions"
+                        :error="form.errors.weightage"
+                    />
+                    <p v-if="form.weightage === 'rank_weighted'" class="mt-1 text-xs text-gray-500">Weight is proportional to 1 / rank on the decision date. Ranks 1, 2, and 3 receive about 54.5%, 27.3%, and 18.2%.</p>
+                    <p v-else-if="form.weightage === 'price_weighted'" class="mt-1 text-xs text-gray-500">Weight is proportional to the unadjusted close on the decision date. Stocks priced at ₹1,000 and ₹100 receive about 90.91% and 9.09%.</p>
+                    <p v-if="form.weightage !== 'equal_weight'" class="mt-1 text-xs text-gray-500">At each rebalance, add or sell shares to restore target weights. Cash rules, trade restrictions, and whole shares can limit the adjustment. Replacement purchases select stocks not already held.</p>
+                    <p v-if="form.weightage === 'rank_weighted' || form.weightage === 'price_weighted'" class="mt-1 text-xs text-gray-500">A retained holding without a valid {{ form.weightage === 'rank_weighted' ? 'rank' : 'price' }} keeps its shares. The remaining capital follows the selected weights.</p>
+                </div>
                 <div>
                     <label class="block text-sm/6 font-medium text-gray-900">Initial Capital</label>
                     <div class="mt-2 rounded-md bg-slate-200/60 px-3 py-1.5 text-sm/6 text-gray-600 ring-1 ring-slate-300">
@@ -113,6 +119,40 @@
                 <div>
                     <Toggle v-model="form.exit_on_be_series" label="Exit on Move to BE Series" />
                     <p class="mt-1 text-xs text-gray-500">Sell a held stock the day its series changes to BE (trade-to-trade). The cash call rule controls the use of the proceeds. BE stocks are also skipped on entry while this is on.</p>
+                </div>
+            </div>
+        </div>
+
+        <div class="mt-4 rounded-xl bg-slate-100 p-6 ring-1 ring-slate-200">
+            <h2 class="mb-4 text-sm font-semibold uppercase tracking-wide text-gray-600">Per-Stock Stop Loss</h2>
+            <Toggle v-model="form.apply_stop_loss" label="Enable Stock Stop Loss" />
+            <div v-if="form.apply_stop_loss" class="mt-4 grid grid-cols-1 gap-x-8 gap-y-6 sm:grid-cols-2 lg:grid-cols-3">
+                <div>
+                    <TextInput
+                        v-model="form.stop_loss_percentage"
+                        type="number"
+                        label="Stop Loss (%)"
+                        name="stop_loss_percentage"
+                        :error="form.errors.stop_loss_percentage"
+                    />
+                    <p class="mt-1 text-xs text-gray-500">Percentage below the average buy price, excluding charges. Adding shares updates the average buy price.</p>
+                </div>
+                <div>
+                    <Toggle v-model="form.trail_stop_loss" label="Trail Below Highest Close" />
+                    <p class="mt-1 text-xs text-gray-500">Use the same percentage below the highest close since entry. The stop only moves up.</p>
+                </div>
+                <SelectInput
+                    v-model="form.stop_loss_proceeds"
+                    label="After a Stop-Loss Exit"
+                    name="stop_loss_proceeds"
+                    :options="stopLossProceedsSelectOptions"
+                    :error="form.errors.stop_loss_proceeds"
+                />
+                <div class="space-y-2 text-xs text-gray-600 sm:col-span-2 lg:col-span-3">
+                    <p>Check adjusted closes every day. After a close below the stop, exit at the next trading day's close only if it is lower than the previous close. Otherwise, check again.</p>
+                    <p v-if="form.stop_loss_proceeds === 'wait_for_rebalance'">Hold the proceeds as cash until a scheduled rebalance. A rebalance on the exit day can use them. The cash earns the selected cash return, and reinvestment follows the cash-call rule.</p>
+                    <p v-else>Buy the next eligible stock not already held at the exit day's close. Cash-call rules and entry restrictions still apply. If no stock qualifies, keep the proceeds in cash.</p>
+                    <p>Stop-loss exits take priority over Hold if Above DMA. Circuit restrictions still apply. The exited stock cannot be bought again on the same day. Defensive GOLDBEES holdings follow the cash-call rules.</p>
                 </div>
             </div>
         </div>
@@ -905,6 +945,7 @@ const props = defineProps<{
     rebalanceFrequencyOptions: SelectOption[];
     weightageOptions: SelectOption[];
     cashCallOptions: SelectOption[];
+    stopLossProceedsOptions: SelectOption[];
     cashCallIndexOptions: SelectOption[];
 }>();
 
@@ -920,6 +961,13 @@ const holdDmaPeriodOptions = [
     { id: '100', name: '100 DMA' },
     { id: '200', name: '200 DMA' },
 ];
+
+const stopLossProceedsSelectOptions = computed(() =>
+    props.stopLossProceedsOptions.map((option) => ({
+        id: option.id,
+        name: option.id === 'wait_for_rebalance' ? 'Hold cash until rebalance' : 'Buy next stock on exit day',
+    })),
+);
 
 const dmaPeriodOptions = [
     { id: '20', name: '20 DMA' },
@@ -1334,6 +1382,10 @@ const fieldLabels: Record<string, string> = {
     skip_circuit_trades: 'Skip Circuit-Hit Trades',
     exit_before_demerger: 'Exit Before Demerger',
     exit_on_be_series: 'Exit on Move to BE Series',
+    apply_stop_loss: 'Enable Stock Stop Loss',
+    stop_loss_percentage: 'Stop Loss (%)',
+    trail_stop_loss: 'Trail Below Highest Close',
+    stop_loss_proceeds: 'After a Stop-Loss Exit',
     rebalance_frequency: 'Rebalance Frequency',
     rebalance_day: 'Rebalance Day',
     cash_call: 'Cash Call',

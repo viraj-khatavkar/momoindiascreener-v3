@@ -5,6 +5,7 @@ export interface BacktestTrade {
     name: string | null;
     trade_type: 'buy' | 'sell';
     reason: string;
+    reason_category: string;
     date: string;
     quantity: number;
     price: number;

@@ -67,6 +67,7 @@
                                 </template>
                             </span>
                         </th>
+                        <th class="px-4 py-3 text-right text-xs font-semibold uppercase tracking-wide text-gray-500">Actions</th>
                     </tr>
                 </thead>
                 <tbody class="divide-y divide-gray-100">
@@ -140,11 +141,14 @@
                             <td class="whitespace-nowrap px-4 py-3 text-sm text-gray-500">
                                 {{ formatRelativeDate(bt.created_at) }}
                             </td>
+                            <td class="px-4 py-3 text-right">
+                                <DuplicateBacktestButton :backtest-id="bt.id" :aria-label="`Duplicate ${bt.name}`" />
+                            </td>
                         </tr>
 
                         <!-- Expanded config row -->
                         <tr v-if="expandedRows.has(bt.id)">
-                            <td :colspan="columns.length" class="bg-gray-50/80 px-6 py-4">
+                            <td :colspan="columns.length + 1" class="bg-gray-50/80 px-6 py-4">
                                 <BacktestStrategyRules :backtest="bt" />
                             </td>
                         </tr>
@@ -183,6 +187,7 @@ import { computed, reactive, ref } from 'vue';
 import { MagnifyingGlassIcon, ChevronUpIcon, ChevronDownIcon, ChevronRightIcon } from '@heroicons/vue/20/solid';
 import PageHeader from '@/Components/PageHeader.vue';
 import BacktestStrategyRules from '@/Pages/Backtests/partials/BacktestStrategyRules.vue';
+import DuplicateBacktestButton from '@/Pages/Backtests/partials/DuplicateBacktestButton.vue';
 import type { Backtest } from '@/types/app/Models/Backtest';
 import type { BacktestSummaryMetric } from '@/types/app/Models/BacktestSummaryMetric';
 

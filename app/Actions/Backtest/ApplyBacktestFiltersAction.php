@@ -146,21 +146,21 @@ class ApplyBacktestFiltersAction
     {
         return $query->when($backtest->apply_ma, function (Builder $query) use ($backtest) {
             return $query->when($backtest->above_ma_200, function (Builder $query) {
-                return $query->whereRaw('close_raw > ma_200');
+                return $query->whereColumn('close_adjusted', '>', 'ma_200');
             })->when($backtest->above_ma_100, function (Builder $query) {
-                return $query->whereRaw('close_raw > ma_100');
+                return $query->whereColumn('close_adjusted', '>', 'ma_100');
             })->when($backtest->above_ma_50, function (Builder $query) {
-                return $query->whereRaw('close_raw > ma_50');
+                return $query->whereColumn('close_adjusted', '>', 'ma_50');
             })->when($backtest->above_ma_20, function (Builder $query) {
-                return $query->whereRaw('close_raw > ma_20');
+                return $query->whereColumn('close_adjusted', '>', 'ma_20');
             })->when($backtest->below_ma_200, function (Builder $query) {
-                return $query->whereRaw('close_raw < ma_200');
+                return $query->whereColumn('close_adjusted', '<', 'ma_200');
             })->when($backtest->below_ma_100, function (Builder $query) {
-                return $query->whereRaw('close_raw < ma_100');
+                return $query->whereColumn('close_adjusted', '<', 'ma_100');
             })->when($backtest->below_ma_50, function (Builder $query) {
-                return $query->whereRaw('close_raw < ma_50');
+                return $query->whereColumn('close_adjusted', '<', 'ma_50');
             })->when($backtest->below_ma_20, function (Builder $query) {
-                return $query->whereRaw('close_raw < ma_20');
+                return $query->whereColumn('close_adjusted', '<', 'ma_20');
             });
         });
     }
@@ -169,21 +169,21 @@ class ApplyBacktestFiltersAction
     {
         return $query->when($backtest->apply_ema, function (Builder $query) use ($backtest) {
             return $query->when($backtest->above_ema_200, function (Builder $query) {
-                return $query->whereRaw('close_raw > ema_200');
+                return $query->whereColumn('close_adjusted', '>', 'ema_200');
             })->when($backtest->above_ema_100, function (Builder $query) {
-                return $query->whereRaw('close_raw > ema_100');
+                return $query->whereColumn('close_adjusted', '>', 'ema_100');
             })->when($backtest->above_ema_50, function (Builder $query) {
-                return $query->whereRaw('close_raw > ema_50');
+                return $query->whereColumn('close_adjusted', '>', 'ema_50');
             })->when($backtest->above_ema_20, function (Builder $query) {
-                return $query->whereRaw('close_raw > ema_20');
+                return $query->whereColumn('close_adjusted', '>', 'ema_20');
             })->when($backtest->below_ema_200, function (Builder $query) {
-                return $query->whereRaw('close_raw < ema_200');
+                return $query->whereColumn('close_adjusted', '<', 'ema_200');
             })->when($backtest->below_ema_100, function (Builder $query) {
-                return $query->whereRaw('close_raw < ema_100');
+                return $query->whereColumn('close_adjusted', '<', 'ema_100');
             })->when($backtest->below_ema_50, function (Builder $query) {
-                return $query->whereRaw('close_raw < ema_50');
+                return $query->whereColumn('close_adjusted', '<', 'ema_50');
             })->when($backtest->below_ema_20, function (Builder $query) {
-                return $query->whereRaw('close_raw < ema_20');
+                return $query->whereColumn('close_adjusted', '<', 'ema_20');
             });
         });
     }

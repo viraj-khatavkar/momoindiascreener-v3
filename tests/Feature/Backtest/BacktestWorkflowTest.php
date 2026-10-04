@@ -11,6 +11,7 @@ use App\Models\BacktestDailySnapshot;
 use App\Models\BacktestSummaryMetric;
 use App\Models\BacktestTrade;
 use App\Models\User;
+use Illuminate\Queue\MaxAttemptsExceededException;
 use Illuminate\Support\Facades\Queue;
 use Inertia\Testing\AssertableInertia as Assert;
 
@@ -49,7 +50,7 @@ function seedBacktestResults(Backtest $backtest): void
     BacktestSummaryMetric::create([
         'backtest_id' => $backtest->id, 'cagr' => 0.1, 'max_drawdown' => -0.1, 'total_trades' => 1,
         'total_charges_paid' => 0.19, 'final_value' => 1000, 'rolling_returns_one_year' => [],
-        'rolling_returns_three_year' => [], 'rolling_returns_five_year' => [], 'stock_performance' => [],
+        'rolling_returns_three_year' => [], 'rolling_returns_five_year' => [], 'stock_performance' => null,
     ]);
 }
 
@@ -150,6 +151,103 @@ it('saves configured transaction cost rates', function () {
         ->and((float) $backtest->stt_rate)->toBe(0.2)
         // Cost rates change results, so they must flag them stale
         ->and($backtest->settings_changed_at)->not->toBeNull();
+});
+
+it('offers stop loss settings with an opt-in default', function () {
+    $user = User::factory()->create(['is_paid' => true]);
+    $this->actingAs($user)->post('/backtests', ['name' => 'Stop loss defaults']);
+    $backtest = $user->backtests()->latest('id')->first();
+
+    $this->get('/backtests/'.$backtest->id)
+        ->assertInertia(fn (Assert $page) => $page
+            ->where('backtest.apply_stop_loss', false)
+            ->where('backtest.stop_loss_percentage', '10.00')
+            ->where('backtest.trail_stop_loss', false)
+            ->where('backtest.stop_loss_proceeds', 'wait_for_rebalance')
+            ->has('stopLossProceedsOptions', 2));
+});
+
+it('offers and queues rank and price weighting settings', function (string $weightage) {
+    Queue::fake();
+    $user = User::factory()->create(['is_paid' => true]);
+    $backtest = Backtest::factory()->create(['user_id' => $user->id]);
+
+    $this->actingAs($user)->get('/backtests/'.$backtest->id)
+        ->assertInertia(fn (Assert $page) => $page
+            ->has('weightageOptions', 5)
+            ->where('weightageOptions.3.id', 'rank_weighted')
+            ->where('weightageOptions.4.id', 'price_weighted'));
+
+    $this->put('/backtests/'.$backtest->id, validBacktestUpdatePayload($backtest, [
+        'weightage' => $weightage,
+        'run' => true,
+    ]))->assertSessionHasNoErrors();
+
+    expect($backtest->refresh()->weightage->value)->toBe($weightage)
+        ->and($backtest->settings_changed_at)->not->toBeNull();
+    Queue::assertPushed(RunBacktestJob::class, fn (RunBacktestJob $job): bool => $job->backtest->weightage->value === $weightage);
+})->with(['rank_weighted', 'price_weighted']);
+
+it('saves stop loss settings without changing completed results or starting a run', function (string $proceeds) {
+    Queue::fake();
+    $user = User::factory()->create(['is_paid' => true]);
+    $backtest = Backtest::factory()->create(['user_id' => $user->id, 'status' => BacktestStatusEnum::Completed]);
+    seedBacktestResults($backtest);
+
+    $this->actingAs($user)->put('/backtests/'.$backtest->id, validBacktestUpdatePayload($backtest, [
+        'apply_stop_loss' => true,
+        'stop_loss_percentage' => 12.5,
+        'trail_stop_loss' => true,
+        'stop_loss_proceeds' => $proceeds,
+    ]))->assertSessionHasNoErrors();
+
+    $backtest->refresh();
+    expect($backtest->apply_stop_loss)->toBeTrue()
+        ->and((float) $backtest->stop_loss_percentage)->toBe(12.5)
+        ->and($backtest->trail_stop_loss)->toBeTrue()
+        ->and($backtest->stop_loss_proceeds->value)->toBe($proceeds)
+        ->and($backtest->settings_changed_at)->not->toBeNull()
+        ->and($backtest->status)->toBe(BacktestStatusEnum::Completed)
+        ->and($backtest->trades()->count())->toBe(1)
+        ->and((float) $backtest->dailySnapshots()->sole()->nav)->toBe(100.0);
+    Queue::assertNothingPushed();
+})->with(['wait_for_rebalance', 'replace_immediately']);
+
+it('rejects invalid enabled stop loss settings', function (string $field, mixed $value) {
+    $user = User::factory()->create(['is_paid' => true]);
+    $backtest = Backtest::factory()->create(['user_id' => $user->id]);
+
+    $this->actingAs($user)->put('/backtests/'.$backtest->id, validBacktestUpdatePayload($backtest, [
+        'apply_stop_loss' => true,
+        $field => $value,
+    ]))->assertSessionHasErrors($field);
+})->with([
+    ['apply_stop_loss', 'invalid'],
+    ['stop_loss_percentage', null],
+    ['stop_loss_percentage', 0],
+    ['stop_loss_percentage', -1],
+    ['stop_loss_percentage', 100],
+    ['stop_loss_percentage', 10.123],
+    ['stop_loss_percentage', 'invalid'],
+    ['trail_stop_loss', 'invalid'],
+    ['stop_loss_proceeds', 'invalid'],
+    ['stop_loss_proceeds', null],
+]);
+
+it('ignores inactive stop loss controls when stop loss is disabled', function () {
+    $user = User::factory()->create(['is_paid' => true]);
+    $backtest = Backtest::factory()->create(['user_id' => $user->id, 'apply_stop_loss' => true]);
+
+    $this->actingAs($user)->put('/backtests/'.$backtest->id, validBacktestUpdatePayload($backtest, [
+        'apply_stop_loss' => false,
+        'stop_loss_percentage' => null,
+        'trail_stop_loss' => null,
+        'stop_loss_proceeds' => null,
+    ]))->assertSessionHasNoErrors();
+
+    expect($backtest->refresh()->apply_stop_loss)->toBeFalse()
+        ->and((float) $backtest->stop_loss_percentage)->toBe(10.0)
+        ->and($backtest->stop_loss_proceeds->value)->toBe('wait_for_rebalance');
 });
 
 it('offers the six supported cash call settings', function () {
@@ -363,7 +461,9 @@ it('blocks csv downloads of another users backtest', function () {
 it('queues a run from the standalone run endpoint', function () {
     Queue::fake();
     $user = User::factory()->create(['is_paid' => true]);
-    $backtest = Backtest::factory()->create(['user_id' => $user->id, 'status' => BacktestStatusEnum::Completed]);
+    $backtest = Backtest::factory()->create([
+        'user_id' => $user->id, 'status' => BacktestStatusEnum::Completed, 'completed_at' => now()->subDay(),
+    ]);
     seedBacktestResults($backtest);
 
     $response = $this->actingAs($user)->post('/backtests/'.$backtest->id.'/run');
@@ -371,6 +471,7 @@ it('queues a run from the standalone run endpoint', function () {
     $response->assertRedirect('/backtests/'.$backtest->id);
     $backtest->refresh();
     expect($backtest->status)->toBe(BacktestStatusEnum::Running)
+        ->and($backtest->completed_at)->toBeNull()
         ->and($backtest->trades()->count())->toBe(0)
         ->and($backtest->dailySnapshots()->count())->toBe(0)
         ->and($backtest->summaryMetrics)->toBeNull();
@@ -378,9 +479,11 @@ it('queues a run from the standalone run endpoint', function () {
 });
 
 it('reports preparation progress when a queue worker starts the run', function () {
+    $startedAt = now()->subMinute()->startOfSecond();
     $backtest = Backtest::factory()->create([
         'status' => BacktestStatusEnum::Running,
         'progress' => 0,
+        'started_at' => $startedAt,
     ]);
     $runAction = mock(RunBacktestAction::class);
     $metricsAction = mock(CalculateBacktestMetricsAction::class);
@@ -398,9 +501,74 @@ it('reports preparation progress when a queue worker starts the run', function (
             return true;
         });
     $metricsAction->shouldReceive('execute')->once();
+    $storeAllocation = mock(StoreMarketCapAllocationAction::class);
+    $storeAllocation->shouldReceive('execute')->once()->withArgs(function (Backtest $runningBacktest): bool {
+        expect($runningBacktest->fresh()->progress)->toBe(98);
 
-    (new RunBacktestJob($backtest))->handle($runAction, $metricsAction, app(StoreMarketCapAllocationAction::class));
+        return true;
+    });
+
+    (new RunBacktestJob($backtest))->handle($runAction, $metricsAction, $storeAllocation);
 
     expect($backtest->refresh()->status)->toBe(BacktestStatusEnum::Completed)
-        ->and($backtest->progress)->toBe(100);
+        ->and($backtest->progress)->toBe(100)
+        ->and($backtest->started_at->equalTo($startedAt))->toBeTrue();
 });
+
+it('marks a crashed worker run as failed when the queue exhausts its attempts', function () {
+    $backtest = Backtest::factory()->create([
+        'status' => BacktestStatusEnum::Running, 'progress' => 95, 'started_at' => now()->subHour(),
+    ]);
+    $job = unserialize(serialize(new RunBacktestJob($backtest)));
+
+    $job->failed(new MaxAttemptsExceededException('The worker could not complete the backtest.'));
+
+    expect($backtest->refresh()->status)->toBe(BacktestStatusEnum::Failed)
+        ->and($backtest->error_message)->toBe('The worker could not complete the backtest.')
+        ->and($backtest->completed_at)->toBeNull()
+        ->and($backtest->progress)->toBe(95);
+});
+
+it('does not let a late failure overwrite a completed or newer run', function (bool $newerRun) {
+    $backtest = Backtest::factory()->create([
+        'status' => BacktestStatusEnum::Running, 'progress' => 95, 'started_at' => now()->subHour(),
+    ]);
+    $payload = serialize(new RunBacktestJob($backtest));
+    $backtest->update($newerRun
+        ? ['started_at' => now(), 'progress' => 1]
+        : ['status' => BacktestStatusEnum::Completed, 'progress' => 100, 'completed_at' => now()]);
+    $expected = $backtest->fresh()->getAttributes();
+
+    unserialize($payload)->failed(new RuntimeException('Old worker failed.'));
+
+    expect($backtest->fresh()->getAttributes())->toBe($expected);
+})->with([true, false]);
+
+it('marks an ordinary exception as failed at each execution stage', function (string $failedStage) {
+    $backtest = Backtest::factory()->create([
+        'status' => BacktestStatusEnum::Running, 'started_at' => now(), 'completed_at' => now()->subDay(),
+    ]);
+    $actions = [
+        'simulation' => mock(RunBacktestAction::class),
+        'metrics' => mock(CalculateBacktestMetricsAction::class),
+        'allocation' => mock(StoreMarketCapAllocationAction::class),
+    ];
+    $afterFailure = false;
+
+    foreach ($actions as $stage => $action) {
+        if ($afterFailure) {
+            $action->shouldNotReceive('execute');
+        } elseif ($stage === $failedStage) {
+            $action->shouldReceive('execute')->once()->andThrow(new RuntimeException('Stage failed.'));
+            $afterFailure = true;
+        } else {
+            $action->shouldReceive('execute')->once();
+        }
+    }
+
+    expect(fn () => (new RunBacktestJob($backtest))->handle(...array_values($actions)))
+        ->toThrow(RuntimeException::class, 'Stage failed.');
+    expect($backtest->refresh()->status)->toBe(BacktestStatusEnum::Failed)
+        ->and($backtest->completed_at)->toBeNull()
+        ->and($backtest->error_message)->toBe('Stage failed.');
+})->with(['simulation', 'metrics', 'allocation']);

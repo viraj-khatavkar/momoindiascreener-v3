@@ -140,7 +140,7 @@ it('shows active and recent backtests to a paid user', function () {
         'rolling_returns_one_year' => [],
         'rolling_returns_three_year' => [],
         'rolling_returns_five_year' => [],
-        'stock_performance' => [],
+        'stock_performance' => null,
     ]);
 
     $this->actingAs($user)

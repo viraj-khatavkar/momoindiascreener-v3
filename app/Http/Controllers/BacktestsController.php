@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Actions\Backtest\LoadBacktestTradeLogAction;
 use App\Actions\Backtest\LoadBenchmarkSeriesAction;
 use App\Actions\Backtest\LoadMarketCapAllocationAction;
 use App\Actions\Backtest\StartBacktestRunAction;
@@ -10,11 +11,13 @@ use App\Enums\ApplyFiltersOnOptionEnum;
 use App\Enums\BacktestCashCallEnum;
 use App\Enums\BacktestRebalanceFrequencyEnum;
 use App\Enums\BacktestStatusEnum;
+use App\Enums\BacktestStopLossProceedsEnum;
 use App\Enums\BacktestWeightageEnum;
 use App\Enums\CustomFilterComparatorOptionEnum;
 use App\Enums\CustomFilterValueOptionEnum;
 use App\Enums\NseIndexEnum;
 use App\Enums\ScreenSortByOptionEnum;
+use App\Http\Requests\ShowBacktestRequest;
 use App\Http\Requests\UpdateBacktestRequest;
 use App\Models\Backtest;
 use Illuminate\Http\Request;
@@ -57,13 +60,14 @@ class BacktestsController extends Controller
         return redirect()->to('/backtests/'.$backtest->getKey().'?tab=settings');
     }
 
-    public function show(Request $request, Backtest $backtest, LoadBenchmarkSeriesAction $loadBenchmark, LoadMarketCapAllocationAction $marketCapAllocation): Response
+    public function show(ShowBacktestRequest $request, Backtest $backtest, LoadBenchmarkSeriesAction $loadBenchmark, LoadMarketCapAllocationAction $marketCapAllocation, LoadBacktestTradeLogAction $tradeLog): Response
     {
         if ($request->user()->cannot('view', $backtest)) {
             abort(404);
         }
 
         $isCompleted = $backtest->status === BacktestStatusEnum::Completed;
+        $tradeFilters = $request->filters();
 
         return inertia('Backtests/Show', [
             'backtest' => $backtest,
@@ -80,8 +84,12 @@ class BacktestsController extends Controller
                 ? Inertia::defer(fn () => $marketCapAllocation->execute($backtest), 'allocation')
                 : null,
             'trades' => $isCompleted
-                ? Inertia::defer(fn () => $backtest->trades()->orderBy('date')->orderBy('trade_type')->get(), 'trades')
-                : [],
+                ? Inertia::scroll(fn () => $tradeLog->execute($backtest, $tradeFilters))->matchOn('data.id')->defer('trades')
+                : null,
+            'tradeLogSummary' => $isCompleted
+                ? Inertia::defer(fn () => $tradeLog->summary($backtest, $tradeFilters), 'trades')
+                : null,
+            'tradeFilters' => $tradeFilters,
             'benchmarkOptions' => self::INDEX_SLUG_OPTIONS,
             'indices' => array_values(NseIndexEnum::getOptionsForFilters()),
             'sortByOptions' => array_values(ScreenSortByOptionEnum::getOptionsForFilters()),
@@ -90,6 +98,7 @@ class BacktestsController extends Controller
             'customFilterComparatorOptions' => array_values(CustomFilterComparatorOptionEnum::resolveDisplayableValueList()),
             'rebalanceFrequencyOptions' => array_values(BacktestRebalanceFrequencyEnum::resolveDisplayableValueList()),
             'weightageOptions' => array_values(BacktestWeightageEnum::resolveDisplayableValueList()),
+            'stopLossProceedsOptions' => BacktestStopLossProceedsEnum::resolveDisplayableValueList(),
             'cashCallOptions' => collect(BacktestCashCallEnum::resolveDisplayableValueList())
                 ->reject(fn (array $option): bool => $option['id'] === BacktestCashCallEnum::CashCallIfNotEnoughStocks->value
                     && $backtest->cash_call !== BacktestCashCallEnum::CashCallIfNotEnoughStocks)
