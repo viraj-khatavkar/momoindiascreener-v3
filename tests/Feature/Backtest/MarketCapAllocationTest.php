@@ -65,11 +65,11 @@ it('starts with common membership coverage and values existing holdings with his
         ->and($result['points'])->toHaveCount(2)
         ->and($result['points'][0])->toBe([
             'date' => '2017-07-31', 'large_cap' => 10.0, 'mid_cap' => 20.0,
-            'small_cap' => 30.0, 'etf' => 20.0, 'cash' => 20.0,
+            'small_cap' => 30.0, 'etf' => 20.0, 'unclassified' => 0.0, 'cash' => 20.0,
         ])
         ->and($result['points'][1])->toBe([
             'date' => '2017-08-01', 'large_cap' => 0.0, 'mid_cap' => 41.6667,
-            'small_cap' => 25.0, 'etf' => 16.6667, 'cash' => 16.6667,
+            'small_cap' => 25.0, 'etf' => 16.6667, 'unclassified' => 0.0, 'cash' => 16.6667,
         ]);
 });
 
@@ -204,12 +204,12 @@ it('carries holdings and membership across allocation batches with sales and sam
             'date' => $dates[$index],
             'large_cap' => $index < 21 ? 80.0 : ($index < 42 ? 50.0 : 0.0),
             'mid_cap' => $index < 21 ? 0.0 : 30.0,
-            'small_cap' => 0.0, 'etf' => 0.0, 'cash' => $index < 42 ? 20.0 : 70.0,
+            'small_cap' => 0.0, 'etf' => 0.0, 'unclassified' => 0.0, 'cash' => $index < 42 ? 20.0 : 70.0,
         ]);
     }
 });
 
-it('excludes dates with unknown holding membership or zero portfolio value', function () {
+it('shows unclassified holdings but excludes dates with zero portfolio value', function () {
     $backtest = Backtest::factory()->create();
     seedAllocationCoverage('2017-07-31');
     seedAllocationCoverage('2017-08-01');
@@ -218,8 +218,71 @@ it('excludes dates with unknown holding membership or zero portfolio value', fun
     seedAllocationTrade($backtest, '2017-07-31', 'UNKNOWN', 8, 100);
 
     expect(app(CalculateMarketCapAllocationAction::class)->execute($backtest))
-        ->toBe(['start_date' => null, 'excluded_days' => 2, 'points' => []]);
+        ->toBe(['start_date' => '2017-07-31', 'excluded_days' => 1, 'points' => [[
+            'date' => '2017-07-31', 'large_cap' => 0.0, 'mid_cap' => 0.0,
+            'small_cap' => 0.0, 'etf' => 0.0, 'unclassified' => 80.0, 'cash' => 20.0,
+        ]]]);
 });
+
+it('shows later allocation when an old holding has no quote when membership coverage starts', function (bool $quoteResumes) {
+    $backtest = Backtest::factory()->create(['status' => BacktestStatusEnum::Completed]);
+    foreach (['2017-07-27', '2017-07-28', '2017-07-31', '2017-08-01'] as $date) {
+        seedAllocationSnapshot($backtest, $date, total: $date === '2017-07-27' ? 800 : 1000);
+        createBacktestPriceRow('LARGE', $date, ['close_adjusted' => 100, 'is_nifty_100' => true]);
+        if ($date >= '2017-07-31') {
+            seedAllocationCoverage($date);
+        }
+    }
+    seedAllocationTrade($backtest, '2017-07-27', 'OLD', 2, 100);
+    seedAllocationTrade($backtest, '2017-07-27', 'LARGE', 4, 100);
+    createBacktestPriceRow('OLD', '2017-07-27', ['close_adjusted' => 100]);
+    createBacktestPriceRow('OLD', '2017-07-28', ['close_adjusted' => 200]);
+    if ($quoteResumes) {
+        createBacktestPriceRow('OLD', '2017-08-01', ['close_adjusted' => 200, 'is_nifty_midcap_150' => true]);
+    }
+
+    app(StoreMarketCapAllocationAction::class)->execute($backtest);
+    $allocation = app(LoadMarketCapAllocationAction::class)->execute($backtest);
+
+    expect($allocation['start_date'])->toBe('2017-07-31')
+        ->and($allocation['excluded_days'])->toBe(2)
+        ->and($allocation['points'])->toHaveCount(2)
+        ->and($allocation['points'][0])->toBe([
+            'date' => '2017-07-31', 'large_cap' => 40.0, 'mid_cap' => 0.0,
+            'small_cap' => 0.0, 'etf' => 0.0, 'unclassified' => 40.0, 'cash' => 20.0,
+        ])
+        ->and($allocation['points'][1]['unclassified'])->toBe($quoteResumes ? 0.0 : 40.0)
+        ->and($allocation['points'][1]['mid_cap'])->toBe($quoteResumes ? 40.0 : 0.0);
+})->with([false, true]);
+
+it('reads older saved allocations without an unclassified field', function () {
+    $backtest = Backtest::factory()->create();
+    seedAllocationSnapshot($backtest, '2017-07-31');
+    $backtest->dailySnapshots()->sole()->update([
+        'market_cap_allocation' => ['large_cap' => 80, 'mid_cap' => 0, 'small_cap' => 0, 'etf' => 0, 'cash' => 20],
+        'market_cap_allocation_calculated_at' => now(),
+    ]);
+
+    $allocation = app(LoadMarketCapAllocationAction::class)->execute($backtest);
+    expect($allocation['points'][0]['large_cap'])->toBe(80.0)
+        ->and($allocation['points'][0]['unclassified'])->toBe(0.0)
+        ->and($allocation['points'][0]['cash'])->toBe(20.0);
+});
+
+it('keeps a known ETF classified when its last quote precedes index coverage', function (string $symbol, bool $isEtf) {
+    $backtest = Backtest::factory()->create();
+    seedAllocationSnapshot($backtest, '2017-07-28');
+    seedAllocationSnapshot($backtest, '2017-07-31');
+    seedAllocationCoverage('2017-07-31');
+    createBacktestPriceRow($symbol, '2017-07-28', ['close_adjusted' => 100, 'is_etf' => $isEtf]);
+    seedAllocationTrade($backtest, '2017-07-28', $symbol, 8, 100);
+
+    $allocation = app(CalculateMarketCapAllocationAction::class)->execute($backtest);
+
+    expect($allocation['start_date'])->toBe('2017-07-31')
+        ->and($allocation['points'][0]['etf'])->toBe(80.0)
+        ->and($allocation['points'][0]['unclassified'])->toBe(0.0);
+})->with([['GOLDBEES', false], ['OTHER-ETF', true]]);
 
 it('keeps cash as a percentage of the saved total when adjusted historical prices change', function () {
     $backtest = Backtest::factory()->create();
@@ -319,7 +382,7 @@ it('stores daily allocation and excluded dates without changing saved NAV or tra
     expect($snapshots[0]->market_cap_allocation)->toBeNull()
         ->and($snapshots[0]->market_cap_allocation_calculated_at)->not->toBeNull()
         ->and($snapshots[1]->market_cap_allocation)->toEqual([
-            'large_cap' => 80.0, 'mid_cap' => 0.0, 'small_cap' => 0.0, 'etf' => 0.0, 'cash' => 20.0,
+            'large_cap' => 80.0, 'mid_cap' => 0.0, 'small_cap' => 0.0, 'etf' => 0.0, 'unclassified' => 0.0, 'cash' => 20.0,
         ])
         ->and($snapshots[1]->market_cap_allocation_calculated_at)->not->toBeNull()
         ->and($snapshots->map(fn (BacktestDailySnapshot $snapshot): array => array_replace(

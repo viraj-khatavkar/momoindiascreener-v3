@@ -50,6 +50,9 @@
                 <span v-if="backtest.exit_on_be_series" class="rounded-md bg-gray-100 px-2 py-0.5 text-xs text-gray-700">
                     Exit on BE series
                 </span>
+                <span class="rounded-md bg-orange-50 px-2 py-0.5 text-xs text-orange-800">
+                    Assumed delisting · 100 trading days · Uses future data
+                </span>
                 <span v-if="backtest.start_date" class="rounded-md bg-gray-100 px-2 py-0.5 text-xs text-gray-700">
                     From {{ formatStartDate(backtest.start_date) }}
                 </span>

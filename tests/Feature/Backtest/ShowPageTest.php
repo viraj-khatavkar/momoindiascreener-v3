@@ -173,7 +173,7 @@ it('returns an empty completed trade log without scroll pages', function () {
         ->assertJsonPath('scrollProps.trades.nextPage', null);
 });
 
-it('classifies stop exits and replacement purchases separately', function (string $reason, string $category) {
+it('classifies forced exits and replacement purchases separately', function (string $reason, string $category) {
     $user = User::factory()->create(['is_paid' => true]);
     $backtest = Backtest::factory()->create(['user_id' => $user->id, 'status' => BacktestStatusEnum::Completed]);
     $backtest->trades()->create(tradeLogAttributes($backtest, ['reason' => $reason]));
@@ -187,6 +187,9 @@ it('classifies stop exits and replacement purchases separately', function (strin
     ['Stop loss confirmed', 'stop-loss'],
     ['Trailing stop loss confirmed', 'stop-loss'],
     ['Replacement after stop-loss exit', 'replacement'],
+    ['Assumed delisting - no valid price for 100 market trading days through 2024-06-01; exit at last traded close using future data', 'assumed-delisting'],
+    ['Replacement after assumed delisting', 'replacement'],
+    ['Replacement after assumed delisting - allocating to gold', 'gold-rotation'],
 ]);
 
 /**

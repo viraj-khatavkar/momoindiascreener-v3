@@ -2,7 +2,6 @@
 
 use App\Actions\Backtest\ApplyBacktestFiltersAction;
 use App\Actions\Backtest\CalculateBacktestMetricsAction;
-use App\Actions\Backtest\CalculateTransactionCostsAction;
 use App\Actions\Backtest\RunBacktestAction;
 use App\Enums\BacktestWeightageEnum;
 use App\Enums\CorporateActionTypeEnum;
@@ -141,7 +140,7 @@ function makeBacktest(User $user, array $overrides = []): Backtest
 
 function run(Backtest $bt): void
 {
-    $action = new RunBacktestAction(new ApplyBacktestFiltersAction, new CalculateTransactionCostsAction);
+    $action = app(RunBacktestAction::class);
     $action->execute($bt);
     app(CalculateBacktestMetricsAction::class)->execute($bt);
 }
@@ -252,7 +251,7 @@ it('reports simulation progress for fewer than fifty trading days', function () 
 
     $user = User::factory()->create(['is_paid' => true]);
     $backtest = makeBacktest($user, ['max_stocks_to_hold' => 1]);
-    $action = new RunBacktestAction(new ApplyBacktestFiltersAction, new CalculateTransactionCostsAction);
+    $action = app(RunBacktestAction::class);
 
     $action->execute($backtest);
 

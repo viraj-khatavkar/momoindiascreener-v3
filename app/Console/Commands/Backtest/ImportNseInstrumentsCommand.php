@@ -2,6 +2,7 @@
 
 namespace App\Console\Commands\Backtest;
 
+use App\Actions\Backtest\InvalidateAssumedDelistingsAction;
 use App\Models\BacktestNseInstrumentPrice;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\DB;
@@ -67,6 +68,10 @@ class ImportNseInstrumentsCommand extends Command
         }
 
         DB::transaction(function () use ($instruments, $omitCreate, $date): void {
+            if (! $omitCreate) {
+                app(InvalidateAssumedDelistingsAction::class)->execute($date);
+            }
+
             foreach ($instruments as $instrument) {
                 $backtestNseInstrumentPriceDoesntExist = BacktestNseInstrumentPrice::query()
                     ->where('symbol', $instrument['symbol'])

@@ -120,6 +120,10 @@
                     <Toggle v-model="form.exit_on_be_series" label="Exit on Move to BE Series" />
                     <p class="mt-1 text-xs text-gray-500">Sell a held stock the day its series changes to BE (trade-to-trade). The cash call rule controls the use of the proceeds. BE stocks are also skipped on entry while this is on.</p>
                 </div>
+                <div>
+                    <p class="text-sm font-medium text-gray-700">Assumed Delisting — 100 Trading Days</p>
+                    <p class="mt-1 text-xs text-gray-500">If a stock has no valid price for the next 100 market trading days, sell it at its last traded close. This rule uses future data and overrides DMA and circuit protection. Apply normal sale charges and the cash call rule for replacements. Fewer than 100 missing trading days do not trigger an exit.</p>
+                </div>
             </div>
         </div>
 
@@ -206,7 +210,7 @@
                     />
                 </div>
             </div>
-            <p v-if="dmaBasedCashCall" class="mt-4 text-xs text-gray-500">Cash call signals use the rebalance decision date. Trades follow the selected execution schedule. Replacement purchases after demerger or BE-series exits also follow the cash call rule.</p>
+            <p v-if="dmaBasedCashCall" class="mt-4 text-xs text-gray-500">Cash call signals use the rebalance decision date. Trades follow the selected execution schedule. Replacement purchases after demerger, BE-series, or assumed-delisting exits also follow the cash call rule.</p>
         </div>
 
         <!-- Transaction Costs -->

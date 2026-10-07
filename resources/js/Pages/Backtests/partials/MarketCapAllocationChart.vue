@@ -28,7 +28,7 @@
                 </p>
             </div>
 
-            <dl class="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
+            <dl class="grid grid-cols-2 gap-3 sm:grid-cols-3" :class="hasUnclassified ? 'xl:grid-cols-6' : 'lg:grid-cols-5'">
                 <div v-for="category in categories" :key="category.key" class="rounded-lg border border-gray-200 p-3">
                     <dt class="flex items-center gap-2 text-sm font-medium text-gray-600">
                         <span class="h-2.5 w-2.5 shrink-0 rounded-full" :style="{ backgroundColor: category.color }" />
@@ -53,7 +53,7 @@
                     ref="chartContainer"
                     class="h-[300px]"
                     role="img"
-                    aria-label="Stacked area chart of large cap, mid cap, small cap, ETF and cash allocation, from zero to 100 percent"
+                    aria-label="Stacked area chart of portfolio allocation, from zero to 100 percent"
                     @dblclick="resetView"
                 />
                 <label for="allocation-date" class="mt-4 flex flex-wrap items-center justify-between gap-2 text-xs text-gray-600">
@@ -78,8 +78,9 @@
             </div>
 
             <p class="text-xs leading-relaxed text-gray-500">
-                Stock groups use index membership on each date. Other stocks count as small caps. ETFs, including gold ETFs, are shown separately. If
-                a quote is missing, the last known price and group are used.
+                Stock groups use index membership on each date. Stocks outside these two indices count as small caps. ETFs, including gold ETFs,
+                are shown separately. If a quote is missing, the last known price and group are used.
+                <span v-if="hasUnclassified">Holdings without a known group are shown as Unclassified. Their value is included in the total.</span>
                 <span v-if="allocation.excluded_days > 0">{{ allocation.excluded_days }} dates without sufficient data are excluded.</span>
             </p>
         </div>
@@ -102,11 +103,12 @@ const props = defineProps<{ allocation: MarketCapAllocation }>();
 
 type CategoryKey = Exclude<keyof MarketCapAllocationPoint, 'date'>;
 
-const categories: { key: CategoryKey; label: string; description: string; color: string }[] = [
+const allCategories: { key: CategoryKey; label: string; description: string; color: string }[] = [
     { key: 'large_cap', label: 'Large cap', description: 'Nifty 100', color: '#3b82f6' },
     { key: 'mid_cap', label: 'Mid cap', description: 'Nifty Midcap 150', color: '#8b5cf6' },
     { key: 'small_cap', label: 'Small cap', description: 'All other stocks', color: '#14b8a6' },
     { key: 'etf', label: 'ETFs', description: 'Includes gold ETFs', color: '#f59e0b' },
+    { key: 'unclassified', label: 'Unclassified', description: 'Membership unavailable', color: '#f43f5e' },
     { key: 'cash', label: 'Cash', description: 'Uninvested balance', color: '#94a3b8' },
 ];
 
@@ -118,6 +120,8 @@ const ranges = [
 ];
 
 const points = computed(() => props.allocation.points);
+const hasUnclassified = computed(() => points.value.some((point) => point.unclassified > 0));
+const categories = computed(() => allCategories.filter((category) => category.key !== 'unclassified' || hasUnclassified.value));
 const pointIndices = computed(() => new Map(points.value.map((point, index) => [point.date, index])));
 const visibleRanges = computed(() => ranges.filter((range) => range.days < points.value.length || range.days === Infinity));
 const selectedRange = ref(Infinity);
@@ -141,7 +145,7 @@ function initChart(container: HTMLDivElement): void {
     });
 
     // Draw cumulative, opaque areas from the total down to the first category.
-    for (const category of [...categories].reverse()) {
+    for (const category of [...categories.value].reverse()) {
         series.set(
             category.key,
             chart.addSeries(AreaSeries, {
@@ -169,11 +173,11 @@ function initChart(container: HTMLDivElement): void {
 }
 
 function setData(): void {
-    for (const [index, category] of categories.entries()) {
+    for (const [index, category] of categories.value.entries()) {
         series.get(category.key)?.setData(
             points.value.map((point) => ({
                 time: point.date as Time,
-                value: categories.slice(0, index + 1).reduce((total, item) => total + point[item.key], 0),
+                value: categories.value.slice(0, index + 1).reduce((total, item) => total + point[item.key], 0),
             })),
         );
     }
@@ -215,6 +219,11 @@ watch(chartContainer, (container) => {
 watch(points, () => {
     selectedIndex.value = Math.max(0, points.value.length - 1);
     if (chart) {
+        if (series.size !== categories.value.length && chartContainer.value) {
+            destroyChart();
+            initChart(chartContainer.value);
+            return;
+        }
         setData();
         applyRange();
     }

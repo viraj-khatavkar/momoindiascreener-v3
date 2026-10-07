@@ -20,6 +20,8 @@ it('shows market cap and adjusted PE imports before marking ETFs', function () {
         ->assertSee('14. Import market cap')
         ->assertSee('15. Import price to earnings')
         ->assertSee('16. Mark ETFs')
+        ->assertSee('22. Update assumed delistings')
+        ->assertSee('php artisan backtest:update-assumed-delistings --date=2024-03-01')
         ->assertSee('save values in crores')
         ->assertSee('Import ADJUSTED P/E values')
         ->assertSee('php artisan backtest:import-marketcap --date=2024-03-01')

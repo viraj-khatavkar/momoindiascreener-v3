@@ -2,6 +2,7 @@
 
 namespace App\Console\Commands\Backtest;
 
+use App\Actions\Backtest\InvalidateAssumedDelistingsAction;
 use App\Models\BacktestNseCorporateAction;
 use App\Models\BacktestNseInstrumentPrice;
 use Illuminate\Console\Command;
@@ -65,15 +66,21 @@ class AdjustCorporateActionCommand extends Command
 
             $factor = (float) $corporateAction->price_adjustment_factor;
 
-            BacktestNseInstrumentPrice::query()
-                ->where('symbol', $corporateAction->symbol)
-                ->where('date', '<', $corporateAction->date)
-                ->update(collect(self::ADJUSTED_COLUMNS)->mapWithKeys(
-                    fn (string $column) => [$column => DB::raw("{$column} / {$factor}")]
-                )->all());
+            DB::transaction(function () use ($corporateAction, $factor): void {
+                app(InvalidateAssumedDelistingsAction::class)->executeForPriceAdjustment(
+                    $corporateAction->symbol, $corporateAction->date->toDateString(), $factor, divide: true,
+                );
 
-            $corporateAction->price_adjustment_applied_at = now();
-            $corporateAction->save();
+                BacktestNseInstrumentPrice::query()
+                    ->where('symbol', $corporateAction->symbol)
+                    ->where('date', '<', $corporateAction->date)
+                    ->update(collect(self::ADJUSTED_COLUMNS)->mapWithKeys(
+                        fn (string $column) => [$column => DB::raw("{$column} / {$factor}")]
+                    )->all());
+
+                $corporateAction->price_adjustment_applied_at = now();
+                $corporateAction->save();
+            });
         }
     }
 }

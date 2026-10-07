@@ -71,3 +71,40 @@ it('explains when the backtest has no market cap coverage', function () {
         ->assertMissing('#allocation-date')
         ->assertNoJavaScriptErrors();
 });
+
+it('shows the available part of a longer backtest with unclassified holdings', function (int $width, int $height) {
+    $user = User::factory()->create(['is_paid' => true]);
+    $backtest = Backtest::factory()->create(['user_id' => $user->id, 'status' => BacktestStatusEnum::Completed]);
+    $backtest->summaryMetrics()->create([
+        'cagr' => 0, 'max_drawdown' => 0, 'total_trades' => 2, 'total_charges_paid' => 0,
+        'final_value' => 1000, 'rolling_returns_one_year' => [], 'rolling_returns_three_year' => [],
+        'rolling_returns_five_year' => [], 'stock_performance' => null,
+    ]);
+    foreach (['2011-03-01', '2017-07-31', '2017-08-01'] as $index => $date) {
+        $backtest->dailySnapshots()->create([
+            'date' => $date, 'nav' => 100, 'portfolio_value' => 800, 'cash' => 200,
+            'total_value' => 1000, 'holdings_count' => 2,
+            'market_cap_allocation' => $index === 0 ? null : [
+                'large_cap' => 50, 'mid_cap' => $index === 2 ? 30 : 0,
+                'small_cap' => 0, 'etf' => 0, 'unclassified' => $index === 1 ? 30 : 0, 'cash' => 20,
+            ],
+            'market_cap_allocation_calculated_at' => now(),
+        ]);
+    }
+    loginAs($user->email);
+
+    $page = visit('/backtests/'.$backtest->id)
+        ->resize($width, $height)
+        ->press('Market caps')
+        ->assertSeeIn('#bt-market-cap', 'Data from 31 Jul 2017')
+        ->assertSeeIn('#bt-market-cap', '1 dates without sufficient data are excluded.')
+        ->assertSeeIn('#bt-market-cap dl > div:has-text("Unclassified")', '0.0%')
+        ->assertVisible('#bt-market-cap canvas >> nth=0')
+        ->keys('#allocation-date', 'Home')
+        ->assertSeeIn('#bt-market-cap', 'Selected: 31 Jul 2017')
+        ->assertSeeIn('#bt-market-cap dl > div:has-text("Unclassified")', '30.0%')
+        ->assertSeeIn('#bt-market-cap', 'Their value is included in the total.')
+        ->assertNoJavaScriptErrors();
+
+    expect($page->script('document.querySelector("#bt-market-cap").scrollWidth <= document.querySelector("#bt-market-cap").clientWidth'))->toBeTrue();
+})->with([[1440, 1000], [390, 844]]);

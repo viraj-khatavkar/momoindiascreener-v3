@@ -2,6 +2,7 @@
 
 namespace App\Console\Commands\Backtest;
 
+use App\Actions\Backtest\InvalidateAssumedDelistingsAction;
 use App\Models\BacktestNseCorporateAction;
 use App\Models\BacktestNseInstrumentPrice;
 use Illuminate\Console\Command;
@@ -65,15 +66,21 @@ class AdjustDividendActionCommand extends Command
 
             $factor = (float) $dividendAction->dividend_adjustment_factor;
 
-            BacktestNseInstrumentPrice::query()
-                ->where('symbol', $dividendAction->symbol)
-                ->where('date', '<', $dividendAction->date)
-                ->update(collect(self::ADJUSTED_COLUMNS)->mapWithKeys(
-                    fn (string $column) => [$column => DB::raw("{$column} * {$factor}")]
-                )->all());
+            DB::transaction(function () use ($dividendAction, $factor): void {
+                app(InvalidateAssumedDelistingsAction::class)->executeForPriceAdjustment(
+                    $dividendAction->symbol, $dividendAction->date->toDateString(), $factor, divide: false,
+                );
 
-            $dividendAction->dividend_adjustment_applied_at = now();
-            $dividendAction->save();
+                BacktestNseInstrumentPrice::query()
+                    ->where('symbol', $dividendAction->symbol)
+                    ->where('date', '<', $dividendAction->date)
+                    ->update(collect(self::ADJUSTED_COLUMNS)->mapWithKeys(
+                        fn (string $column) => [$column => DB::raw("{$column} * {$factor}")]
+                    )->all());
+
+                $dividendAction->dividend_adjustment_applied_at = now();
+                $dividendAction->save();
+            });
         }
     }
 }

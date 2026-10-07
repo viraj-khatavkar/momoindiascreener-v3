@@ -2,6 +2,7 @@
 
 namespace App\Console\Commands\Backtest;
 
+use App\Actions\Backtest\InvalidateAssumedDelistingsAction;
 use App\Models\BacktestNseCorporateAction;
 use App\Models\BacktestNseIndexConstituent;
 use App\Models\BacktestNseInstrument;
@@ -47,6 +48,8 @@ class ChangeSymbolCommand extends Command
         }
 
         [$priceRowsUpdated, $corporateActionRowsUpdated, $constituentRowsUpdated, $instrumentRowsUpdated] = DB::transaction(function () use ($oldSymbol, $newSymbol): array {
+            app(InvalidateAssumedDelistingsAction::class)->execute();
+
             $priceRowsUpdated = BacktestNseInstrumentPrice::query()
                 ->where('symbol', $oldSymbol)
                 ->update(['symbol' => $newSymbol]);

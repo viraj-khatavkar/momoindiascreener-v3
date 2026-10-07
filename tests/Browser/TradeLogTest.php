@@ -19,7 +19,9 @@ it('loads the next trade page on scroll and searches trades outside loaded pages
         $trades[] = [
             'backtest_id' => $backtest->id, 'symbol' => $index === 0 ? 'EARLYONLY' : 'STOCK'.$index,
             'name' => 'Company '.$index, 'trade_type' => $index % 2 === 0 ? 'buy' : 'sell',
-            'reason' => $index % 2 === 0 ? 'New entry' : 'Rank exceeded exit threshold',
+            'reason' => $index === 1
+                ? 'Assumed delisting - no valid price for 100 market trading days through 2020-04-20; exit at last traded close using future data'
+                : ($index % 2 === 0 ? 'New entry' : 'Rank exceeded exit threshold'),
             'date' => Carbon::parse('2019-12-01')->addDays($index)->toDateString(),
             'quantity' => 1, 'price' => 100, 'raw_price' => 100, 'gross_amount' => 100,
             'brokerage' => 0, 'stt' => 0, 'transaction_charges' => 0, 'sebi_charges' => 0,
@@ -55,4 +57,11 @@ it('loads the next trade page on scroll and searches trades outside loaded pages
         ->assertNoJavaScriptErrors();
 
     expect($page->script('document.querySelector("#bt-trades [id^=tl-]").id'))->toBe('tl-2019-12-01');
+
+    $page->press('#bt-trades button[aria-pressed]:has-text("Assumed delisting")')
+        ->assertSee('Loaded 1 of 1 matching trades.')
+        ->press('#bt-trades button:has-text("Expand loaded")')
+        ->assertSeeIn('#bt-trades', 'STOCK1')
+        ->assertSeeIn('#bt-trades', 'using future data')
+        ->assertNoJavaScriptErrors();
 })->with([[1440, 1000], [390, 844]]);

@@ -353,6 +353,7 @@ const reasonCategories: ReasonCategory[] = [
     { key: 'rebalance', label: 'Rebalance', chipClass: 'bg-sky-100 text-sky-700' },
     { key: 'filter-exit', label: 'Filter exit', chipClass: 'bg-rose-100 text-rose-700' },
     { key: 'stop-loss', label: 'Stop loss', chipClass: 'bg-red-100 text-red-700' },
+    { key: 'assumed-delisting', label: 'Assumed delisting', chipClass: 'bg-orange-100 text-orange-800' },
 ];
 
 function categorizeReason(key: string): ReasonCategory {

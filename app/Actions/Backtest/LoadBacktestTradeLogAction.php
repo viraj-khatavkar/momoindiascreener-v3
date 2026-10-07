@@ -11,12 +11,13 @@ class LoadBacktestTradeLogAction
 {
     public const REASON_CATEGORIES = [
         'rank-exit', 'cash-call', 'demerger', 'be-exit', 'gold-rotation',
-        'new-entry', 'replacement', 'rebalance', 'filter-exit', 'stop-loss',
+        'new-entry', 'replacement', 'rebalance', 'filter-exit', 'stop-loss', 'assumed-delisting',
     ];
 
     /** Gold rotation takes priority over the rank or filter reason in its prefix. */
     private const REASON_CATEGORY_SQL = <<<'SQL'
         CASE
+            WHEN reason LIKE 'Assumed delisting%' THEN 'assumed-delisting'
             WHEN LOWER(reason) LIKE '%gold%' OR reason LIKE 'Index recovered%' THEN 'gold-rotation'
             WHEN reason LIKE 'Rank exceeded%' THEN 'rank-exit'
             WHEN reason LIKE '%Cash call%' THEN 'cash-call'

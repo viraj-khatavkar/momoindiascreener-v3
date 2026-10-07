@@ -63,6 +63,9 @@ class RunBacktestAction
     /** @var array<string, array<string, string>> Corporate-action ex-dates keyed by exit date and symbol. */
     private array $demergerExDatesByExitDate = [];
 
+    /** @var array<string, array<string, string>> Future confirmation dates keyed by assumed-delisting exit date and symbol. */
+    private array $assumedDelistingExitDates = [];
+
     private float $dailyCashReturnRate = 0;
 
     private int $dmaPeriod = 50;
@@ -70,6 +73,7 @@ class RunBacktestAction
     public function __construct(
         private ApplyBacktestFiltersAction $filtersAction,
         private CalculateTransactionCostsAction $costsAction,
+        private FindAssumedDelistingExitsAction $findAssumedDelistingExits,
     ) {}
 
     public function execute(Backtest $backtest): void
@@ -90,6 +94,7 @@ class RunBacktestAction
         $this->tradeBatch = [];
         $this->circuitSymbols = [];
         $this->demergerExDatesByExitDate = [];
+        $this->assumedDelistingExitDates = [];
 
         $annualRate = (float) $backtest->cash_return_rate;
         $this->dailyCashReturnRate = pow(1 + $annualRate / 100, 1.0 / 252) - 1;
@@ -102,6 +107,8 @@ class RunBacktestAction
         }
 
         $backtest->update(['progress' => 2]);
+
+        $this->assumedDelistingExitDates = $this->findAssumedDelistingExits->execute($backtest, $tradingDates);
 
         $this->dmaPeriod = (int) $backtest->cash_call_dma_period;
         if ($backtest->cash_call->usesIndexDma()) {
@@ -145,7 +152,8 @@ class RunBacktestAction
             $stopLossExits = $this->handleStopLossExits($backtest, $date, $previousTradingDate, $dailyPrices);
             $demergerExitSymbols = $this->handleDemergerExits($backtest, $date, $isRebalanceDate, $stopLossExits['symbols']);
             $beExitSymbols = $this->handleBeSeriesExits($backtest, $date, $isRebalanceDate, [...$stopLossExits['symbols'], ...$demergerExitSymbols]);
-            $blockedBuySymbols = [...$stopLossExits['symbols'], ...$demergerExitSymbols, ...$beExitSymbols];
+            $assumedDelistingExitSymbols = $this->handleAssumedDelistingExits($backtest, $date, $isRebalanceDate, [...$stopLossExits['symbols'], ...$demergerExitSymbols, ...$beExitSymbols]);
+            $blockedBuySymbols = [...$stopLossExits['symbols'], ...$demergerExitSymbols, ...$beExitSymbols, ...$assumedDelistingExitSymbols];
 
             // Step B: Rebalance (if applicable)
             // rebalanceDates[executionDate] = decisionDate (filter date)
@@ -155,7 +163,7 @@ class RunBacktestAction
                 $filterDate = $this->rebalanceDates[$dateStr];
                 $this->rebalance($backtest, $date, $filterDate, $blockedBuySymbols);
             } elseif ($backtest->stop_loss_proceeds === BacktestStopLossProceedsEnum::ReplaceImmediately && $stopLossExits['symbols'] !== []) {
-                $this->buyReplacements($backtest, $date, $stopLossExits['symbols'], $stopLossExits['proceeds'], 'Replacement after stop-loss exit', [...$demergerExitSymbols, ...$beExitSymbols]);
+                $this->buyReplacements($backtest, $date, $stopLossExits['symbols'], $stopLossExits['proceeds'], 'Replacement after stop-loss exit', [...$demergerExitSymbols, ...$beExitSymbols, ...$assumedDelistingExitSymbols]);
             }
 
             $this->recordStopLossSignals($backtest, $dateStr, $dailyPrices);
@@ -209,12 +217,17 @@ class RunBacktestAction
         $dates = BacktestNseInstrumentPrice::query()
             ->where($backtest->index->isIndexFieldName(), true)
             ->where('date', '>=', $backtest->start_date?->toDateString() ?? self::DEFAULT_START_DATE)
-            ->select('date')->distinct()->limit(2)->pluck('date');
+            ->select('date')->distinct()->orderByDesc('date')
+            ->limit(FindAssumedDelistingExitsAction::MISSING_TRADING_DAYS + 1)->toBase()->pluck('date');
 
         if ($dates->count() < 2) {
             throw ValidationException::withMessages([
                 'start_date' => 'Insufficient trading data. At least two trading dates are required from the selected start date.',
             ]);
+        }
+
+        if ($dates->count() > FindAssumedDelistingExitsAction::MISSING_TRADING_DAYS) {
+            $this->findAssumedDelistingExits->assertReadyThrough($dates->first());
         }
     }
 
@@ -490,6 +503,7 @@ class RunBacktestAction
             ->filter(fn (BacktestNseInstrumentPrice $stock): bool => ! isset($this->circuitSymbols[$stock->symbol]))
             ->filter(fn (BacktestNseInstrumentPrice $stock): bool => ! $this->isBeSeriesEntryBlocked($backtest, $stock))
             ->filter(fn (BacktestNseInstrumentPrice $stock): bool => ! $this->isDemergerEntryBlocked($stock->symbol, $executionDateStr))
+            ->filter(fn (BacktestNseInstrumentPrice $stock): bool => ! $this->isAssumedDelistingEntryBlocked($stock->symbol, $executionDateStr))
             ->filter(fn (BacktestNseInstrumentPrice $stock): bool => $this->hasWeightingData($backtest, $stock));
 
         if ($cashCall === BacktestCashCallEnum::NoCashCall && $eligibleStocks->isEmpty()) {
@@ -594,6 +608,36 @@ class RunBacktestAction
 
         if (! $isRebalanceDate) {
             $this->buyReplacements($backtest, $date, $exitedSymbols, $this->cash - $cashBeforeExits, 'Replacement after demerger exit', $sameDayExitedSymbols);
+        }
+
+        return $exitedSymbols;
+    }
+
+    /**
+     * @param  list<string>  $sameDayExitedSymbols
+     * @return list<string>
+     */
+    private function handleAssumedDelistingExits(Backtest $backtest, Carbon $date, bool $isRebalanceDate, array $sameDayExitedSymbols): array
+    {
+        $cashBeforeExits = $this->cash;
+        $exitedSymbols = [];
+
+        foreach ($this->assumedDelistingExitDates[$date->toDateString()] ?? [] as $symbol => $confirmationDate) {
+            if (! isset($this->holdings[$symbol])) {
+                continue;
+            }
+
+            $reason = 'Assumed delisting - no valid price for '.FindAssumedDelistingExitsAction::MISSING_TRADING_DAYS
+                .' market trading days through '.$confirmationDate.'; exit at last traded close using future data';
+            $this->executeSell($backtest, $date, $symbol, $this->holdings[$symbol]['quantity'], $reason, force: true);
+
+            if (! isset($this->holdings[$symbol])) {
+                $exitedSymbols[] = $symbol;
+            }
+        }
+
+        if (! $isRebalanceDate && $exitedSymbols !== []) {
+            $this->buyReplacements($backtest, $date, $exitedSymbols, $this->cash - $cashBeforeExits, 'Replacement after assumed delisting', $sameDayExitedSymbols);
         }
 
         return $exitedSymbols;
@@ -801,6 +845,7 @@ class RunBacktestAction
                 ->filter(fn ($stock) => ! isset($this->circuitSymbols[$stock->symbol]))
                 ->filter(fn ($stock) => ! $this->isBeSeriesEntryBlocked($backtest, $stock))
                 ->filter(fn ($stock) => ! $this->isDemergerEntryBlocked($stock->symbol, $dateStr))
+                ->filter(fn ($stock) => ! $this->isAssumedDelistingEntryBlocked($stock->symbol, $dateStr))
                 ->filter(fn (BacktestNseInstrumentPrice $stock): bool => $this->hasWeightingData($backtest, $stock))
                 ->take($replacementCount);
 
@@ -857,6 +902,11 @@ class RunBacktestAction
     private function isDemergerEntryBlocked(string $symbol, string $executionDate): bool
     {
         return isset($this->demergerExDatesByExitDate[$executionDate][$symbol]);
+    }
+
+    private function isAssumedDelistingEntryBlocked(string $symbol, string $executionDate): bool
+    {
+        return isset($this->assumedDelistingExitDates[$executionDate][$symbol]);
     }
 
     private function hasWeightingData(Backtest $backtest, BacktestNseInstrumentPrice $stock): bool
@@ -1378,6 +1428,10 @@ class RunBacktestAction
     private function executeBuy(Backtest $backtest, Carbon $date, $stock, float $budget, string $reason): void
     {
         if ($budget <= 0 || $this->cash <= 0) {
+            return;
+        }
+
+        if ($this->isAssumedDelistingEntryBlocked($stock->symbol, $date->toDateString())) {
             return;
         }
 

@@ -7,7 +7,7 @@ use App\Models\Backtest;
 class LoadMarketCapAllocationAction
 {
     /**
-     * @return array{start_date: ?string, excluded_days: int, points: list<array{date: string, large_cap: float, mid_cap: float, small_cap: float, etf: float, cash: float}>}
+     * @return array{start_date: ?string, excluded_days: int, points: list<array{date: string, large_cap: float, mid_cap: float, small_cap: float, etf: float, unclassified: float, cash: float}>}
      */
     public function execute(Backtest $backtest): array
     {
@@ -30,6 +30,7 @@ class LoadMarketCapAllocationAction
                 'mid_cap' => (float) $allocation['mid_cap'],
                 'small_cap' => (float) $allocation['small_cap'],
                 'etf' => (float) $allocation['etf'],
+                'unclassified' => (float) ($allocation['unclassified'] ?? 0),
                 'cash' => (float) $allocation['cash'],
             ];
         }

@@ -10,7 +10,7 @@ use stdClass;
 class CalculateMarketCapAllocationAction
 {
     /**
-     * @return array{start_date: ?string, excluded_days: int, points: list<array{date: string, large_cap: float, mid_cap: float, small_cap: float, etf: float, cash: float}>}
+     * @return array{start_date: ?string, excluded_days: int, points: list<array{date: string, large_cap: float, mid_cap: float, small_cap: float, etf: float, unclassified: float, cash: float}>}
      */
     public function execute(Backtest $backtest): array
     {
@@ -38,7 +38,6 @@ class CalculateMarketCapAllocationAction
             return $result;
         }
 
-        $firstCoveredDate = $coveredDates->keys()->min();
         $holdings = [];
 
         foreach ($snapshots->chunk(21) as $chunk) {
@@ -47,12 +46,13 @@ class CalculateMarketCapAllocationAction
                 ->orderBy('date')->orderBy('id')
                 ->toBase()->get(['date', 'symbol', 'trade_type', 'quantity', 'price'])->groupBy('date');
             $symbols = array_unique([...array_keys($holdings), ...$chunkTrades->flatten(1)->pluck('symbol')->all()]);
-            $dates = $chunk->pluck('date')->filter(fn (string $date): bool => $date >= $firstCoveredDate)->values()->all();
+            /** Keep pre-coverage prices so suspended holdings retain their last known value when coverage starts. */
+            $dates = $chunk->pluck('date')->all();
             $pricesByDate = $this->loadPrices($symbols, $dates);
 
             foreach ($chunk as $snapshot) {
                 foreach ($chunkTrades->get($snapshot->date, []) as $trade) {
-                    $holding = $holdings[$trade->symbol] ?? ['quantity' => 0, 'price' => 0.0, 'category' => null];
+                    $holding = $holdings[$trade->symbol] ?? ['quantity' => 0, 'price' => 0.0, 'category' => $trade->symbol === 'GOLDBEES' ? 'etf' : null];
                     $holding['quantity'] += $trade->trade_type === 'buy' ? (int) $trade->quantity : -(int) $trade->quantity;
 
                     if ($holding['quantity'] <= 0) {
@@ -76,23 +76,23 @@ class CalculateMarketCapAllocationAction
                             $holding['price'] = (float) $price->close_adjusted;
                         }
 
-                        if ($hasCoverage) {
+                        if ($hasCoverage || (bool) $price->is_etf || $symbol === 'GOLDBEES') {
                             $holding['category'] = $this->category($price);
                         }
                     }
                 }
                 unset($holding);
 
-                if (! $hasCoverage || (float) $snapshot->total_value <= 0 || collect($holdings)->contains(fn (array $holding): bool => $holding['category'] === null)) {
+                if (! $hasCoverage || (float) $snapshot->total_value <= 0) {
                     $result['excluded_days']++;
 
                     continue;
                 }
 
-                $values = ['large_cap' => 0.0, 'mid_cap' => 0.0, 'small_cap' => 0.0, 'etf' => 0.0, 'cash' => (float) $snapshot->cash];
+                $values = ['large_cap' => 0.0, 'mid_cap' => 0.0, 'small_cap' => 0.0, 'etf' => 0.0, 'unclassified' => 0.0, 'cash' => (float) $snapshot->cash];
 
                 foreach ($holdings as $holding) {
-                    $values[$holding['category']] += $holding['quantity'] * $holding['price'];
+                    $values[$holding['category'] ?? 'unclassified'] += $holding['quantity'] * $holding['price'];
                 }
 
                 $investedValue = array_sum($values) - $values['cash'];

@@ -70,3 +70,15 @@ Weekly and monthly holiday fallback to the last available trading day requires l
 
 ## Reject insufficient backtest data before clearing results
 A full user run needs at least two distinct selected-universe trading dates from its start date. Validate before deleting saved results or queueing the job; repeat validation inside the job. Metrics must throw for fewer than two snapshots or no elapsed date span, so incomplete runs cannot be marked completed. Show the start_date validation error for both run and retry requests.
+
+## Show partial market cap allocation with unclassified holdings
+Start allocation at the first saved date with both Nifty 100 and Midcap 150 membership coverage. Missing membership for one retained holding must not exclude the entire date: include its value as unclassified. Carry valid historical prices in bounded batches, including dates before common coverage. Do not infer a missing group from future quotes. Keep known ETFs separate, and default unclassified to zero when reading older saved allocation JSON. Allocation refresh must preserve trades, NAV and summary metrics.
+
+## Assume delisting after 100 missing market trading days
+The user requires a last-quoted-close exit after 100 consecutive market trading dates without a positive adjusted quote. This deliberately uses future data; label sales Assumed delisting and include the confirmation date. Use the simulation calendar and quotes outside index membership. Override DMA and circuits, charge normal costs, and follow forced-exit replacement and cash rules. Block same-day entries before rank limits; permit entry after quotes resume. Shorter gaps do not qualify. Keep price queries bounded and completed results unchanged until rerun.
+
+## Share precomputed trading gaps across backtests
+Store shared gaps in backtest_nse_trading_gaps, never per backtest. Keep one open gap per symbol plus confirmed historical gaps; track processed_through and requires_rebuild in the singleton state table. Run backtest:update-assumed-delistings after daily processing: scan once initially, then combine new quotes with saved open gaps. Rebuild after historical price or symbol changes. Publish records and state atomically. Backtests only read saved events and confirm 100 dates against their simulation calendar; reject stale data before clearing results. Preserve completed backtests until rerun.
+
+## Keep daily gap updates incremental after price adjustments
+Read new quotes once in small date windows using bnip_date_symbol_unique; carry last quote dates from saved open gaps. Full rebuilds use the same bounded scan. Gap detection depends on positive adjusted quotes, not their amounts: dividend and corporate-action adjustments invalidate gaps only if a processed positive quote rounds to zero. Check the stored decimal precision and save invalidation with the price change in one transaction. Historical date imports, symbol changes, and manual corrections still require rebuilding. Preserve the 100-market-day rule and show command progress.

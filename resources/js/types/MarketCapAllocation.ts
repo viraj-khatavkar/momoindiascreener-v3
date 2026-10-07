@@ -4,6 +4,7 @@ export interface MarketCapAllocationPoint {
     mid_cap: number;
     small_cap: number;
     etf: number;
+    unclassified: number;
     cash: number;
 }
 

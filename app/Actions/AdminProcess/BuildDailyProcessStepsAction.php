@@ -165,6 +165,13 @@ class BuildDailyProcessStepsAction
                 command: 'backtest:copy-instruments',
                 arguments: ["--date={$date}"],
             ),
+            $this->step(
+                key: 'update-assumed-delistings',
+                name: 'Update assumed delistings',
+                description: 'Update shared 100-trading-day gaps after all price data is complete. Backtests reuse these records.',
+                command: 'backtest:update-assumed-delistings',
+                arguments: ["--date={$date}"],
+            ),
         ];
     }
 
