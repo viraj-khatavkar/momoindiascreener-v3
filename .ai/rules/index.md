@@ -6,5 +6,5 @@ Before planning or editing, find the row whose globs match the file's path and r
 | --- | --- |
 | app/Actions/AdminProcess/** | .ai/rules/admin-process.md |
 | app/Actions/Backtest/** | .ai/rules/backtest.md |
-| app/Console/Commands/Backtest/ImportNseInstrumentsCommand.php | .ai/rules/commands-backtest.md |
+| app/Console/Commands/Backtest/ImportNseInstrumentsCommand.php, app/Console/Commands/Backtest/*ConstituentsCommand.php | .ai/rules/commands-backtest.md |
 | app/Http/Controllers/BacktestsController.php | .ai/rules/controllers.md |

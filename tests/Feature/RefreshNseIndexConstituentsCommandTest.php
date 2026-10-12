@@ -15,7 +15,8 @@ it('rebuilds the constituents table from the date flags, including the new indic
     createBacktestPriceRow('SMALLB', $date, ['is_nifty_smallcap_250' => true]);
     createBacktestPriceRow('MIDA', $date, ['is_nifty_midcap_150' => true]);
     createBacktestPriceRow('TWOHUNDRED', $date, ['is_nifty_200' => true]);
-    createBacktestPriceRow('BIG', $date, ['is_nifty_50' => true]);
+    createBacktestPriceRow('BIG', $date, ['is_nifty_50' => true, 'is_nifty_total_market' => true]);
+    createBacktestPriceRow('MICRO', $date, ['is_nifty_microcap_250' => true, 'is_nifty_total_market' => true]);
     createBacktestPriceRow('NOINDEX', $date); // flagged for nothing -> excluded
 
     $this->artisan('backtest:refresh-nse-index-constituents', ['--date' => $date])->assertSuccessful();
@@ -25,6 +26,8 @@ it('rebuilds the constituents table from the date flags, including the new indic
         ->and(BacktestNseIndexConstituent::where('index', 'nifty_midcap_150')->pluck('symbol')->all())->toBe(['MIDA'])
         ->and(BacktestNseIndexConstituent::where('index', 'nifty_200')->pluck('symbol')->all())->toBe(['TWOHUNDRED'])
         ->and(BacktestNseIndexConstituent::where('index', 'nifty_50')->pluck('symbol')->all())->toBe(['BIG'])
+        ->and(BacktestNseIndexConstituent::where('index', 'nifty_microcap_250')->pluck('symbol')->all())->toBe(['MICRO'])
+        ->and(BacktestNseIndexConstituent::where('index', 'nifty_total_market')->orderBy('symbol')->pluck('symbol')->all())->toBe(['BIG', 'MICRO'])
         ->and(BacktestNseIndexConstituent::where('symbol', 'NOINDEX')->count())->toBe(0);
 });
 

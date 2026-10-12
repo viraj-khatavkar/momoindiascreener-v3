@@ -2,7 +2,6 @@
 
 namespace App\Console\Commands\Backtest;
 
-use App\Actions\ReadCsvAction;
 use App\Models\BacktestNseIndexConstituent;
 use App\Models\BacktestNseInstrumentPrice;
 use Illuminate\Console\Command;
@@ -26,7 +25,7 @@ class ImportConstituentsCommand extends Command
     /**
      * Execute the console command.
      */
-    public function handle()
+    public function handle(): int
     {
         $this->info('Importing constituents from NSE file...');
         $date = $this->option('date');
@@ -86,11 +85,18 @@ class ImportConstituentsCommand extends Command
             'nifty 500: '.BacktestNseInstrumentPrice::where('is_nifty_500', true)->where('date', $date)->count()
         );
         $this->info(
+            'nifty total market: '.BacktestNseInstrumentPrice::where('is_nifty_total_market', true)->where('date', $date)->count()
+        );
+        $this->info(
             'nifty midcap 150: '.BacktestNseInstrumentPrice::where('is_nifty_midcap_150', true)->where('date', $date)
                 ->count()
         );
         $this->info(
             'nifty smallcap 250: '.BacktestNseInstrumentPrice::where('is_nifty_smallcap_250', true)->where('date', $date)
+                ->count()
+        );
+        $this->info(
+            'nifty microcap 250: '.BacktestNseInstrumentPrice::where('is_nifty_microcap_250', true)->where('date', $date)
                 ->count()
         );
         $this->info(
@@ -101,11 +107,12 @@ class ImportConstituentsCommand extends Command
             'nifty midsmallcap 400: '.BacktestNseInstrumentPrice::where('is_nifty_midsmallcap_400', true)->where('date', $date)
                 ->count()
         );
+
+        return Command::SUCCESS;
     }
 
     protected function fetchConstituents(): array
     {
-        /** @var ReadCsvAction $readCsvAction */
         $backtestNseIndexConstituents = BacktestNseIndexConstituent::all();
 
         return [
@@ -116,7 +123,9 @@ class ImportConstituentsCommand extends Command
             'nifty_midcap_100' => $backtestNseIndexConstituents->filter(fn ($backtestNseIndexConstituent) => $backtestNseIndexConstituent->index === 'nifty_midcap_100')->toArray(),
             'nifty_midcap_150' => $backtestNseIndexConstituents->filter(fn ($backtestNseIndexConstituent) => $backtestNseIndexConstituent->index === 'nifty_midcap_150')->toArray(),
             'nifty_500' => $backtestNseIndexConstituents->filter(fn ($backtestNseIndexConstituent) => $backtestNseIndexConstituent->index === 'nifty_500')->toArray(),
+            'nifty_total_market' => $backtestNseIndexConstituents->filter(fn ($backtestNseIndexConstituent) => $backtestNseIndexConstituent->index === 'nifty_total_market')->toArray(),
             'nifty_smallcap_250' => $backtestNseIndexConstituents->filter(fn ($backtestNseIndexConstituent) => $backtestNseIndexConstituent->index === 'nifty_smallcap_250')->toArray(),
+            'nifty_microcap_250' => $backtestNseIndexConstituents->filter(fn ($backtestNseIndexConstituent) => $backtestNseIndexConstituent->index === 'nifty_microcap_250')->toArray(),
             'nifty_largemidcap_250' => $backtestNseIndexConstituents->filter(fn ($backtestNseIndexConstituent) => $backtestNseIndexConstituent->index === 'nifty_largemidcap_250')->toArray(),
             'nifty_midsmallcap_400' => $backtestNseIndexConstituents->filter(fn ($backtestNseIndexConstituent) => $backtestNseIndexConstituent->index === 'nifty_midsmallcap_400')->toArray(),
         ];

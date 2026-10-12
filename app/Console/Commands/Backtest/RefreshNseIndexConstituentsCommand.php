@@ -27,7 +27,7 @@ class RefreshNseIndexConstituentsCommand extends Command
     /**
      * Execute the console command.
      */
-    public function handle()
+    public function handle(): int
     {
         $this->info('Refreshing index constituents');
 
@@ -49,7 +49,9 @@ class RefreshNseIndexConstituentsCommand extends Command
             'nifty_midcap_100',
             'nifty_midcap_150',
             'nifty_500',
+            'nifty_total_market',
             'nifty_smallcap_250',
+            'nifty_microcap_250',
             'nifty_largemidcap_250',
             'nifty_midsmallcap_400',
         ];
@@ -72,5 +74,7 @@ class RefreshNseIndexConstituentsCommand extends Command
         foreach ($indices as $index) {
             $this->info($index.': '.BacktestNseIndexConstituent::where('index', $index)->count());
         }
+
+        return Command::SUCCESS;
     }
 }
