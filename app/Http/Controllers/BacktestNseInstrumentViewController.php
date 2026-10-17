@@ -31,7 +31,10 @@ class BacktestNseInstrumentViewController extends Controller
             'priceHistory' => Inertia::defer(fn () => BacktestNseInstrumentPrice::query()
                 ->where('symbol', $symbol)
                 ->whereNotIn('date', $unfinishedProcessDates)
-                ->select('date', 'open_adjusted', 'high_adjusted', 'low_adjusted', 'close_adjusted', 'volume_adjusted')
+                ->select(
+                    'date', 'open_adjusted', 'high_adjusted', 'low_adjusted', 'close_adjusted', 'volume_adjusted',
+                    'absolute_return_one_year', 'price_to_earnings', 'marketcap', 'rsi_one_year',
+                )
                 ->orderBy('date', 'asc')
                 ->get()
                 ->toArray(), 'chart'),

@@ -3,20 +3,7 @@
         <!-- Chart Controls -->
         <div class="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
             <!-- Time Range Buttons -->
-            <div class="flex flex-wrap gap-1 rounded-lg bg-gray-100 p-1">
-                <button
-                    v-for="range in timeRanges"
-                    :key="range.key"
-                    type="button"
-                    :aria-pressed="selectedTimeRange === range.key"
-                    :aria-label="`Show ${range.description}`"
-                    class="min-h-10 cursor-pointer rounded-md px-3 text-sm font-medium focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-purple-600"
-                    :class="selectedTimeRange === range.key ? 'bg-white text-purple-700 shadow-xs' : 'text-gray-700 hover:bg-gray-50'"
-                    @click="selectedTimeRange = range.key"
-                >
-                    {{ range.label }}
-                </button>
-            </div>
+            <ChartTimeRangeControl v-model="selectedTimeRange" @select="nextTick(applyTimeRange)" />
 
             <!-- Indicator Picker -->
             <Popover class="relative">
@@ -133,24 +120,15 @@ import { pricesToBars } from '@/utils/chartDataConverter';
 import { computeIndicator } from '@/utils/indicatorCalculator';
 import { formatParamsLabel, getIndicatorConfig, getOverlayIndicators, getPaneIndicators } from '@/utils/indicatorRegistry';
 import type { IndicatorConfig } from '@/utils/indicatorRegistry';
+import ChartTimeRangeControl from '@/Components/Charts/ChartTimeRangeControl.vue';
+import { chartTimeRanges as timeRanges } from '@/utils/chartTimeRanges';
+import type { ChartTimeRangeKey } from '@/utils/chartTimeRanges';
 
 const props = defineProps<{
     priceHistory: PriceHistoryRecord[];
 }>();
 
-const timeRanges = [
-    { key: '1m', description: '1 month', label: '1M', days: 22 },
-    { key: '6m', description: '6 months', label: '6M', days: 126 },
-    { key: '1y', description: '1 year', label: '1Yr', days: 252 },
-    { key: '3y', description: '3 years', label: '3Yr', days: 756 },
-    { key: '5y', description: '5 years', label: '5Yr', days: 1260 },
-    { key: '10y', description: '10 years', label: '10Yr', days: 2520 },
-    { key: 'max', description: 'all available history', label: 'Max', days: Infinity },
-] as const;
-
-type TimeRangeKey = (typeof timeRanges)[number]['key'];
-
-const selectedTimeRange = ref<TimeRangeKey>('1y');
+const selectedTimeRange = defineModel<ChartTimeRangeKey>('timeRange', { default: '1y' });
 
 // --- Indicator state ---
 const activeIndicators = ref<Set<string>>(new Set(['sma-200']));

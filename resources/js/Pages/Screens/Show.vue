@@ -32,6 +32,9 @@
                     disabled
                 />
             </div>
+            <p v-if="screen.index === 'etf' && screen.unique_etf_per_index" class="mt-4 text-sm text-gray-600">
+                One ETF per underlying index. Each ETF has the highest median daily volume over one year among the matching results.
+            </p>
         </div>
 
         <InfoAlert class="mt-4">
@@ -43,6 +46,7 @@
             :screen="screen"
             :results="results"
             :columns="columns"
+            :valuation-filter-warnings="valuationFilterWarnings"
             :show-actions="false"
         />
     </div>
@@ -67,6 +71,7 @@ const props = defineProps<{
     customFilterValueOptions: SelectOption[];
     customFilterComparatorOptions: SelectOption[];
     results: (BacktestNseInstrumentPriceResource & Record<string, any>)[];
+    valuationFilterWarnings: string[];
     columns: ScreenResultColumn[];
 }>();
 

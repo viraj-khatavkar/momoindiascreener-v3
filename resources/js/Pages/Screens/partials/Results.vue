@@ -71,6 +71,10 @@
             </div>
         </div>
 
+        <WarningAlert v-for="warning in valuationFilterWarnings" :key="warning" class="mt-4">
+            {{ warning }}
+        </WarningAlert>
+
         <!-- No results at all -->
         <div v-if="results.length === 0" class="mt-4 rounded-lg border border-dashed border-gray-300 px-6 py-16 text-center">
             <FunnelIcon class="mx-auto h-10 w-10 text-gray-400" />
@@ -269,6 +273,7 @@ import { Disclosure, DisclosureButton, DisclosurePanel } from '@headlessui/vue';
 import { ArrowDownTrayIcon, ChevronDownIcon, MagnifyingGlassIcon, TableCellsIcon } from '@heroicons/vue/20/solid';
 import { FunnelIcon } from '@heroicons/vue/24/outline';
 import { Link } from '@inertiajs/vue3';
+import WarningAlert from '@/Components/Alerts/WarningAlert.vue';
 import ColumnsPanel from '@/Pages/Screens/partials/ColumnsPanel.vue';
 import SortHeaderButton from '@/Pages/Screens/partials/SortHeaderButton.vue';
 import { formatDate } from '@/utils/format';
@@ -298,12 +303,14 @@ const props = withDefaults(
         results: ResultItem[];
         columns: ScreenResultColumn[];
         availableColumns?: ScreenColumnGroup[];
+        valuationFilterWarnings?: string[];
         showActions?: boolean;
         loading?: boolean;
     }>(),
     {
         showActions: true,
         loading: false,
+        valuationFilterWarnings: () => [],
     },
 );
 

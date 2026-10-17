@@ -3,6 +3,7 @@ export interface Screen {
     name: string;
     user_id: number;
     index: string;
+    unique_etf_per_index: boolean;
     sort_by: string;
     sort_direction: string;
     median_volume_one_year: number;

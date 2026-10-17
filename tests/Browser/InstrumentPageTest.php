@@ -3,9 +3,18 @@
 use App\Enums\CorporateActionTypeEnum;
 
 beforeEach(function () {
-    createScreenResultRow('ALPHA', 'Alpha Industries', '2026-07-30', ['close_adjusted' => 100]);
+    createScreenResultRow('ALPHA', 'Alpha Industries', '2026-07-29', [
+        'marketcap' => null, 'price_to_earnings' => null, 'absolute_return_one_year' => null, 'rsi_one_year' => null,
+    ]);
+    createScreenResultRow('ALPHA', 'Alpha Industries', '2026-07-30', [
+        'close_adjusted' => 100, 'marketcap' => 5000, 'price_to_earnings' => 10, 'absolute_return_one_year' => -10, 'rsi_one_year' => 0,
+    ]);
     createScreenResultRow('ALPHA', 'Alpha Industries', '2026-07-31', [
         'close_adjusted' => 105,
+        'marketcap' => 9000,
+        'price_to_earnings' => 30,
+        'absolute_return_one_year' => 0,
+        'rsi_one_year' => 60,
         'absolute_return_one_months' => -6.5,
         'absolute_return_three_months' => 0,
         'absolute_return_six_months' => 12.34,
@@ -47,7 +56,7 @@ it('keeps instrument data readable with tabs for company events', function (int 
         ->assertSee('Alpha Industries')
         ->assertSee('Data as of 31 Jul 2026')
         ->assertSeeIn('#returns', '-6.50%')
-        ->assertSeeIn('#returns dd.text-gray-600', '0.00%')
+        ->assertSeeIn('#returns dd.text-gray-600 >> nth=0', '0.00%')
         ->assertSeeIn('#returns', '+12.34%')
         ->assertSeeIn('#returns', '+18.34%')
         ->assertSeeIn('#overview', '7.84% below')
@@ -103,4 +112,75 @@ it('updates the instrument and its deferred data after a search', function () {
         ->assertNoJavaScriptErrors();
 
     expect($page->script('document.documentElement.scrollWidth <= window.innerWidth'))->toBeTrue();
+});
+
+it('shows one history chart at a time with a shared period and accurate medians', function (int $width, int $height) {
+    $page = visit('/instruments/ALPHA')->resize($width, $height)
+        ->assertVisible('#price canvas >> nth=0')
+        ->press('button[aria-label="Show all available history"]')
+        ->click('#price [role="tab"]:has-text("1Y return")')
+        ->assertVisible('[data-metric="absolute_return_one_year"] canvas >> nth=0')
+        ->assertSeeIn('[data-testid="metric-value"]', '0.00%')
+        ->assertSeeIn('[data-testid="metric-median"]', '-5.00%')
+        ->assertAriaAttribute('[role="tabpanel"]:visible button[aria-label="Show all available history"]', 'pressed', 'true')
+        ->click('#price [role="tab"]:has-text("P/E")')
+        ->assertSeeIn('[data-testid="metric-value"]', '30.00')
+        ->assertSeeIn('[data-testid="metric-median"]', '20.00')
+        ->assertSee('2 values in view')
+        ->click('#price [role="tab"]:has-text("Market cap")')
+        ->assertSeeIn('[data-testid="metric-value"]', '₹9,000.00 cr')
+        ->assertSeeIn('[data-testid="metric-median"]', '₹7,000.00 cr')
+        ->click('#price [role="tab"]:has-text("1Y RSI")')
+        ->assertSeeIn('[data-testid="metric-value"]', '60.00')
+        ->assertSeeIn('[data-testid="metric-median"]', '30.00')
+        ->press('button[aria-label="Show median line"]')
+        ->assertAriaAttribute('button[aria-label="Show median line"]', 'pressed', 'false')
+        ->keys('#price [role="tab"]:has-text("1Y RSI")', 'ArrowLeft')
+        ->assertAriaAttribute('#price [role="tab"]:has-text("Market cap")', 'selected', 'true')
+        ->click('#price [role="tab"]:has-text("Price")')
+        ->assertAriaAttribute('[role="tabpanel"]:visible button[aria-label="Show all available history"]', 'pressed', 'true')
+        ->assertNoJavaScriptErrors();
+
+    expect($page->script('document.documentElement.scrollWidth <= window.innerWidth'))->toBeTrue();
+    expect($page->script('document.querySelectorAll("#price [role=tab]").length'))->toBe(5);
+    expect($page->script('[...document.querySelectorAll("#price [role=tabpanel]")].filter((panel) => panel.getBoundingClientRect().height > 0).length'))->toBe(1);
+})->with(['desktop' => [1440, 1000], 'mobile' => [390, 844]]);
+
+it('updates the median for the selected period and resets a chart view', function () {
+    for ($day = 1; $day <= 30; $day++) {
+        createScreenResultRow('WINDOW', 'Window Test', sprintf('2026-06-%02d', $day), ['price_to_earnings' => $day]);
+    }
+
+    visit('/instruments/WINDOW')
+        ->click('#price [role="tab"]:has-text("P/E")')
+        ->press('[role="tabpanel"]:visible button[aria-label="Show 1 month"]')
+        ->assertSeeIn('[data-testid="metric-median"]', '19.50')
+        ->assertSee('22 values in view')
+        ->press('[role="tabpanel"]:visible button[aria-label="Show all available history"]')
+        ->assertSeeIn('[data-testid="metric-median"]', '15.50')
+        ->assertSee('30 values in view')
+        ->assertNoJavaScriptErrors();
+});
+
+it('shows a clear empty state when a metric has no history', function () {
+    visit('/instruments/BETA')
+        ->click('#price [role="tab"]:has-text("P/E")')
+        ->assertSee('No price to earnings history is available.')
+        ->assertSeeIn('[data-testid="metric-value"]', '—')
+        ->assertSeeIn('[data-testid="metric-median"]', '—')
+        ->assertNoJavaScriptErrors();
+});
+
+it('omits valuation charts for ETFs', function () {
+    createScreenResultRow('GOLDBEES', 'Gold ETF', '2026-07-31', ['is_etf' => true, 'marketcap' => null]);
+
+    $page = visit('/instruments/GOLDBEES')
+        ->assertVisible('#price [role="tab"]:has-text("Price")')
+        ->assertDontSeeIn('#price [role="tablist"]', 'P/E')
+        ->assertDontSeeIn('#price [role="tablist"]', 'Market cap')
+        ->click('#price [role="tab"]:has-text("1Y return")')
+        ->assertSee('Rolling 1-year return')
+        ->assertNoJavaScriptErrors();
+
+    expect($page->script('document.querySelectorAll("#price [role=tab]").length'))->toBe(3);
 });

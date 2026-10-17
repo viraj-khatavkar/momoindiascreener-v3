@@ -27,6 +27,13 @@
                         :error="form.errors.sort_direction"
                     />
                 </div>
+                <div v-if="form.index === 'etf'" class="mt-6 space-y-2">
+                    <Toggle v-model="form.unique_etf_per_index" label="One ETF per underlying index" />
+                    <p class="text-sm text-gray-600">
+                        After all other filters, keep the ETF with the highest median daily volume over one year for each underlying index.
+                    </p>
+                    <p v-if="form.errors.unique_etf_per_index" class="text-sm text-red-600">{{ form.errors.unique_etf_per_index }}</p>
+                </div>
             </div>
 
             <!-- Show More Filters Toggle -->
@@ -621,7 +628,14 @@
 
         <ErrorAlert v-if="Object.keys(form.errors).length > 0" class="mt-4"> There are some errors in your form. Please fix them. </ErrorAlert>
 
-        <Results :screen="screen" :results="results" :columns="columns" :available-columns="availableColumns" :loading="form.processing" />
+        <Results
+            :screen="screen"
+            :results="results"
+            :columns="columns"
+            :available-columns="availableColumns"
+            :valuation-filter-warnings="valuationFilterWarnings"
+            :loading="form.processing"
+        />
     </div>
 </template>
 
@@ -651,6 +665,7 @@ const props = defineProps<{
     customFilterValueOptions: SelectOption[];
     customFilterComparatorOptions: SelectOption[];
     results: (BacktestNseInstrumentPriceResource & Record<string, any>)[];
+    valuationFilterWarnings: string[];
     columns: ScreenResultColumn[];
     availableColumns: ScreenColumnGroup[];
 }>();
@@ -681,6 +696,7 @@ const selectedMedianVolumeOption = ref(matchingOption.length === 1 ? props.scree
 const form = useForm({
     name: props.screen.name,
     index: props.screen.index,
+    unique_etf_per_index: props.screen.unique_etf_per_index,
     sort_by: props.screen.sort_by,
     sort_direction: props.screen.sort_direction,
     median_volume_one_year: props.screen.median_volume_one_year,

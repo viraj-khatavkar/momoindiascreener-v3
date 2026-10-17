@@ -8,11 +8,12 @@ use App\Enums\CustomFilterValueOptionEnum;
 use App\Enums\NseIndexEnum;
 use App\Enums\ScreenResultColumnEnum;
 use App\Enums\ScreenSortByOptionEnum;
+use App\Models\Screen;
 use App\Models\User;
 use Illuminate\Database\Eloquent\Factories\Factory;
 
 /**
- * @extends \Illuminate\Database\Eloquent\Factories\Factory<\App\Models\Screen>
+ * @extends Factory<Screen>
  */
 class ScreenFactory extends Factory
 {
@@ -22,6 +23,7 @@ class ScreenFactory extends Factory
             'name' => fake()->words(3, true),
             'user_id' => User::factory(),
             'index' => NseIndexEnum::NIFTY_ALLCAP->value,
+            'unique_etf_per_index' => false,
             'sort_by' => ScreenSortByOptionEnum::sharpe_return_one_year->value,
             'sort_direction' => 'desc',
             'median_volume_one_year' => 10000000,

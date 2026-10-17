@@ -99,3 +99,40 @@ it('blocks editing screens the user does not own', function () {
         ->get('/screens/'.$screen->id.'/edit')
         ->assertNotFound();
 });
+
+it('exports column headers when no stocks match the filters', function () {
+    $screen = Screen::factory()->create(['name' => 'Empty Screen', 'series_eq' => false, 'series_be' => false]);
+    createScreenResultRow('EXCLUDED', 'Excluded Stock', '2026-07-31');
+
+    $response = $this->actingAs($screen->user)->get('/screens/'.$screen->id.'/csv');
+
+    $response->assertSuccessful()->assertDownload('Empty_Screen.csv');
+
+    $lines = preg_split('/\r\n|\n|\r/', trim($response->streamedContent()));
+    $columns = str_getcsv(ltrim($lines[0], "\xEF\xBB\xBF"), escape: '');
+
+    expect($lines)->toHaveCount(1)
+        ->and(array_slice($columns, 0, 4))->toBe(['name', 'symbol', 'series', 'date'])
+        ->and($columns)->toContain('marketcap', 'close_raw', 'ma_200', 'is_etf');
+});
+
+it('exports only matching stocks in the saved ranking order', function () {
+    $screen = Screen::factory()->create(['apply_pe' => true, 'price_to_earnings_to' => 20]);
+    createScreenResultRow('ALPHA', 'Alpha Industries', '2026-07-31', ['sharpe_return_one_year' => 10, 'price_to_earnings' => 15]);
+    createScreenResultRow('BETA', 'Beta Corp', '2026-07-31', ['sharpe_return_one_year' => 20, 'price_to_earnings' => 15]);
+    createScreenResultRow('HIGHPE', 'High PE', '2026-07-31', ['price_to_earnings' => 80]);
+
+    $response = $this->actingAs($screen->user)->get('/screens/'.$screen->id.'/csv');
+    $response->assertSuccessful();
+
+    $lines = preg_split('/\r\n|\n|\r/', trim($response->streamedContent()));
+    $header = str_getcsv(ltrim($lines[0], "\xEF\xBB\xBF"), escape: '');
+    $first = str_getcsv($lines[1], escape: '');
+    $second = str_getcsv($lines[2], escape: '');
+
+    expect($lines)->toHaveCount(3)
+        ->and($first)->toHaveCount(count($header))
+        ->and($second)->toHaveCount(count($header))
+        ->and($first[1])->toBe('BETA')
+        ->and($second[1])->toBe('ALPHA');
+});

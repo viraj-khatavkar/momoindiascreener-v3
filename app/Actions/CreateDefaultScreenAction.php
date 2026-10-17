@@ -18,6 +18,7 @@ class CreateDefaultScreenAction
         return $user->screens()->create([
             'name' => $name,
             'index' => NseIndexEnum::NIFTY_ALLCAP->value,
+            'unique_etf_per_index' => false,
             'sort_by' => ScreenSortByOptionEnum::sharpe_return_one_year->value,
             'sort_direction' => 'desc',
             'median_volume_one_year' => 10000000,

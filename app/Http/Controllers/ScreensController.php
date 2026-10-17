@@ -70,6 +70,7 @@ class ScreensController extends Controller
             'customFilterValueOptions' => array_values(CustomFilterValueOptionEnum::getOptionsForFilters()),
             'customFilterComparatorOptions' => array_values(CustomFilterComparatorOptionEnum::resolveDisplayableValueList()),
             'results' => $results,
+            'valuationFilterWarnings' => $applyScreenFiltersAction->getValuationFilterWarnings(),
             'columns' => $columns,
         ]);
     }
@@ -102,6 +103,7 @@ class ScreensController extends Controller
             'customFilterValueOptions' => array_values(CustomFilterValueOptionEnum::getOptionsForFilters()),
             'customFilterComparatorOptions' => array_values(CustomFilterComparatorOptionEnum::resolveDisplayableValueList()),
             'results' => $results,
+            'valuationFilterWarnings' => $applyScreenFiltersAction->getValuationFilterWarnings(),
             'columns' => $columns,
             'availableColumns' => $this->getAvailableColumnGroups(),
         ]);

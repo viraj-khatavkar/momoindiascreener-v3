@@ -211,3 +211,50 @@ it('returns 404 when an instrument only has data for an unfinished process', fun
 
     $this->get('/instruments/TCS')->assertNotFound();
 });
+
+it('loads raw daily chart metrics with adjusted prices and preserves missing and zero values', function () {
+    createBacktestPriceRow('TCS', '2024-02-29', [
+        'close_raw' => 200,
+        'close_adjusted' => 100,
+        'absolute_return_one_year' => 0,
+        'marketcap' => null,
+        'price_to_earnings' => null,
+        'rsi_one_year' => 0,
+    ]);
+    createBacktestPriceRow('TCS', '2024-03-01', [
+        'absolute_return_one_year' => -12.34,
+        'marketcap' => 5000,
+        'price_to_earnings' => 20.5,
+        'rsi_one_year' => 60,
+    ]);
+    createBacktestPriceRow('TCS', '2024-03-04', ['marketcap' => 999999]);
+    AdminProcessRun::factory()->create([
+        'process_date' => '2024-03-04',
+        'status' => AdminProcessRunStatusEnum::InProgress,
+    ]);
+
+    $this->get('/instruments/TCS')->assertSuccessful()->assertInertia(fn (Assert $page) => $page
+        ->missing('priceHistory')
+        ->where('instrument.is_etf', false)
+        ->loadDeferredProps('chart', fn (Assert $reload) => $reload
+            ->has('priceHistory', 2)
+            ->where('priceHistory.0.close_adjusted', '100.00')
+            ->where('priceHistory.0.absolute_return_one_year', fn ($value) => (float) $value === 0.0)
+            ->where('priceHistory.0.marketcap', null)
+            ->where('priceHistory.0.price_to_earnings', null)
+            ->where('priceHistory.0.rsi_one_year', fn ($value) => (float) $value === 0.0)
+            ->where('priceHistory.1.absolute_return_one_year', fn ($value) => (float) $value === -12.34)
+            ->where('priceHistory.1.marketcap', 5000)
+            ->where('priceHistory.1.price_to_earnings', fn ($value) => (float) $value === 20.5)
+            ->where('priceHistory.1.rsi_one_year', fn ($value) => (float) $value === 60.0)));
+});
+
+it('identifies ETFs so instrument charts can omit company valuations', function () {
+    createBacktestPriceRow('GOLDBEES', '2026-07-31', ['is_etf' => true]);
+
+    $this->get('/instruments/GOLDBEES')->assertSuccessful()->assertInertia(fn (Assert $page) => $page
+        ->where('instrument.is_etf', true)
+        ->loadDeferredProps('chart', fn (Assert $reload) => $reload
+            ->where('priceHistory.0.marketcap', null)
+            ->where('priceHistory.0.price_to_earnings', null)));
+});

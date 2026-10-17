@@ -6,6 +6,7 @@ use App\Enums\ApplyFiltersOnOptionEnum;
 use App\Enums\CustomFilterComparatorOptionEnum;
 use App\Enums\CustomFilterValueOptionEnum;
 use App\Enums\ScreenSortByOptionEnum;
+use Illuminate\Contracts\Validation\ValidationRule;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
 
@@ -17,13 +18,14 @@ class UpdateScreenRequest extends FormRequest
     }
 
     /**
-     * @return array<string, \Illuminate\Contracts\Validation\ValidationRule|array<mixed>|string>
+     * @return array<string, ValidationRule|array<mixed>|string>
      */
     public function rules(): array
     {
         return [
             'name' => ['required'],
             'index' => ['required'],
+            'unique_etf_per_index' => ['sometimes', 'boolean'],
             'sort_by' => ['required', Rule::enum(ScreenSortByOptionEnum::class)],
             'sort_direction' => ['required', Rule::in(['asc', 'desc'])],
             'median_volume_one_year' => ['required', 'numeric', 'between:0,1000000000'],

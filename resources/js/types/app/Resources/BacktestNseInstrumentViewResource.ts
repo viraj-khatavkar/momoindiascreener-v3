@@ -1,6 +1,7 @@
 export interface BacktestNseInstrumentViewResource {
     id: number;
     symbol: string;
+    is_etf: boolean;
     date: string;
     name: string | null;
     close_adjusted: number;

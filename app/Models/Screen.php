@@ -16,10 +16,15 @@ class Screen extends Model
 
     public const PUBLIC_SCREENS = [1, 2, 3];
 
+    protected $attributes = [
+        'unique_etf_per_index' => false,
+    ];
+
     protected function casts(): array
     {
         return [
             'index' => NseIndexEnum::class,
+            'unique_etf_per_index' => 'boolean',
             'apply_filters_on' => ApplyFiltersOnOptionEnum::class,
             'apply_ma' => 'boolean',
             'above_ma_200' => 'boolean',
@@ -36,7 +41,7 @@ class Screen extends Model
             'apply_factor_two' => 'boolean',
             'apply_factor_three' => 'boolean',
             'apply_historical_date' => 'boolean',
-            'historical_date' => 'date',
+            'historical_date' => 'date:Y-m-d',
             'apply_custom_filter_one' => 'boolean',
             'apply_custom_filter_two' => 'boolean',
             'apply_custom_filter_three' => 'boolean',
