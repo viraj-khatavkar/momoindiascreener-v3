@@ -62,15 +62,13 @@ class BacktestsController extends Controller
 
     public function show(ShowBacktestRequest $request, Backtest $backtest, LoadBenchmarkSeriesAction $loadBenchmark, LoadMarketCapAllocationAction $marketCapAllocation, LoadBacktestTradeLogAction $tradeLog): Response
     {
-        if ($request->user()->cannot('view', $backtest)) {
-            abort(404);
-        }
-
+        $readOnly = $request->routeIs('public-backtests.show');
         $isCompleted = $backtest->status === BacktestStatusEnum::Completed;
         $tradeFilters = $request->filters();
 
         return inertia('Backtests/Show', [
-            'backtest' => $backtest,
+            'backtest' => $readOnly ? $backtest->makeHidden(['user_id', 'error_message']) : $backtest,
+            'readOnly' => $readOnly,
             'summaryMetrics' => fn () => $backtest->summaryMetrics,
             'dailySnapshots' => $isCompleted
                 ? Inertia::defer(fn () => $backtest->dailySnapshots()->orderBy('date')->get([

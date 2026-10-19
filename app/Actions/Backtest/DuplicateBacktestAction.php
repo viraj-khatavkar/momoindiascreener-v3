@@ -16,12 +16,13 @@ class DuplicateBacktestAction
             $user = $backtest->user()->lockForUpdate()->firstOrFail(['id']);
 
             $copy = $backtest->replicate([
-                'name', 'user_id', 'status', 'progress', 'started_at',
+                'name', 'user_id', 'is_public', 'status', 'progress', 'started_at',
                 'completed_at', 'settings_changed_at', 'error_message',
             ])->unsetRelations();
 
             $copy->fill([
                 'name' => $this->copyName($backtest->name, $user),
+                'is_public' => false,
                 'status' => BacktestStatusEnum::Pending,
                 'progress' => 0,
                 'started_at' => null,

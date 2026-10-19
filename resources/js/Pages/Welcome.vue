@@ -2,280 +2,189 @@
     <div class="mx-auto max-w-7xl">
         <Head title="Home" />
 
-        <section>
-            <div class="flex items-center justify-between gap-4">
-                <h1 class="text-2xl font-bold tracking-tight text-gray-950">Screens</h1>
-                <Link v-if="user" href="/screens/create" :class="primaryActionClass">
-                    <PlusIcon class="h-4 w-4" aria-hidden="true" />
-                    Create screen
-                </Link>
+        <header class="flex flex-wrap items-center justify-between gap-4 border-b border-gray-200 pb-8">
+            <div>
+                <p class="text-xs font-semibold tracking-widest text-purple-700 uppercase">Home</p>
+                <h1 class="mt-2 text-3xl font-bold tracking-tight text-gray-900">
+                    {{ user ? 'Your workspace' : 'Explore screens and backtests' }}
+                </h1>
+                <p class="mt-3 max-w-2xl text-sm leading-6 text-gray-600">
+                    {{
+                        user
+                            ? 'Continue with your saved screens and recent backtests.'
+                            : 'Explore stock screens and review the results of example strategies.'
+                    }}
+                </p>
             </div>
+            <Link v-if="!user" href="/login" :class="primaryActionClass">Sign in</Link>
+        </header>
 
-            <div v-if="user" class="mt-8">
-                <div class="flex items-center justify-between gap-4">
-                    <h2 class="text-lg font-semibold text-gray-900">Your screens</h2>
-                    <Link href="/screens" class="text-sm font-semibold text-purple-700 hover:text-purple-600">
-                        View all<span v-if="personalScreenCount > personalScreens.length"> {{ personalScreenCount }}</span>
+        <section class="mt-8" aria-labelledby="home-screens-heading">
+            <div class="flex flex-wrap items-center justify-between gap-4">
+                <div>
+                    <div class="flex items-center gap-3">
+                        <h2 id="home-screens-heading" class="text-xl font-semibold text-gray-900">{{ user ? 'Your screens' : 'Example screens' }}</h2>
+                        <span class="rounded-full bg-purple-100 px-2.5 py-1 text-xs font-semibold text-purple-700">{{ screenCount }}</span>
+                    </div>
+                    <p class="mt-2 text-sm text-gray-600">
+                        {{ user ? 'Your saved filters and ranking rules.' : 'Start with a ready-made set of filters.' }}
+                    </p>
+                </div>
+                <div class="flex flex-wrap items-center gap-4">
+                    <Link href="/screens" :class="secondaryActionClass">View all screens <ArrowRightIcon class="size-4" aria-hidden="true" /></Link>
+                    <Link v-if="user" href="/screens/create" :class="primaryActionClass">
+                        <PlusIcon class="size-4" aria-hidden="true" /> Create screen
                     </Link>
                 </div>
-
-                <div v-if="personalScreens.length" class="mt-4 grid gap-5 md:grid-cols-2 xl:grid-cols-3">
-                    <HomeScreenCard
-                        v-for="screen in personalScreens"
-                        :key="screen.id"
-                        :screen="screen"
-                        :preview="findScreenPreview(personalScreenPreviews, screen.id)"
-                        preview-prop="personalScreenPreviews"
-                        editable
-                    />
-                </div>
-                <div
-                    v-else
-                    class="mt-4 flex flex-col items-start justify-between gap-4 rounded-xl border border-dashed border-gray-300 px-5 py-4 sm:flex-row sm:items-center"
-                >
-                    <p class="text-sm text-gray-500">You do not have a personal screen.</p>
-                    <Link href="/screens/create" class="text-sm font-semibold text-purple-700 hover:text-purple-600"> Create screen </Link>
-                </div>
             </div>
 
-            <div :class="user ? 'mt-12' : 'mt-8'">
-                <div class="flex items-center justify-between gap-4">
-                    <h2 class="text-lg font-semibold text-gray-900">Public screens</h2>
-                    <Link href="/screens" class="text-sm font-semibold text-purple-700 hover:text-purple-600"> View all </Link>
-                </div>
-
-                <div v-if="publicScreens.length" class="mt-4 grid gap-5 md:grid-cols-2 xl:grid-cols-3">
-                    <HomeScreenCard
-                        v-for="screen in publicScreens"
-                        :key="screen.id"
-                        :screen="screen"
-                        :preview="findScreenPreview(publicScreenPreviews, screen.id)"
-                        preview-prop="publicScreenPreviews"
-                    />
-                </div>
-                <div v-else class="mt-4 rounded-xl border border-gray-200 px-5 py-6 text-center">
-                    <p class="text-sm text-gray-500">Public screens are not available.</p>
-                </div>
+            <div v-if="screens.length" class="mt-6 grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-3">
+                <ScreenCard v-for="screen in screens" :key="screen.id" :screen="screen" :editable="!!user" />
             </div>
+            <div v-else class="mt-6 rounded-xl border border-dashed border-gray-300 bg-gray-50 px-6 py-8">
+                <h3 class="font-semibold text-gray-900">{{ user ? 'No screens yet' : 'No example screens yet' }}</h3>
+                <p class="mt-2 text-sm text-gray-600">
+                    {{ user ? 'Create a screen to save the filters you use most.' : 'Example screens will appear here when they are available.' }}
+                </p>
+            </div>
+            <p v-if="screenCount > screens.length" class="mt-3 text-xs text-gray-500">
+                Showing {{ screens.length }} of {{ screenCount }} screens, most recently updated first.
+            </p>
         </section>
 
-        <section class="mt-16 border-t border-gray-200 pt-12">
-            <div class="flex items-center justify-between gap-4">
-                <h2 class="text-2xl font-bold tracking-tight text-gray-950">Backtests</h2>
-                <Link v-if="isPaid" href="/backtests/create" :class="primaryActionClass">
-                    <BeakerIcon class="h-4 w-4" aria-hidden="true" />
-                    Create backtest
-                </Link>
-            </div>
-
-            <template v-if="isPaid">
-                <div v-if="backtestActivity.length" class="mt-8">
-                    <div class="flex items-center justify-between gap-4">
-                        <h3 class="text-lg font-semibold text-gray-900">Activity</h3>
-                        <Link href="/backtests" class="text-sm font-semibold text-purple-700 hover:text-purple-600"> View all </Link>
+        <section class="mt-12 border-t border-gray-200 pt-8" aria-labelledby="home-backtests-heading">
+            <div class="flex flex-wrap items-center justify-between gap-4">
+                <div>
+                    <div class="flex items-center gap-3">
+                        <h2 id="home-backtests-heading" class="text-xl font-semibold text-gray-900">
+                            {{ user ? 'Your backtests' : 'Example backtests' }}
+                        </h2>
+                        <span class="rounded-full bg-purple-100 px-2.5 py-1 text-xs font-semibold text-purple-700">{{ backtestCount }}</span>
                     </div>
-
-                    <div class="mt-4 divide-y divide-gray-100 overflow-hidden rounded-xl border border-gray-200 bg-white">
-                        <Link
-                            v-for="backtest in backtestActivity"
-                            :key="backtest.id"
-                            :href="`/backtests/${backtest.id}`"
-                            class="group flex flex-col gap-4 px-5 py-4 transition hover:bg-purple-50/50 sm:flex-row sm:items-center"
+                    <p class="mt-2 text-sm text-gray-600">
+                        {{ user ? 'Recent strategies, run status and saved results.' : 'Review completed strategies and their historical results.' }}
+                    </p>
+                </div>
+                <div v-if="user" class="flex flex-wrap items-center gap-4">
+                    <template v-if="isPaid">
+                        <Link href="/backtests" :class="secondaryActionClass"
+                            >View all backtests <ArrowRightIcon class="size-4" aria-hidden="true"
+                        /></Link>
+                        <Link href="/backtests/create" :class="primaryActionClass"
+                            ><PlusIcon class="size-4" aria-hidden="true" /> Create backtest</Link
                         >
-                            <div
-                                class="flex h-10 w-10 shrink-0 items-center justify-center rounded-full"
-                                :class="activityStatusClass(backtest.status)"
-                            >
-                                <ExclamationTriangleIcon v-if="backtest.status === 'failed'" class="h-5 w-5" aria-hidden="true" />
-                                <ArrowPathIcon v-else-if="backtest.status === 'running'" class="h-5 w-5" aria-hidden="true" />
-                                <ClockIcon v-else class="h-5 w-5" aria-hidden="true" />
-                            </div>
+                    </template>
+                    <Link v-else href="/pricing" :class="secondaryActionClass">View plans <ArrowRightIcon class="size-4" aria-hidden="true" /></Link>
+                </div>
+            </div>
+            <p v-if="user && !isPaid" class="mt-4 text-sm text-gray-600">Paid access is needed to open or run your backtests.</p>
 
-                            <div class="min-w-0 flex-1">
-                                <div class="flex flex-wrap items-center gap-x-3 gap-y-1">
-                                    <h4 class="truncate font-semibold text-gray-900 group-hover:text-purple-700">
-                                        {{ backtest.name }}
-                                    </h4>
-                                    <span class="rounded-full px-2.5 py-0.5 text-xs font-medium" :class="activityStatusClass(backtest.status)">
-                                        {{ activityLabel(backtest.status) }}
-                                    </span>
-                                </div>
-                                <p class="mt-1 text-sm text-gray-500">
-                                    {{ activityDescription(backtest) }}
-                                </p>
+            <ul v-if="backtests.length" class="mt-6 divide-y divide-gray-100 rounded-xl border border-gray-200 bg-white shadow-xs">
+                <li v-for="backtest in backtests" :key="backtest.id">
+                    <Link
+                        :href="user && !isPaid ? '/pricing' : backtest.url"
+                        :aria-label="`${user && !isPaid ? 'View plans to open' : 'Open'} ${backtest.name}`"
+                        class="group grid gap-4 rounded-xl p-5 transition-colors hover:bg-purple-50/50 focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-purple-600 sm:grid-cols-[minmax(0,1fr)_minmax(14rem,auto)] sm:items-center sm:gap-8"
+                    >
+                        <div class="min-w-0">
+                            <div class="flex flex-wrap items-center gap-3">
+                                <h3 class="min-w-0 font-semibold break-words text-gray-900 group-hover:text-purple-700">{{ backtest.name }}</h3>
+                                <span class="shrink-0 rounded-full px-2.5 py-1 text-xs font-medium" :class="statusClasses[backtest.status]">{{
+                                    statusLabels[backtest.status]
+                                }}</span>
+                            </div>
+                            <p class="mt-2 flex flex-wrap gap-x-3 gap-y-1 text-xs leading-5 text-gray-500">
+                                <span>{{ screenSortByDisplayName(backtest.index) }}</span>
+                                <span v-if="backtest.updated_at">Updated {{ formatDate(backtest.updated_at) }}</span>
+                            </p>
+                        </div>
+                        <dl v-if="backtest.summary_metrics" class="grid grid-cols-2 gap-6 sm:text-right">
+                            <div>
+                                <dt class="text-xs text-gray-500">CAGR</dt>
+                                <dd class="mt-1 text-lg font-semibold tabular-nums" :class="returnColor(backtest.summary_metrics.cagr)">
+                                    {{ formatPercent(backtest.summary_metrics.cagr) }}
+                                </dd>
+                            </div>
+                            <div>
+                                <dt class="text-xs text-gray-500">Max drawdown</dt>
+                                <dd class="mt-1 text-lg font-semibold tabular-nums" :class="returnColor(backtest.summary_metrics.max_drawdown)">
+                                    {{ formatPercent(backtest.summary_metrics.max_drawdown) }}
+                                </dd>
+                            </div>
+                        </dl>
+                        <div v-else class="text-sm text-gray-600 sm:text-right">
+                            <template v-if="backtest.status === 'running'">
+                                <p>{{ backtest.progress }}% complete</p>
                                 <div
-                                    v-if="backtest.status === 'running'"
-                                    class="mt-2 h-1.5 max-w-sm overflow-hidden rounded-full bg-gray-200"
+                                    class="mt-2 h-1.5 overflow-hidden rounded-full bg-gray-100"
                                     role="progressbar"
+                                    :aria-label="`${backtest.name} progress`"
                                     :aria-valuenow="backtest.progress"
                                     aria-valuemin="0"
                                     aria-valuemax="100"
                                 >
-                                    <div
-                                        class="h-full rounded-full bg-blue-500 transition-[width] duration-300"
-                                        :style="{ width: `${backtest.progress}%` }"
-                                    />
+                                    <div class="h-full rounded-full bg-blue-500" :style="{ width: `${backtest.progress}%` }" />
                                 </div>
-                            </div>
-
-                            <div class="flex shrink-0 items-center gap-3 text-xs text-gray-500 sm:ml-auto">
-                                <span v-if="backtest.updated_at">
-                                    {{ formatDate(backtest.updated_at) }}
-                                </span>
-                                <ArrowRightIcon
-                                    class="h-4 w-4 text-gray-400 transition-transform group-hover:translate-x-0.5 group-hover:text-purple-600"
-                                    aria-hidden="true"
-                                />
-                            </div>
-                        </Link>
-                    </div>
-                </div>
-
-                <div :class="backtestActivity.length ? 'mt-10' : 'mt-8'">
-                    <div class="flex items-center justify-between gap-4">
-                        <h3 class="text-lg font-semibold text-gray-900">Recent backtests</h3>
-                        <Link href="/backtests" class="text-sm font-semibold text-purple-700 hover:text-purple-600"> View all </Link>
-                    </div>
-
-                    <div v-if="recentBacktests.length" class="mt-4 grid gap-5 md:grid-cols-2 xl:grid-cols-3">
-                        <Link
-                            v-for="backtest in recentBacktests"
-                            :key="backtest.id"
-                            :href="`/backtests/${backtest.id}`"
-                            class="group rounded-xl focus:outline-hidden focus-visible:ring-2 focus-visible:ring-purple-500 focus-visible:ring-offset-2"
-                        >
-                            <article
-                                class="h-full rounded-xl border border-gray-200 bg-white p-5 transition duration-200 group-hover:border-purple-200 group-hover:shadow-sm"
-                            >
-                                <div class="flex items-start justify-between gap-3">
-                                    <h4 class="font-semibold text-gray-950 group-hover:text-purple-700">
-                                        {{ backtest.name }}
-                                    </h4>
-                                    <span class="rounded-full bg-emerald-50 px-2.5 py-1 text-xs font-medium text-emerald-700"> Completed </span>
-                                </div>
-
-                                <dl v-if="backtest.summary_metrics" class="mt-5 grid grid-cols-2 divide-x divide-gray-200 rounded-lg bg-gray-50 py-4">
-                                    <div class="px-4">
-                                        <dt class="text-xs text-gray-500">CAGR</dt>
-                                        <dd class="mt-1 text-lg font-semibold" :class="metricClass(backtest.summary_metrics.cagr)">
-                                            {{ formatPercent(backtest.summary_metrics.cagr) }}
-                                        </dd>
-                                    </div>
-                                    <div class="px-4">
-                                        <dt class="text-xs text-gray-500">Max drawdown</dt>
-                                        <dd class="mt-1 text-lg font-semibold text-red-700">
-                                            {{ formatPercent(backtest.summary_metrics.max_drawdown) }}
-                                        </dd>
-                                    </div>
-                                </dl>
-                                <p v-else class="mt-5 rounded-lg bg-gray-50 px-4 py-5 text-sm text-gray-500">A result summary is not available.</p>
-
-                                <div class="mt-5 flex items-center justify-between text-xs text-gray-500">
-                                    <span v-if="backtest.completed_at">
-                                        {{ formatDate(backtest.completed_at) }}
-                                    </span>
-                                    <span class="ml-auto flex items-center gap-1 font-semibold text-purple-700">
-                                        Open
-                                        <ArrowRightIcon class="h-4 w-4" aria-hidden="true" />
-                                    </span>
-                                </div>
-                            </article>
-                        </Link>
-                    </div>
-                    <div
-                        v-else
-                        class="mt-4 flex flex-col items-start justify-between gap-4 rounded-xl border border-dashed border-gray-300 px-5 py-4 sm:flex-row sm:items-center"
-                    >
-                        <p class="text-sm text-gray-500">You do not have a completed backtest.</p>
-                        <Link href="/backtests/create" class="text-sm font-semibold text-purple-700 hover:text-purple-600"> Create backtest </Link>
-                    </div>
-                </div>
-            </template>
-
-            <div
-                v-else
-                class="mt-8 flex flex-col items-start justify-between gap-4 rounded-xl border border-gray-200 px-5 py-5 sm:flex-row sm:items-center"
-            >
-                <div>
-                    <h3 class="font-semibold text-gray-900">Backtests need paid access</h3>
-                    <p class="mt-1 text-sm text-gray-500">Run screen rules on historical market data.</p>
-                </div>
-                <div class="flex items-center gap-3">
-                    <Link v-if="!user" href="/login" class="text-sm font-semibold text-gray-700 hover:text-gray-900"> Sign in </Link>
-                    <Link href="/pricing" class="text-sm font-semibold text-purple-700 hover:text-purple-600"> View access </Link>
-                </div>
+                            </template>
+                            <p v-else-if="backtest.status === 'failed'">Open to review the failed run</p>
+                            <p v-else-if="backtest.status === 'pending'">Ready to configure and run</p>
+                            <p v-else>Result summary is not available</p>
+                        </div>
+                    </Link>
+                </li>
+            </ul>
+            <div v-else class="mt-6 rounded-xl border border-dashed border-gray-300 bg-gray-50 px-6 py-8">
+                <h3 class="font-semibold text-gray-900">{{ user ? 'No backtests yet' : 'No example backtests yet' }}</h3>
+                <p class="mt-2 text-sm text-gray-600">
+                    {{
+                        user
+                            ? 'Test how your strategy would have performed with historical data.'
+                            : 'Completed example backtests will appear here when they are available.'
+                    }}
+                </p>
             </div>
+            <p v-if="backtestCount > backtests.length" class="mt-3 text-xs text-gray-500">
+                Showing {{ backtests.length }} of {{ backtestCount }} backtests, most recently updated first.
+            </p>
+            <p v-if="backtests.some((backtest) => backtest.summary_metrics)" class="mt-4 text-xs leading-5 text-gray-500">
+                CAGR is the annualised return. Max drawdown is the largest fall from a previous peak.
+            </p>
         </section>
     </div>
 </template>
 
 <script setup lang="ts">
-import HomeScreenCard from '@/Components/HomeScreenCard.vue';
-import type { HomeBacktestActivity, HomeRecentBacktest, HomeScreen, HomeScreenPreview } from '@/types/HomePage';
+import ScreenCard from '@/Components/ScreenCard.vue';
+import type { HomeBacktest, HomeScreen } from '@/types/HomePage';
 import { formatDate, formatPercent } from '@/utils/format';
-import { ArrowPathIcon, BeakerIcon, ClockIcon, ExclamationTriangleIcon, PlusIcon } from '@heroicons/vue/24/outline';
-import { ArrowRightIcon } from '@heroicons/vue/20/solid';
+import { screenSortByDisplayName } from '@/utils/screenSortByDisplayName';
+import { ArrowRightIcon, PlusIcon } from '@heroicons/vue/20/solid';
 import { Head, Link, usePage } from '@inertiajs/vue3';
 import { computed } from 'vue';
 
 defineProps<{
-    publicScreens: HomeScreen[];
-    publicScreenPreviews?: HomeScreenPreview[];
-    personalScreens: HomeScreen[];
-    personalScreenCount: number;
-    personalScreenPreviews?: HomeScreenPreview[];
-    backtestActivity: HomeBacktestActivity[];
-    recentBacktests: HomeRecentBacktest[];
+    screens: HomeScreen[];
+    screenCount: number;
+    backtests: HomeBacktest[];
+    backtestCount: number;
 }>();
 
 const page = usePage();
 const user = computed(() => page.props.auth.user);
 const isPaid = computed(() => user.value?.is_paid === true);
-
 const primaryActionClass =
-    'inline-flex items-center gap-2 rounded-lg bg-purple-700 px-4 py-2 text-sm font-semibold text-white shadow-xs transition hover:bg-purple-600 focus:outline-hidden focus-visible:ring-2 focus-visible:ring-purple-500 focus-visible:ring-offset-2';
+    'inline-flex min-h-11 items-center justify-center gap-2 rounded-lg bg-purple-600 px-4 py-2.5 text-sm font-semibold text-white shadow-xs transition-colors hover:bg-purple-500 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-purple-600';
+const secondaryActionClass =
+    'inline-flex min-h-11 items-center gap-2 rounded text-sm font-semibold text-purple-700 hover:text-purple-600 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-purple-600';
+const statusLabels = { pending: 'Pending', running: 'Running', completed: 'Completed', failed: 'Failed' };
+const statusClasses = {
+    pending: 'bg-gray-100 text-gray-700',
+    running: 'bg-blue-50 text-blue-700',
+    completed: 'bg-emerald-50 text-emerald-700',
+    failed: 'bg-rose-50 text-rose-700',
+};
 
-function findScreenPreview(previews: HomeScreenPreview[] | undefined, screenId: number): HomeScreenPreview | undefined {
-    return previews?.find((preview) => preview.screen_id === screenId);
-}
-
-function activityLabel(status: HomeBacktestActivity['status']): string {
-    if (status === 'failed') {
-        return 'Failed';
-    }
-
-    if (status === 'running') {
-        return 'Running';
-    }
-
-    return 'Queued';
-}
-
-function activityDescription(backtest: HomeBacktestActivity): string {
-    if (backtest.status === 'failed') {
-        return 'Open this backtest to review the failed run.';
-    }
-
-    if (backtest.status === 'running') {
-        return `${backtest.progress}% complete`;
-    }
-
-    return 'Waiting for a worker to start the run.';
-}
-
-function activityStatusClass(status: HomeBacktestActivity['status']): string {
-    if (status === 'failed') {
-        return 'bg-red-50 text-red-700';
-    }
-
-    if (status === 'running') {
-        return 'bg-blue-50 text-blue-700';
-    }
-
-    return 'bg-amber-50 text-amber-700';
-}
-
-function metricClass(value: number): string {
-    return value >= 0 ? 'text-emerald-700' : 'text-red-700';
+function returnColor(value: number): string {
+    return value > 0 ? 'text-emerald-700' : value < 0 ? 'text-rose-700' : 'text-gray-700';
 }
 </script>

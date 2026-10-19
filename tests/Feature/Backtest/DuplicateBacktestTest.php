@@ -16,6 +16,7 @@ it('copies all saved settings into an independent pending backtest without copyi
     $user = User::factory()->create(['is_paid' => true]);
     $source = Backtest::factory()->for($user)->create([
         'name' => 'My Strategy',
+        'is_public' => true,
         'status' => $status,
         'progress' => 95,
         'started_at' => now()->subDays(3),
@@ -91,12 +92,13 @@ it('copies all saved settings into an independent pending backtest without copyi
         ->assertSessionHas('success');
 
     $runFields = [
-        'id', 'name', 'status', 'progress', 'started_at', 'completed_at',
+        'id', 'name', 'is_public', 'status', 'progress', 'started_at', 'completed_at',
         'settings_changed_at', 'error_message', 'created_at', 'updated_at',
     ];
 
     expect(Arr::except($copy->getAttributes(), $runFields))->toBe(Arr::except($original, $runFields))
         ->and($copy->name)->toBe('My Strategy (Copy)')
+        ->and($copy->is_public)->toBeFalse()
         ->and($copy->status)->toBe(BacktestStatusEnum::Pending)
         ->and($copy->progress)->toBe(0)
         ->and($copy->started_at)->toBeNull()

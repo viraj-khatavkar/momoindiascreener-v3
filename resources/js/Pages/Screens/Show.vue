@@ -2,7 +2,7 @@
     <div>
         <Head :title="screen.name" />
         <div class="flex items-start justify-between">
-            <PageHeader description="Public screen (read-only)">
+            <PageHeader description="Example screen (read-only)">
                 {{ screen.name }}
             </PageHeader>
         </div>

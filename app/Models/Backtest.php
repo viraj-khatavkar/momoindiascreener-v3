@@ -10,6 +10,8 @@ use App\Enums\BacktestStopLossProceedsEnum;
 use App\Enums\BacktestWeightageEnum;
 use App\Enums\NseIndexEnum;
 use Database\Factories\BacktestFactory;
+use Illuminate\Database\Eloquent\Attributes\Scope;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -22,6 +24,7 @@ class Backtest extends Model
     use HasFactory;
 
     protected $attributes = [
+        'is_public' => false,
         'cash_call_gold_dma_period' => 50,
         'apply_stop_loss' => false,
         'stop_loss_percentage' => 10,
@@ -32,6 +35,7 @@ class Backtest extends Model
     protected function casts(): array
     {
         return [
+            'is_public' => 'boolean',
             'status' => BacktestStatusEnum::class,
             'rebalance_frequency' => BacktestRebalanceFrequencyEnum::class,
             'weightage' => BacktestWeightageEnum::class,
@@ -91,6 +95,13 @@ class Backtest extends Model
             'minimum_return_one_year' => 'decimal:2',
             'ignore_above_beta' => 'decimal:2',
         ];
+    }
+
+    #[Scope]
+    protected function publiclyVisible(Builder $query): void
+    {
+        $query->where('is_public', true)
+            ->where('status', BacktestStatusEnum::Completed);
     }
 
     public function user(): BelongsTo

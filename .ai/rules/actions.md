@@ -1,6 +1,7 @@
 ---
 paths:
   - app/Actions/ApplyScreenFiltersAction.php
+  - app/Actions/BuildHomePageDataAction.php
 ---
 
 # Actions
@@ -16,3 +17,6 @@ ETFs never have market cap or P/E data in this application. For NseIndexEnum::NI
 
 ## Select unique ETFs after the other screen filters
 The unique_etf_per_index option is off by default and applies only to ETF screens. After all filters, including decile restrictions and required factor data, keep the ETF with the highest median_volume_one_year for each mapped etf_index. Use volume from the resolved screen date, break ties by symbol ascending, keep unmapped symbols separate, and rank the selected ETFs with the saved factors. Apply the same selection to screen pages and CSV exports.
+
+## Separate personal and public home lists
+Signed-in users see only their own screens and backtests, including saved backtests when paid access has expired. Limit personal lists to the six most recently updated items with ID as a stable tie-breaker, and return full owner-scoped counts. Guests see Screen::PUBLIC_SCREENS and only explicitly selected completed public backtests. Home screen cards use saved metadata; do not run screen filters or load result previews on the home page.

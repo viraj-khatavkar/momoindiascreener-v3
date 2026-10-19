@@ -5,6 +5,7 @@ namespace App\Http\Requests;
 use App\Actions\Backtest\LoadBacktestTradeLogAction;
 use Illuminate\Contracts\Validation\ValidationRule;
 use Illuminate\Foundation\Http\FormRequest;
+use Illuminate\Support\Facades\Gate;
 use Illuminate\Validation\Rule;
 
 class ShowBacktestRequest extends FormRequest
@@ -14,7 +15,9 @@ class ShowBacktestRequest extends FormRequest
      */
     public function authorize(): bool
     {
-        abort_unless($this->user()->can('view', $this->route('backtest')), 404);
+        $ability = $this->routeIs('public-backtests.show') ? 'viewPublic' : 'view';
+
+        abort_unless(Gate::allows($ability, $this->route('backtest')), 404);
 
         return true;
     }

@@ -2,6 +2,7 @@ export interface Backtest {
     id: number;
     name: string;
     user_id: number;
+    is_public: boolean;
     status: 'pending' | 'running' | 'completed' | 'failed';
     progress: number;
     max_stocks_to_hold: number;

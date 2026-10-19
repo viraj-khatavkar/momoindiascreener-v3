@@ -97,6 +97,9 @@ Route::get('/screens', [ScreensController::class, 'index']);
 Route::get('/screens/create', [ScreensController::class, 'create'])->middleware(['auth', 'verified']);
 Route::get('/screens/{screen}', [ScreensController::class, 'show']);
 
+Route::get('/public-backtests/{backtest}', [BacktestsController::class, 'show'])->name('public-backtests.show');
+Route::get('/public-backtests/{backtest}/benchmark', BacktestBenchmarkController::class)->name('public-backtests.benchmark');
+
 Route::middleware(['auth', 'verified'])->group(function () {
     Route::inertia('/ama-recording', 'AmaRecording')->middleware(VerifyIsPaid::class);
 

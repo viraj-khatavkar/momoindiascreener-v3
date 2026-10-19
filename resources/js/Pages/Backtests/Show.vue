@@ -8,6 +8,7 @@
                 {{ backtest.name }}
             </PageHeader>
             <div class="flex flex-wrap items-center gap-3">
+                <span v-if="readOnly" class="rounded-full bg-purple-50 px-2.5 py-1 text-xs font-medium text-purple-700">Example backtest</span>
                 <span
                     :class="statusBadgeClass(backtest.status)"
                     class="rounded-full px-2.5 py-0.5 text-xs font-medium capitalize"
@@ -15,11 +16,13 @@
                     {{ backtest.status }}
                 </span>
                 <DuplicateBacktestButton
+                    v-if="!readOnly"
                     :backtest-id="backtest.id"
                     :disabled="form.isDirty || form.processing"
                     :title="form.isDirty ? 'Save settings before duplicating' : 'Copy saved settings to a new backtest'"
                 />
                 <button
+                    v-if="!readOnly"
                     type="button"
                     :disabled="backtest.status === 'running' || form.processing"
                     class="inline-flex cursor-pointer items-center gap-1.5 rounded-lg bg-purple-600 px-4 py-2 text-sm font-semibold text-white shadow-xs transition-all duration-200 hover:bg-purple-500 hover:shadow-md disabled:cursor-not-allowed disabled:opacity-75"
@@ -33,7 +36,7 @@
         <p v-if="form.isDirty" class="mt-2 text-sm text-gray-500">Save settings before you duplicate this backtest.</p>
 
         <!-- Tabs -->
-        <div class="mt-2 border-b border-gray-200">
+        <div v-if="!readOnly" class="mt-2 border-b border-gray-200">
             <nav class="-mb-px flex gap-6" role="tablist" aria-label="Backtest tabs">
                 <button
                     type="button"
@@ -74,6 +77,7 @@
                     The results below were produced with older settings.
                 </p>
                 <button
+                    v-if="!readOnly"
                     type="button"
                     :disabled="form.processing"
                     class="cursor-pointer rounded-md bg-amber-600 px-3 py-1.5 text-xs font-semibold text-white shadow-xs hover:bg-amber-500 disabled:cursor-not-allowed disabled:opacity-75"
@@ -102,6 +106,7 @@
                         </svg>
                     </button>
                     <button
+                        v-if="!readOnly"
                         type="button"
                         class="cursor-pointer text-xs font-medium text-purple-600 hover:text-purple-700 hover:underline"
                         @click="setTab('settings')"
@@ -233,7 +238,7 @@
                 <!-- Zero-trade run -->
                 <InfoAlert v-if="summaryMetrics.total_trades === 0">
                     This run produced no trades — your filters may exclude every stock in the universe.
-                    Loosen the filters in the Settings tab and run again.
+                    <span v-if="!readOnly">Loosen the filters in the Settings tab and run again.</span>
                 </InfoAlert>
 
                 <!-- Section navigation (sits below the sticky app header) -->
@@ -536,6 +541,7 @@
                                 </select>
                                 <span v-if="loadingBenchmark" class="text-xs text-gray-400">Loading...</span>
                                 <a
+                                    v-if="!readOnly"
                                     :href="`/backtests/${backtest.id}/csv/nav`"
                                     class="ml-2 whitespace-nowrap text-xs font-medium text-purple-600 hover:underline"
                                 >
@@ -1003,6 +1009,7 @@
                                 <span class="ml-2 text-xs font-normal normal-case text-gray-400">({{ tradeLogSummary?.total ?? 0 }} transactions)</span>
                             </h2>
                             <a
+                                v-if="!readOnly"
                                 :href="`/backtests/${backtest.id}/csv/trades`"
                                 class="text-xs font-medium text-purple-600 hover:underline"
                             >
@@ -1017,7 +1024,7 @@
         </div>
 
         <!-- ============ SETTINGS TAB ============ -->
-        <div v-show="activeTab === 'settings'" class="mt-6">
+        <div v-if="!readOnly" v-show="activeTab === 'settings'" class="mt-6">
             <BacktestSettingsForm
                 :form="form"
                 :running="backtest.status === 'running'"
@@ -1073,6 +1080,7 @@ interface BenchmarkPoint {
 const props = withDefaults(
     defineProps<{
         backtest: Backtest;
+        readOnly?: boolean;
         summaryMetrics: BacktestSummaryMetric | null;
         // Deferred Inertia props — absent on the first render while their groups load.
         dailySnapshots?: BacktestDailySnapshot[];
@@ -1096,6 +1104,7 @@ const props = withDefaults(
     {
         dailySnapshots: () => [],
         defaultBenchmark: () => [],
+        readOnly: false,
     },
 );
 
@@ -1104,6 +1113,10 @@ const props = withDefaults(
 type Tab = 'results' | 'settings';
 
 function initialTab(): Tab {
+    if (props.readOnly) {
+        return 'results';
+    }
+
     const param = new URLSearchParams(window.location.search).get('tab');
     if (param === 'settings' || param === 'results') {
         return param;
@@ -1115,6 +1128,10 @@ function initialTab(): Tab {
 const activeTab = ref<Tab>(initialTab());
 
 function setTab(tab: Tab): void {
+    if (props.readOnly && tab === 'settings') {
+        return;
+    }
+
     activeTab.value = tab;
     const url = new URL(window.location.href);
     url.searchParams.set('tab', tab);
@@ -1421,7 +1438,8 @@ async function fetchBenchmark(slug: string): Promise<void> {
     }
     loadingBenchmark.value = true;
     try {
-        const response = await fetch(`/backtests/${props.backtest.id}/benchmark?slug=${slug}`);
+        const basePath = props.readOnly ? '/public-backtests' : '/backtests';
+        const response = await fetch(`${basePath}/${props.backtest.id}/benchmark?slug=${encodeURIComponent(slug)}`);
         benchmarkData.value = await response.json();
     } catch {
         benchmarkData.value = [];

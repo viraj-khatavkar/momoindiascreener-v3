@@ -18,6 +18,11 @@ class BacktestPolicy
         return $user->is_paid;
     }
 
+    public function viewPublic(?User $user, Backtest $backtest): bool
+    {
+        return Backtest::query()->publiclyVisible()->whereKey($backtest->getKey())->exists();
+    }
+
     public function update(User $user, Backtest $backtest): bool
     {
         return $backtest->user_id === $user->id;
