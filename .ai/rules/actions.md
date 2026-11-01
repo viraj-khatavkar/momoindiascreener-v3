@@ -2,6 +2,8 @@
 paths:
   - app/Actions/ApplyScreenFiltersAction.php
   - app/Actions/BuildHomePageDataAction.php
+  - app/Actions/ReadCsvAction.php
+  - 'app/Actions/*MarketIndex*Action.php'
 ---
 
 # Actions
@@ -20,3 +22,9 @@ The unique_etf_per_index option is off by default and applies only to ETF screen
 
 ## Separate personal and public home lists
 Signed-in users see only their own screens and backtests, including saved backtests when paid access has expired. Limit personal lists to the six most recently updated items with ID as a stable tie-breaker, and return full owner-scoped counts. Guests see Screen::PUBLIC_SCREENS and only explicitly selected completed public backtests. Home screen cards use saved metadata; do not run screen filters or load result previews on the home page.
+
+## Decode NSE CSV text before Unicode string operations
+NSE CSV files can contain Windows-1252 text, including byte 0x96 for an en dash in ETF index labels. Convert fields that are not valid UTF-8 from Windows-1252 to UTF-8 when reading the CSV. Preserve valid UTF-8. Unicode string operations such as Str::squish can return null for these raw bytes, which can also prevent admin process output from being saved.
+
+## Use canonical ETF indexes and symbol-specific ambiguous aliases
+Treat TRI, TR, total-return, index suffixes and known fund-name variants as aliases of one canonical market index. Preserve strategy numbers, providers and bond maturities. Match exact canonical keys against active database indexes and approved aliases; never create a new index during import. Generic labels such as INDEX and COMMODITY, and conflicting changes for an existing ETF, require symbol-specific aliases. Preserve ignored/manual decisions and the previous etf_index while a change is pending. Canonical cleanup uses backtest:normalize-etf-indexes, with a preview by default and a backup plus transaction for --apply. Keep all aliases, suggestions and instrument slugs consistent when merging indexes.

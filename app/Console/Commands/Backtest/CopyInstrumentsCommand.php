@@ -86,9 +86,11 @@ class CopyInstrumentsCommand extends Command
         }
 
         $rows = $readCsvAction->execute(Storage::path($relativePath))->toCollection();
+        $instruments = BacktestNseInstrument::query()->get()->keyBy('symbol');
 
         $seen = 0;
-        $populated = 0;
+        $matched = 0;
+        $updated = 0;
         $pendingAliases = [];
 
         foreach ($rows as $row) {
@@ -104,7 +106,11 @@ class CopyInstrumentsCommand extends Command
 
             $seen++;
 
-            $marketIndexAlias = $resolveMarketIndexAlias->execute($row[14], $symbol, $date);
+            $instrument = $instruments->get($symbol);
+            $previousSlug = $instrument?->etf_index_source_date?->toDateString() <= $date
+                ? $instrument?->etf_index
+                : null;
+            $marketIndexAlias = $resolveMarketIndexAlias->execute($row[14], $symbol, $date, $previousSlug);
             $slug = $marketIndexAlias->status === MarketIndexAliasStatusEnum::Approved
                 ? $marketIndexAlias->marketIndex?->slug
                 : null;
@@ -113,24 +119,30 @@ class CopyInstrumentsCommand extends Command
                 $pendingAliases[$marketIndexAlias->id] = $marketIndexAlias;
             }
 
-            $updated = BacktestNseInstrument::query()
+            $values = [
+                'market_index_alias_id' => $marketIndexAlias->id,
+                'etf_index_source_date' => $date,
+            ];
+
+            if ($marketIndexAlias->status !== MarketIndexAliasStatusEnum::Pending) {
+                $values['etf_index'] = $slug;
+            }
+
+            $updated += BacktestNseInstrument::query()
                 ->where('symbol', $symbol)
                 ->where(function ($query) use ($date) {
                     $query->whereNull('etf_index_source_date')
                         ->orWhere('etf_index_source_date', '<=', $date);
                 })
-                ->update([
-                    'etf_index' => $slug,
-                    'market_index_alias_id' => $marketIndexAlias->id,
-                    'etf_index_source_date' => $date,
-                ]);
+                ->update($values);
 
             if ($slug !== null) {
-                $populated += $updated;
+                $matched++;
             }
         }
 
-        $this->info($populated.' etf_index values populated from '.$seen.' ETFs in the file for '.$date.'.');
+        $this->info($matched.' ETF labels matched to approved indexes from '.$seen.' ETFs in the file for '.$date.'.');
+        $this->info($updated.' instrument records updated.');
 
         $this->warnAboutPendingAliases($pendingAliases);
     }

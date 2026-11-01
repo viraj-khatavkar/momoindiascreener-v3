@@ -2,10 +2,13 @@
 
 namespace App\Http\Requests;
 
+use App\Actions\NormalizeMarketIndexAction;
+use App\Actions\ResolveMarketIndexAliasAction;
 use App\Models\MarketIndex;
 use Illuminate\Contracts\Validation\ValidationRule;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
+use Illuminate\Validation\Validator;
 
 class UpdateMarketIndexAliasRequest extends FormRequest
 {
@@ -56,15 +59,36 @@ class UpdateMarketIndexAliasRequest extends FormRequest
         ];
     }
 
+    /** @return array<\Closure> */
+    public function after(): array
+    {
+        return [function (Validator $validator): void {
+            if ($this->input('action') !== 'create' || $validator->errors()->isNotEmpty()) {
+                return;
+            }
+
+            $resolver = new ResolveMarketIndexAliasAction(new NormalizeMarketIndexAction);
+            $existing = $resolver->findMarketIndex((string) $this->input('slug'))
+                ?? $resolver->findMarketIndex((string) $this->input('name'));
+
+            if ($existing) {
+                $validator->errors()->add('slug', 'This underlying already exists as '.$existing->slug.'. Link to that index.');
+            }
+        }];
+    }
+
     protected function prepareForValidation(): void
     {
         if ($this->input('action') !== 'create') {
             return;
         }
 
+        $normalizer = new NormalizeMarketIndexAction;
+        $slug = $normalizer->execute((string) $this->input('slug'));
+
         $this->merge([
-            'name' => str((string) $this->input('name'))->squish()->toString(),
-            'slug' => str((string) $this->input('slug'))->slug()->toString(),
+            'name' => $normalizer->name($normalizer->execute((string) $this->input('name'))),
+            'slug' => $normalizer->isGeneric($slug) ? '' : $slug,
             'provider' => filled($this->input('provider'))
                 ? str((string) $this->input('provider'))->squish()->toString()
                 : null,

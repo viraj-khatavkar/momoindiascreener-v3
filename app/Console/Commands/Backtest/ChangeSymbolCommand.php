@@ -3,10 +3,12 @@
 namespace App\Console\Commands\Backtest;
 
 use App\Actions\Backtest\InvalidateAssumedDelistingsAction;
+use App\Enums\MarketIndexAliasStatusEnum;
 use App\Models\BacktestNseCorporateAction;
 use App\Models\BacktestNseIndexConstituent;
 use App\Models\BacktestNseInstrument;
 use App\Models\BacktestNseInstrumentPrice;
+use App\Models\MarketIndexAlias;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\DB;
 
@@ -61,6 +63,7 @@ class ChangeSymbolCommand extends Command
             $constituentRowsUpdated = $this->updateIndexConstituentSymbol($oldSymbol, $newSymbol);
 
             $instrumentRowsUpdated = $this->updateInstrumentSymbol($oldSymbol, $newSymbol);
+            $this->copyScopedIndexAliases($oldSymbol, $newSymbol);
 
             return [$priceRowsUpdated, $corporateActionRowsUpdated, $constituentRowsUpdated, $instrumentRowsUpdated];
         });
@@ -148,5 +151,26 @@ class ChangeSymbolCommand extends Command
             ->delete();
 
         return 1;
+    }
+
+    private function copyScopedIndexAliases(string $oldSymbol, string $newSymbol): void
+    {
+        foreach (MarketIndexAlias::query()->where('symbol', $oldSymbol)->get() as $alias) {
+            $newAlias = MarketIndexAlias::query()->firstOrCreate(
+                ['normalized_label' => $alias->normalized_label, 'symbol' => $newSymbol],
+                $alias->only([
+                    'source_label', 'market_index_id', 'suggested_market_index_id', 'suggested_slug',
+                    'status', 'first_seen_on', 'last_seen_on', 'reviewed_by_user_id', 'reviewed_at',
+                ]) + ['sample_symbol' => $newSymbol],
+            );
+            $values = ['market_index_alias_id' => $newAlias->id];
+
+            if ($newAlias->status !== MarketIndexAliasStatusEnum::Pending) {
+                $values['etf_index'] = $newAlias->status === MarketIndexAliasStatusEnum::Approved
+                    ? $newAlias->marketIndex?->slug : null;
+            }
+
+            BacktestNseInstrument::query()->where('symbol', $newSymbol)->where('market_index_alias_id', $alias->id)->update($values);
+        }
     }
 }

@@ -188,3 +188,77 @@ it('validates the selected review action', function () {
 
     expect($marketIndexAlias->fresh()->status)->toBe(MarketIndexAliasStatusEnum::Pending);
 });
+
+it('cleans a new index name and slug before storing it', function () {
+    $alias = MarketIndexAlias::factory()->create();
+
+    $this->actingAs($this->admin)->put("/admin/market-index-aliases/{$alias->id}", [
+        'action' => 'create', 'name' => 'NIFTY FUTURE INDUSTRY TOTAL RETURN INDEX',
+        'slug' => 'nifty-future-industry-index-tri',
+    ])->assertSessionHasNoErrors();
+
+    expect($alias->fresh()->marketIndex->slug)->toBe('nifty-future-industry')
+        ->and($alias->fresh()->marketIndex->name)->toBe('Nifty Future Industry');
+});
+
+it('rejects creating a duplicate index through a TRI variant', function () {
+    MarketIndex::factory()->create(['name' => 'Nifty Midcap 150', 'slug' => 'nifty-midcap-150']);
+    $alias = MarketIndexAlias::factory()->create();
+
+    $this->actingAs($this->admin)->put("/admin/market-index-aliases/{$alias->id}", [
+        'action' => 'create', 'name' => 'Nifty Midcap 150 Total Return Index', 'slug' => 'nifty-midcap-150-tri',
+    ])->assertSessionHasErrors(['name', 'slug']);
+
+    expect(MarketIndex::query()->count())->toBe(1);
+});
+
+it('limits a symbol-specific review to that ETF', function () {
+    $gold = MarketIndex::factory()->create(['name' => 'Gold', 'slug' => 'gold']);
+    $aliases = collect(['GOLDETF', 'SILVERETF'])->map(function (string $symbol): MarketIndexAlias {
+        $alias = MarketIndexAlias::factory()->create([
+            'source_label' => 'COMMODITY', 'normalized_label' => 'COMMODITY', 'symbol' => $symbol,
+        ]);
+        BacktestNseInstrument::query()->create(['symbol' => $symbol, 'market_index_alias_id' => $alias->id]);
+
+        return $alias;
+    });
+
+    $this->actingAs($this->admin)->put("/admin/market-index-aliases/{$aliases[0]->id}", [
+        'action' => 'link', 'market_index_id' => $gold->id,
+    ])->assertSessionHasNoErrors();
+
+    expect(BacktestNseInstrument::query()->where('symbol', 'GOLDETF')->value('etf_index'))->toBe('gold')
+        ->and(BacktestNseInstrument::query()->where('symbol', 'SILVERETF')->value('etf_index'))->toBeNull();
+});
+
+it('resolves equivalent pending labels when an index is approved', function () {
+    $index = MarketIndex::factory()->create(['name' => 'Nifty Future Theme', 'slug' => 'nifty-future-theme']);
+    $aliases = collect(['NIFTY FUTURE THEME TRI', 'HDFC NIFTY FUTURE THEME ETF'])->map(function (string $label, int $position): MarketIndexAlias {
+        $alias = MarketIndexAlias::factory()->create(['source_label' => $label, 'normalized_label' => $label]);
+        BacktestNseInstrument::query()->create(['symbol' => 'ETF'.$position, 'market_index_alias_id' => $alias->id]);
+
+        return $alias;
+    });
+
+    $this->actingAs($this->admin)->put("/admin/market-index-aliases/{$aliases[0]->id}", [
+        'action' => 'link', 'market_index_id' => $index->id,
+    ])->assertSessionHasNoErrors();
+
+    expect($aliases[1]->fresh()->status)->toBe(MarketIndexAliasStatusEnum::Approved)
+        ->and(BacktestNseInstrument::query()->where('symbol', 'ETF1')->value('etf_index'))->toBe($index->slug);
+});
+
+it('rejects creating a duplicate underlying through an approved alternate name', function () {
+    $index = MarketIndex::factory()->create(['name' => 'Nifty India Consumption', 'slug' => 'nifty-india-consumption']);
+    MarketIndexAlias::factory()->create([
+        'source_label' => 'NIFTY CONSUMPTION INDEX', 'normalized_label' => 'NIFTY CONSUMPTION INDEX',
+        'market_index_id' => $index->id, 'status' => MarketIndexAliasStatusEnum::Approved,
+    ]);
+    $alias = MarketIndexAlias::factory()->create();
+
+    $this->actingAs($this->admin)->put("/admin/market-index-aliases/{$alias->id}", [
+        'action' => 'create', 'name' => 'Nifty Consumption Total Return Index', 'slug' => 'nifty-consumption-tri',
+    ])->assertSessionHasErrors('slug');
+
+    expect(MarketIndex::query()->count())->toBe(1);
+});

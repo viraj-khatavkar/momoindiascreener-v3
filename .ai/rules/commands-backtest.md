@@ -2,6 +2,7 @@
 paths:
   - app/Console/Commands/Backtest/ImportNseInstrumentsCommand.php
   - 'app/Console/Commands/Backtest/*ConstituentsCommand.php'
+  - app/Console/Commands/Backtest/ImportNseCorporateActionsCommand.php
 ---
 
 # Commands Backtest
@@ -11,3 +12,6 @@ The instrument import accepts only NSE UDiFF bhavcopy; do not add support for th
 
 ## Keep Total Market and Microcap membership together
 Nifty Total Market is the union of Nifty 500 and Nifty Microcap 250. Daily constituent imports must set both date-specific flags from backtest_nse_index_constituents, and refreshes must write both the 750-member and 250-member sets. Do not infer Microcap 250 from all stocks outside Nifty 500.
+
+## Accept only ISO ex-dates in corporate action files
+The user requires only the new corporate_actions.csv date format. Match EX_DT (column 6) directly to the requested YYYY-MM-DD date. Do not support or infer the legacy DD/MM/YYYY format, and do not use RECORD_DT to choose actions. Keep current-file precedence and the previous-trading-day fallback; each file must use ISO ex-dates.

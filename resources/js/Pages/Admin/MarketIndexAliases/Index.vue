@@ -1,7 +1,9 @@
 <template>
     <div>
         <Head title="ETF Index Mappings" />
-        <PageHeader description="Review index labels found in NSE ETF files."> ETF Index Mappings </PageHeader>
+        <PageHeader description="Equivalent labels share one index. Review new indexes and changes that need a check.">
+            ETF Index Mappings
+        </PageHeader>
 
         <div class="grid grid-cols-1 gap-4 sm:grid-cols-3">
             <div class="rounded-lg bg-amber-50 p-4 ring-1 ring-amber-200">
@@ -65,7 +67,8 @@
                                 </p>
                             </td>
                             <td class="px-3 py-4 text-sm whitespace-nowrap text-gray-600">
-                                {{ alias.sample_symbol ?? '-' }}
+                                {{ alias.symbol || alias.sample_symbol || '-' }}
+                                <p v-if="alias.symbol" class="mt-1 text-xs text-amber-700">Only this ETF</p>
                             </td>
                             <td class="px-3 py-4 text-sm whitespace-nowrap text-gray-600">
                                 <p>{{ displayDate(alias.first_seen_on) }}</p>
@@ -110,6 +113,7 @@
                         <tr v-if="reviewingAliasId === alias.id" class="bg-purple-50/50">
                             <td colspan="7" class="px-4 py-6">
                                 <form class="grid gap-6" @submit.prevent="saveReview(alias)">
+                                    <p v-if="alias.symbol" class="text-sm text-gray-700">This mapping applies only to {{ alias.symbol }}.</p>
                                     <fieldset>
                                         <legend class="text-sm font-semibold text-gray-900">Select an action</legend>
                                         <div class="mt-3 flex flex-col gap-3 sm:flex-row sm:gap-6">
@@ -163,6 +167,11 @@
                                             :error="reviewForm.errors.provider"
                                         />
                                     </div>
+
+                                    <p v-if="reviewForm.action === 'create'" class="text-sm text-gray-600">
+                                        Use the index name. TRI, total return, and fund-name variants use the same index. Link to an existing index
+                                        when it is already listed.
+                                    </p>
 
                                     <div class="flex flex-wrap items-center gap-3">
                                         <button

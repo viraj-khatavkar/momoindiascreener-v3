@@ -30,7 +30,13 @@ class ReadCsvAction
             }
 
             for ($c = 0; $c < $num; $c++) {
-                $csvValues[$i][] = trim($fileData[$c]);
+                $value = (string) $fileData[$c];
+
+                if (! mb_check_encoding($value, 'UTF-8')) {
+                    $value = mb_convert_encoding($value, 'UTF-8', 'Windows-1252');
+                }
+
+                $csvValues[$i][] = trim($value);
             }
 
             $i++;

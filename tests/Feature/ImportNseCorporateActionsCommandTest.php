@@ -11,16 +11,16 @@ beforeEach(function () {
 
 /**
  * Write a fake NSE corporate_actions.csv (series = column 0, symbol = column 1,
- * ex-date = column 6 in d/m/Y, purpose = column 9).
+ * ex-date = column 6 in Y-m-d, purpose = column 9).
  *
  * @param  array<int, array{0: string, 1: string, 2: string, 3: string}>  $rows  tuples of [series, symbol, exDate, purpose]
  */
 function putCorporateActionsCsv(string $date, array $rows): void
 {
-    $lines = ['SERIES,SYMBOL,SECURITY,FACE VALUE,QTY,RECORD DATE,EX-DATE,BC START,BC END,PURPOSE'];
+    $lines = ['SERIES,SYMBOL,SECURITY,RECORD_DT,BC_STRT_DT,BC_END_DT,EX_DT,ND_STRT_DT,ND_END_DT,PURPOSE'];
 
     foreach ($rows as [$series, $symbol, $exDate, $purpose]) {
-        $lines[] = "{$series},{$symbol},SECURITY,1,100,{$exDate},{$exDate},-,-,{$purpose}";
+        $lines[] = "{$series},{$symbol},SECURITY,{$exDate},,,{$exDate},,,{$purpose}";
     }
 
     Storage::put("uploads/{$date}/corporate_actions.csv", implode("\n", $lines));
@@ -40,7 +40,7 @@ it('fails when no series is provided', function () {
 
 it('reports when no corporate actions match the date', function () {
     putCorporateActionsCsv('2020-01-27', [
-        ['EQ', 'TCS', '28/01/2020', 'BONUS 1:2'],
+        ['EQ', 'TCS', '2020-01-28', 'BONUS 1:2'],
     ]);
 
     $this->artisan('backtest:import-corporate-actions', ['--date' => '2020-01-27', '--series' => 'EQ'])
@@ -52,7 +52,7 @@ it('reports when no corporate actions match the date', function () {
 
 it('imports a corporate action with parsed type, ratio and dividend', function (string $purpose, CorporateActionTypeEnum $type, ?string $ratio, ?string $dividend) {
     putCorporateActionsCsv('2020-01-27', [
-        ['EQ', 'TCS', '27/01/2020', $purpose],
+        ['EQ', 'TCS', '2020-01-27', $purpose],
     ]);
 
     $this->artisan('backtest:import-corporate-actions', ['--date' => '2020-01-27', '--series' => 'EQ'])
@@ -77,7 +77,7 @@ it('imports a corporate action with parsed type, ratio and dividend', function (
 
 it('extracts the dividend amount from decorated purposes', function () {
     putCorporateActionsCsv('2020-01-27', [
-        ['EQ', 'TCS', '27/01/2020', 'AGM/DIV-RS.3.50 PER SHARE'],
+        ['EQ', 'TCS', '2020-01-27', 'AGM/DIV-RS.3.50 PER SHARE'],
     ]);
 
     $this->artisan('backtest:import-corporate-actions', ['--date' => '2020-01-27', '--series' => 'EQ'])
@@ -88,7 +88,7 @@ it('extracts the dividend amount from decorated purposes', function () {
 
 it('stores purposes that match the filter but no classification with a null type', function () {
     putCorporateActionsCsv('2020-01-27', [
-        ['EQ', 'TCS', '27/01/2020', 'FV SPLIT RS.10 TO RE.1'],
+        ['EQ', 'TCS', '2020-01-27', 'FV SPLIT RS.10 TO RE.1'],
     ]);
 
     $this->artisan('backtest:import-corporate-actions', ['--date' => '2020-01-27', '--series' => 'EQ'])
@@ -103,9 +103,9 @@ it('stores purposes that match the filter but no classification with a null type
 
 it('only imports rows for the given series and ex-date', function () {
     putCorporateActionsCsv('2020-01-27', [
-        ['EQ', 'WIPRO', '27/01/2020', 'BONUS 1:2'],
-        ['BE', 'INFY', '27/01/2020', 'BONUS 1:2'],
-        ['EQ', 'TCS', '28/01/2020', 'BONUS 1:2'],
+        ['EQ', 'WIPRO', '2020-01-27', 'BONUS 1:2'],
+        ['BE', 'INFY', '2020-01-27', 'BONUS 1:2'],
+        ['EQ', 'TCS', '2020-01-28', 'BONUS 1:2'],
     ]);
 
     $this->artisan('backtest:import-corporate-actions', ['--date' => '2020-01-27', '--series' => 'EQ'])
@@ -116,8 +116,8 @@ it('only imports rows for the given series and ex-date', function () {
 
 it('keeps every action when a symbol has multiple actions on the same day', function () {
     putCorporateActionsCsv('2020-01-27', [
-        ['EQ', 'TCS', '27/01/2020', 'BONUS 1:2'],
-        ['EQ', 'TCS', '27/01/2020', 'DIV RS 5 PER SH'],
+        ['EQ', 'TCS', '2020-01-27', 'BONUS 1:2'],
+        ['EQ', 'TCS', '2020-01-27', 'DIV RS 5 PER SH'],
     ]);
 
     $this->artisan('backtest:import-corporate-actions', ['--date' => '2020-01-27', '--series' => 'EQ'])
@@ -132,8 +132,8 @@ it('warns when the symbol has no price record for the date', function () {
     createBacktestPriceRow('WIPRO', '2020-01-27');
 
     putCorporateActionsCsv('2020-01-27', [
-        ['EQ', 'WIPRO', '27/01/2020', 'BONUS 1:2'],
-        ['EQ', 'TCS', '27/01/2020', 'BONUS 1:2'],
+        ['EQ', 'WIPRO', '2020-01-27', 'BONUS 1:2'],
+        ['EQ', 'TCS', '2020-01-27', 'BONUS 1:2'],
     ]);
 
     $this->artisan('backtest:import-corporate-actions', ['--date' => '2020-01-27', '--series' => 'EQ'])
@@ -145,7 +145,7 @@ it('warns when the symbol has no price record for the date', function () {
 
 it('prints but does not persist actions with omit-create', function () {
     putCorporateActionsCsv('2020-01-27', [
-        ['EQ', 'TCS', '27/01/2020', 'BONUS 1:2'],
+        ['EQ', 'TCS', '2020-01-27', 'BONUS 1:2'],
     ]);
 
     $this->artisan('backtest:import-corporate-actions', [
@@ -161,8 +161,8 @@ it('prints but does not persist actions with omit-create', function () {
 
 it('does not duplicate the same action listed under multiple series', function () {
     putCorporateActionsCsv('2020-01-29', [
-        ['BE', 'IIFLWAM', '29/01/2020', 'INT DIV-RS 10 PER SH'],
-        ['EQ', 'IIFLWAM', '29/01/2020', 'INT DIV-RS 10 PER SH'],
+        ['BE', 'IIFLWAM', '2020-01-29', 'INT DIV-RS 10 PER SH'],
+        ['EQ', 'IIFLWAM', '2020-01-29', 'INT DIV-RS 10 PER SH'],
     ]);
 
     $this->artisan('backtest:import-corporate-actions', ['--date' => '2020-01-29', '--series' => 'BE'])
@@ -180,8 +180,8 @@ it('does not duplicate the same action listed under multiple series', function (
 
 it('preserves factors across series re-imports of the same action', function () {
     putCorporateActionsCsv('2020-01-29', [
-        ['BE', 'IIFLWAM', '29/01/2020', 'INT DIV-RS 10 PER SH'],
-        ['EQ', 'IIFLWAM', '29/01/2020', 'INT DIV-RS 10 PER SH'],
+        ['BE', 'IIFLWAM', '2020-01-29', 'INT DIV-RS 10 PER SH'],
+        ['EQ', 'IIFLWAM', '2020-01-29', 'INT DIV-RS 10 PER SH'],
     ]);
 
     $this->artisan('backtest:import-corporate-actions', ['--date' => '2020-01-29', '--series' => 'BE'])
@@ -203,7 +203,7 @@ it('preserves factors across series re-imports of the same action', function () 
 
 it('preserves adjustment factors and applied stamps on re-import', function () {
     putCorporateActionsCsv('2020-01-27', [
-        ['EQ', 'TCS', '27/01/2020', 'BONUS 1:2'],
+        ['EQ', 'TCS', '2020-01-27', 'BONUS 1:2'],
     ]);
 
     $this->artisan('backtest:import-corporate-actions', ['--date' => '2020-01-27', '--series' => 'EQ'])
@@ -228,13 +228,13 @@ it('imports matching actions from the current file before the previous trading d
     createBacktestPriceRow('INFY', $previousDate);
 
     putCorporateActionsCsv('2020-01-28', [
-        ['EQ', 'TCS', '28/01/2020', 'DIV RS 5 PER SH'],
+        ['EQ', 'TCS', '2020-01-28', 'DIV RS 5 PER SH'],
     ]);
     putCorporateActionsCsv($previousDate, [
-        ['EQ', 'WIPRO', '28/01/2020', 'BONUS 1:2'],
-        ['BE', 'INFY', '28/01/2020', 'BONUS 1:2'],
-        ['EQ', 'HDFC', '27/01/2020', 'BONUS 1:2'],
-        ['EQ', 'ITC', '29/01/2020', 'DIV RS 2 PER SH'],
+        ['EQ', 'WIPRO', '2020-01-28', 'BONUS 1:2'],
+        ['BE', 'INFY', '2020-01-28', 'BONUS 1:2'],
+        ['EQ', 'HDFC', '2020-01-27', 'BONUS 1:2'],
+        ['EQ', 'ITC', '2020-01-29', 'DIV RS 2 PER SH'],
     ]);
 
     $this->artisan('backtest:import-corporate-actions', ['--date' => '2020-01-28', '--series' => 'EQ'])
@@ -255,7 +255,7 @@ it('checks the previous file when the current file has no matching actions', fun
 
     putCorporateActionsCsv('2020-01-27', []);
     putCorporateActionsCsv('2020-01-24', [
-        ['EQ', 'WIPRO', '27/01/2020', 'BONUS 1:2'],
+        ['EQ', 'WIPRO', '2020-01-27', 'BONUS 1:2'],
     ]);
 
     $this->artisan('backtest:import-corporate-actions', ['--date' => '2020-01-27', '--series' => 'EQ'])
@@ -273,16 +273,16 @@ it('selects the latest earlier price date across symbols and series', function (
 
     putCorporateActionsCsv('2020-01-27', []);
     putCorporateActionsCsv('2020-01-24', [
-        ['EQ', 'WIPRO', '27/01/2020', 'BONUS 1:2'],
+        ['EQ', 'WIPRO', '2020-01-27', 'BONUS 1:2'],
     ]);
     putCorporateActionsCsv('2020-01-23', [
-        ['EQ', 'TCS', '27/01/2020', 'DIV RS 5 PER SH'],
+        ['EQ', 'TCS', '2020-01-27', 'DIV RS 5 PER SH'],
     ]);
     putCorporateActionsCsv('2020-01-28', [
-        ['EQ', 'INFY', '27/01/2020', 'BONUS 1:2'],
+        ['EQ', 'INFY', '2020-01-27', 'BONUS 1:2'],
     ]);
     putCorporateActionsCsv('2020-01-26', [
-        ['EQ', 'HDFC', '27/01/2020', 'BONUS 1:2'],
+        ['EQ', 'HDFC', '2020-01-27', 'BONUS 1:2'],
     ]);
 
     $this->artisan('backtest:import-corporate-actions', ['--date' => '2020-01-27', '--series' => 'EQ'])
@@ -295,11 +295,11 @@ it('keeps the current file details for duplicate actions across files and repeat
     createBacktestPriceRow('INFY', '2020-01-24');
 
     putCorporateActionsCsv('2020-01-27', [
-        ['EQ', 'TCS', '27/01/2020', 'INT DIV RS 5 PER SH'],
+        ['EQ', 'TCS', '2020-01-27', 'INT DIV RS 5 PER SH'],
     ]);
     putCorporateActionsCsv('2020-01-24', [
-        ['EQ', 'TCS', '27/01/2020', 'DIV RS 5 PER SH'],
-        ['EQ', 'TCS', '27/01/2020', 'DIV RS 5 PER SH'],
+        ['EQ', 'TCS', '2020-01-27', 'DIV RS 5 PER SH'],
+        ['EQ', 'TCS', '2020-01-27', 'DIV RS 5 PER SH'],
     ]);
 
     $this->artisan('backtest:import-corporate-actions', ['--date' => '2020-01-27', '--series' => 'EQ'])
@@ -327,13 +327,13 @@ it('keeps distinct action types and ratios for the same symbol across both files
     createBacktestPriceRow('INFY', '2020-01-24');
 
     putCorporateActionsCsv('2020-01-27', [
-        ['EQ', 'TCS', '27/01/2020', 'BONUS 1:2'],
-        ['EQ', 'TCS', '27/01/2020', 'DIV RS 5 PER SH'],
+        ['EQ', 'TCS', '2020-01-27', 'BONUS 1:2'],
+        ['EQ', 'TCS', '2020-01-27', 'DIV RS 5 PER SH'],
     ]);
     putCorporateActionsCsv('2020-01-24', [
-        ['EQ', 'TCS', '27/01/2020', 'BONUS 1:2'],
-        ['EQ', 'TCS', '27/01/2020', 'BONUS 1:3'],
-        ['EQ', 'TCS', '27/01/2020', 'DIV RS 4 PER SH'],
+        ['EQ', 'TCS', '2020-01-27', 'BONUS 1:2'],
+        ['EQ', 'TCS', '2020-01-27', 'BONUS 1:3'],
+        ['EQ', 'TCS', '2020-01-27', 'DIV RS 4 PER SH'],
     ]);
 
     $this->artisan('backtest:import-corporate-actions', ['--date' => '2020-01-27', '--series' => 'EQ'])
@@ -354,11 +354,11 @@ it('previews unique actions from both files without saving them', function () {
     createBacktestPriceRow('INFY', '2020-01-24');
 
     putCorporateActionsCsv('2020-01-27', [
-        ['EQ', 'TCS', '27/01/2020', 'INT DIV RS 5 PER SH'],
+        ['EQ', 'TCS', '2020-01-27', 'INT DIV RS 5 PER SH'],
     ]);
     putCorporateActionsCsv('2020-01-24', [
-        ['EQ', 'TCS', '27/01/2020', 'DIV RS 5 PER SH'],
-        ['EQ', 'WIPRO', '27/01/2020', 'BONUS 1:2'],
+        ['EQ', 'TCS', '2020-01-27', 'DIV RS 5 PER SH'],
+        ['EQ', 'WIPRO', '2020-01-27', 'BONUS 1:2'],
     ]);
 
     $this->artisan('backtest:import-corporate-actions', [
@@ -378,10 +378,10 @@ it('imports the current file when there are no earlier price dates', function ()
     createBacktestPriceRow('TCS', '2020-01-27');
     createBacktestPriceRow('TCS', '2020-01-28');
     putCorporateActionsCsv('2020-01-27', [
-        ['EQ', 'TCS', '27/01/2020', 'DIV RS 5 PER SH'],
+        ['EQ', 'TCS', '2020-01-27', 'DIV RS 5 PER SH'],
     ]);
     putCorporateActionsCsv('2020-01-24', [
-        ['EQ', 'WIPRO', '27/01/2020', 'BONUS 1:2'],
+        ['EQ', 'WIPRO', '2020-01-27', 'BONUS 1:2'],
     ]);
 
     $this->artisan('backtest:import-corporate-actions', ['--date' => '2020-01-27', '--series' => 'EQ'])
@@ -394,10 +394,10 @@ it('warns and imports the current file when the previous trading day file is mis
     createBacktestPriceRow('INFY', '2020-01-23');
     createBacktestPriceRow('INFY', '2020-01-24');
     putCorporateActionsCsv('2020-01-27', [
-        ['EQ', 'TCS', '27/01/2020', 'DIV RS 5 PER SH'],
+        ['EQ', 'TCS', '2020-01-27', 'DIV RS 5 PER SH'],
     ]);
     putCorporateActionsCsv('2020-01-23', [
-        ['EQ', 'WIPRO', '27/01/2020', 'BONUS 1:2'],
+        ['EQ', 'WIPRO', '2020-01-27', 'BONUS 1:2'],
     ]);
 
     $this->artisan('backtest:import-corporate-actions', ['--date' => '2020-01-27', '--series' => 'EQ'])
@@ -405,4 +405,44 @@ it('warns and imports the current file when the previous trading day file is mis
         ->assertSuccessful();
 
     expect(BacktestNseCorporateAction::sole()->symbol)->toBe('TCS');
+});
+
+it('imports the October 14 actions using ISO ex-dates', function () {
+    putCorporateActionsCsv('2025-10-14', [
+        ['EQ', 'DELPHIFX', '2025-10-14', 'RGHTS 23:49@PRM RS 181/-'],
+        ['EQ', 'GOKULAGRO', '2025-10-14', 'FVSPLT FRM RS 2 TO RE 1'],
+        ['EQ', 'TATAINVEST', '2025-10-14', 'FVSPLT FRM RS 10 TO RE 1'],
+        ['EQ', 'TATAMOTORS', '2025-10-14', 'DEMERGER'],
+        ['EQ', 'UTKARSHBNK', '2025-10-14', 'RIGHTS 8:13 @ PRM RS 4/-'],
+        ['SM', 'MOS', '2025-10-14', 'BONUS 1:1'],
+    ]);
+
+    $this->artisan('backtest:import-corporate-actions', ['--date' => '2025-10-14', '--series' => 'EQ'])->assertSuccessful();
+    $this->artisan('backtest:import-corporate-actions', ['--date' => '2025-10-14', '--series' => 'SM'])->assertSuccessful();
+
+    $actions = BacktestNseCorporateAction::query()->get()->keyBy('symbol');
+
+    expect($actions)->toHaveCount(6)
+        ->and($actions->get('DELPHIFX')->type)->toBe(CorporateActionTypeEnum::RIGHTS)
+        ->and($actions->get('GOKULAGRO')->ratio)->toBe('2:1')
+        ->and($actions->get('TATAINVEST')->ratio)->toBe('10:1')
+        ->and($actions->get('TATAMOTORS')->type)->toBe(CorporateActionTypeEnum::DEMERGER)
+        ->and($actions->get('UTKARSHBNK')->type)->toBe(CorporateActionTypeEnum::RIGHTS)
+        ->and($actions->get('MOS')->ratio)->toBe('1:1')
+        ->and($actions->pluck('date')->map->toDateString()->unique()->values()->all())->toBe(['2025-10-14']);
+});
+
+it('ignores legacy ex-dates in both the current and previous files', function () {
+    createBacktestPriceRow('TCS', '2025-10-10');
+    putCorporateActionsCsv('2025-10-10', [
+        ['EQ', 'LEGACYOLD', '14/10/2025', 'BONUS 1:1'],
+    ]);
+    putCorporateActionsCsv('2025-10-14', [
+        ['EQ', 'LEGACYNEW', '14/10/2025', 'BONUS 1:1'],
+        ['EQ', 'TATAMOTORS', '2025-10-14', 'DEMERGER'],
+    ]);
+
+    $this->artisan('backtest:import-corporate-actions', ['--date' => '2025-10-14', '--series' => 'EQ'])->assertSuccessful();
+
+    expect(BacktestNseCorporateAction::query()->sole()->symbol)->toBe('TATAMOTORS');
 });

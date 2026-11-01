@@ -17,6 +17,7 @@ class MarketIndexAlias extends Model
     protected $fillable = [
         'source_label',
         'normalized_label',
+        'symbol',
         'market_index_id',
         'suggested_market_index_id',
         'suggested_slug',
@@ -30,6 +31,7 @@ class MarketIndexAlias extends Model
 
     protected $attributes = [
         'status' => 'pending',
+        'symbol' => '',
     ];
 
     protected function casts(): array

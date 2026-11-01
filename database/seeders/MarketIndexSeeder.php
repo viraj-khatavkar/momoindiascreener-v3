@@ -2,6 +2,7 @@
 
 namespace Database\Seeders;
 
+use App\Actions\NormalizeMarketIndexAction;
 use App\Enums\MarketIndexAliasStatusEnum;
 use App\Models\MarketIndex;
 use App\Models\MarketIndexAlias;
@@ -72,6 +73,12 @@ class MarketIndexSeeder extends Seeder
         'S&P BSE LIQUID RATE INDEX' => 'bse-liquid-rate',
         'S&P BSE MIDCAP SELECT INDEX' => 'bse-midcap-select',
         'GOLD' => 'gold',
+        'SILVER' => 'silver',
+        'NIFTY INDIA MANUFACTURING' => 'nifty-india-manufacturing',
+        'NIFTY INDIA INTERNET' => 'nifty-india-internet',
+        'BSE LOW VOLATILITY' => 'bse-low-volatility',
+        'CRISIL 10 YEAR GILT INDEX' => 'crisil-10-yr-gilt',
+        'HANG SENG TECH TOTAL RETURN INDEX' => 'hang-seng-tech',
         'CALL MONEY SHORT TERM G-SECS & MONEY MARKET INSTR' => 'liquid',
         'SHARIAH INDEX' => 'nifty50-shariah',
     ];
@@ -129,13 +136,15 @@ class MarketIndexSeeder extends Seeder
     /**
      * Run the database seeds.
      */
-    public function run(): void
+    public function run(NormalizeMarketIndexAction $normalizer): void
     {
         foreach (self::ALIASES as $sourceLabel => $slug) {
+            $name = self::NAMES[$slug] ?? Str::headline($slug);
+            $slug = $normalizer->execute($name);
             $marketIndex = MarketIndex::query()->firstOrCreate(
                 ['slug' => $slug],
                 [
-                    'name' => self::NAMES[$slug] ?? Str::headline($slug),
+                    'name' => $normalizer->name($slug),
                     'provider' => $this->providerFor($slug),
                     'is_active' => true,
                 ],
@@ -144,6 +153,7 @@ class MarketIndexSeeder extends Seeder
             $normalizedLabel = Str::of($sourceLabel)->squish()->upper()->toString();
             $marketIndexAlias = MarketIndexAlias::query()->firstOrNew([
                 'normalized_label' => $normalizedLabel,
+                'symbol' => $sourceLabel === 'TOTAL RETURN INDEX' ? 'MAFANG' : '',
             ]);
 
             if ($marketIndexAlias->exists && $marketIndexAlias->status !== MarketIndexAliasStatusEnum::Pending) {

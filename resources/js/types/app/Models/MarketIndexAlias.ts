@@ -4,6 +4,7 @@ export interface MarketIndexAlias {
     id: number;
     source_label: string;
     normalized_label: string;
+    symbol: string;
     suggested_slug: string | null;
     status: 'pending' | 'approved' | 'ignored';
     sample_symbol: string | null;

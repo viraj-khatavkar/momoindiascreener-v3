@@ -149,13 +149,12 @@ class ImportNseCorporateActionsCommand extends Command
         $this->info($filePath);
 
         $rows = $readCsvAction->execute($filePath)->toCollection();
-        $exDate = (new Carbon($date))->format('d/m/Y');
         $searchKeys = ['BONUS', 'BON', 'FV SPL', 'FVSPLT', 'FV SPLT', 'SPLIT', 'DIV', 'INTDV', 'SPDV', 'DV', 'RIGHTS', 'RIGHT', 'RGHTS', 'RHT', 'RGTS', 'DEMERGER'];
 
         $rows = $rows->reject(function ($row) {
             return ! isset($row[6]);
-        })->filter(function ($row) use ($exDate, $searchKeys) {
-            return trim($row[6]) == $exDate && Str::contains($row[9], $searchKeys);
+        })->filter(function ($row) use ($date, $searchKeys) {
+            return trim($row[6]) === $date && Str::contains($row[9], $searchKeys);
         })->filter(function ($row) use ($series) {
             return trim($row[0]) == $series;
         })->map(function ($row) {

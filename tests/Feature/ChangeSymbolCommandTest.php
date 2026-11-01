@@ -1,9 +1,12 @@
 <?php
 
+use App\Actions\ResolveMarketIndexAliasAction;
+use App\Enums\MarketIndexAliasStatusEnum;
 use App\Models\BacktestNseCorporateAction;
 use App\Models\BacktestNseIndexConstituent;
 use App\Models\BacktestNseInstrument;
 use App\Models\BacktestNseInstrumentPrice;
+use App\Models\MarketIndex;
 use App\Models\MarketIndexAlias;
 
 it('updates the instrument master table when changing a symbol', function () {
@@ -102,4 +105,21 @@ it('keeps the newer pending index assignment when symbols merge', function () {
     expect($instrument->etf_index)->toBeNull()
         ->and($instrument->market_index_alias_id)->toBe($newAlias->id)
         ->and($instrument->etf_index_source_date->toDateString())->toBe('2020-02-01');
+});
+
+it('keeps symbol-specific ETF mappings after a symbol change', function () {
+    $index = MarketIndex::factory()->create(['slug' => 'gold']);
+    $alias = MarketIndexAlias::factory()->create([
+        'source_label' => 'COMMODITY', 'normalized_label' => 'COMMODITY', 'symbol' => 'OLDETF',
+        'status' => MarketIndexAliasStatusEnum::Approved, 'market_index_id' => $index->id,
+    ]);
+    BacktestNseInstrument::query()->create(['symbol' => 'OLDETF', 'etf_index' => 'gold', 'market_index_alias_id' => $alias->id]);
+
+    $this->artisan('backtest:change-symbol', ['--old-symbol' => 'OLDETF', '--new-symbol' => 'NEWETF'])->assertSuccessful();
+
+    $instrument = BacktestNseInstrument::query()->where('symbol', 'NEWETF')->sole();
+    expect($instrument->marketIndexAlias->symbol)->toBe('NEWETF')
+        ->and($instrument->etf_index)->toBe('gold')
+        ->and($alias->fresh()->symbol)->toBe('OLDETF')
+        ->and(app(ResolveMarketIndexAliasAction::class)->execute('COMMODITY', 'NEWETF', '2025-10-13')->market_index_id)->toBe($index->id);
 });
