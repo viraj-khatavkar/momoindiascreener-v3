@@ -762,6 +762,130 @@ it('moves saved valuation steps before ETFs and keeps their execution history', 
     expect($run->refresh()->steps->pluck('key')->all())->toBe($legacyKeys);
 })->with(AdminProcessRunStatusEnum::cases());
 
+it('requires indices and places their import immediately before market cap from February 17', function (string $date, int $fileCount, int $stepCount) {
+    foreach (app(BuildDailyProcessStepsAction::class)->requiredFiles($date) as $file) {
+        Storage::put("uploads/{$date}/{$file['key']}.csv", 'data');
+    }
+
+    $this->actingAs($this->admin)->get("/admin/processes?date={$date}")
+        ->assertInertia(fn (Assert $page) => $page
+            ->has('requiredFiles', $fileCount)
+            ->where('allFilesAvailable', true));
+
+    $this->post('/admin/process-runs', ['date' => $date])->assertSessionHasNoErrors();
+    $run = AdminProcessRun::query()->with('steps')->sole();
+
+    expect($run->steps)->toHaveCount($stepCount);
+
+    if ($date < '2026-02-17') {
+        expect($run->steps->pluck('key'))->not->toContain('import-indices');
+
+        return;
+    }
+
+    $this->get("/admin/process-runs/{$run->id}")
+        ->assertInertia(fn (Assert $page) => $page
+            ->has('processRun.steps', 23)
+            ->where('processRun.steps.12.key', 'apply-corporate-action')
+            ->where('processRun.steps.13.key', 'import-indices')
+            ->where('processRun.steps.13.command_line', "php artisan nse:import-indices --date={$date}")
+            ->where('processRun.steps.13.can_run', false)
+            ->where('processRun.steps.14.key', 'import-marketcap')
+            ->where('processRun.steps.15.key', 'import-price-to-earnings')
+            ->where('processRun.steps.22.key', 'update-assumed-delistings'));
+})->with([
+    ['2026-02-16', 5, 22],
+    ['2026-02-17', 6, 23],
+    ['2026-02-18', 6, 23],
+]);
+
+it('prevents new runs from February 17 when the index upload is missing', function () {
+    foreach (['bhavcopy', 'corporate_actions', 'etf', 'marketcap', 'price_to_earnings'] as $file) {
+        Storage::put("uploads/2026-02-17/{$file}.csv", 'data');
+    }
+
+    $this->actingAs($this->admin)->get('/admin/processes?date=2026-02-17')
+        ->assertInertia(fn (Assert $page) => $page
+            ->where('allFilesAvailable', false)
+            ->where('requiredFiles.3.key', 'index')
+            ->where('requiredFiles.3.available', false));
+
+    $this->post('/admin/process-runs', ['date' => '2026-02-17'])->assertSessionHasErrors('files');
+
+    expect(AdminProcessRun::query()->count())->toBe(0);
+});
+
+it('runs the index import through the queue and blocks market cap until it completes', function () {
+    Process::fake();
+    Queue::fake();
+    $run = app(CreateAdminProcessRunAction::class)->execute($this->admin, '2026-02-17');
+    $indexStep = $run->steps->firstWhere('key', 'import-indices');
+    $marketcapStep = $run->steps->firstWhere('key', 'import-marketcap');
+    $run->steps()->where('position', '<', $indexStep->position)->update(['status' => AdminProcessStepStatusEnum::Completed]);
+
+    $this->actingAs($this->admin)->post("/admin/process-runs/{$run->id}/steps/{$marketcapStep->id}/run")
+        ->assertSessionHasErrors('step');
+
+    $this->post("/admin/process-runs/{$run->id}/steps/{$indexStep->id}/run")->assertSessionHasNoErrors();
+    Queue::assertPushed(RunAdminProcessStepJob::class);
+    (new RunAdminProcessStepJob($indexStep->fresh()))->handle(app(BuildDailyProcessStepsAction::class));
+
+    Process::assertRan(fn (PendingProcess $process): bool => $process->command === [
+        PHP_BINARY, base_path('artisan'), 'nse:import-indices', '--date=2026-02-17', '--no-interaction', '--no-ansi',
+    ]);
+    expect($indexStep->fresh()->status)->toBe(AdminProcessStepStatusEnum::Completed);
+
+    $this->post("/admin/process-runs/{$run->id}/steps/{$marketcapStep->id}/run")->assertSessionHasNoErrors();
+});
+
+it('adds index imports only to eligible unfinished runs and keeps their saved results', function (string $date, AdminProcessRunStatusEnum $status) {
+    $run = AdminProcessRun::factory()->create([
+        'user_id' => $this->admin->id, 'process_date' => $date, 'status' => $status,
+    ]);
+    $legacySteps = collect(app(BuildDailyProcessStepsAction::class)->execute($date))
+        ->reject(fn (array $step): bool => $step['key'] === 'import-indices')
+        ->values()->map(fn (array $step, int $index): array => [
+            ...$step, 'position' => $index + 1, 'status' => AdminProcessStepStatusEnum::Pending,
+        ]);
+    $run->steps()->createMany($legacySteps->all());
+    $firstStep = $run->steps()->firstOrFail();
+    $firstStep->update(['status' => AdminProcessStepStatusEnum::Completed, 'attempts' => 1, 'exit_code' => 0]);
+    $chunk = AdminProcessOutputChunk::factory()->create(['admin_process_step_id' => $firstStep->id]);
+    $originalSteps = $run->steps()->get()->keyBy('key');
+    $originalRun = $run->fresh()->getAttributes();
+
+    $migration = require database_path('migrations/2026_11_04_060223_add_index_import_step_to_unfinished_admin_process_runs.php');
+    $migration->up();
+    $run->refresh()->load('steps.outputChunks');
+    $isEligible = $date >= '2026-02-17' && $status !== AdminProcessRunStatusEnum::Completed;
+    $stepCount = $isEligible ? 23 : 22;
+
+    expect($run->getAttributes())->toBe($originalRun)
+        ->and($run->steps)->toHaveCount($stepCount)
+        ->and($run->steps->pluck('position')->all())->toBe(range(1, $stepCount))
+        ->and($run->steps[0]->outputChunks->sole()->id)->toBe($chunk->id);
+
+    foreach ($originalSteps as $key => $originalStep) {
+        expect(collect($run->steps->firstWhere('key', $key)->getAttributes())->except('position')->all())
+            ->toBe(collect($originalStep->getAttributes())->except('position')->all());
+    }
+
+    if ($isEligible) {
+        expect($run->steps[12]->key)->toBe('apply-corporate-action')
+            ->and($run->steps[13]->key)->toBe('import-indices')
+            ->and($run->steps[13]->status)->toBe(AdminProcessStepStatusEnum::Pending)
+            ->and($run->steps[13]->arguments)->toBe(["--date={$date}"])
+            ->and($run->steps[14]->key)->toBe('import-marketcap');
+    } else {
+        expect($run->steps->pluck('key'))->not->toContain('import-indices');
+    }
+
+    $savedSteps = $run->steps->toArray();
+    $migration->up();
+    $migration->down();
+    expect($run->refresh()->load('steps.outputChunks')->steps->toArray())->toBe($savedSteps);
+})->with(['2026-02-16', '2026-02-17', '2026-02-18'])->with(AdminProcessRunStatusEnum::cases());
+
 function storeAdminProcessRequiredFiles(string $date): void
 {
     foreach (['bhavcopy', 'corporate_actions', 'etf'] as $filename) {

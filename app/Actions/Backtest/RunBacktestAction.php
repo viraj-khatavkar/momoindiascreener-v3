@@ -853,7 +853,10 @@ class RunBacktestAction
                 return;
             }
 
-            $perStockBudget = $replacementBudget / $replacementCandidates->count();
+            $budgetSlots = $backtest->cash_call === BacktestCashCallEnum::CashCallIfNotEnoughStocks
+                ? $replacementCount
+                : $replacementCandidates->count();
+            $perStockBudget = $replacementBudget / $budgetSlots;
 
             foreach ($replacementCandidates as $stock) {
                 $this->executeBuy($backtest, $date, $stock, $perStockBudget, $reason);
@@ -980,6 +983,17 @@ class RunBacktestAction
             $targets = $this->calculateTargetAllocations($backtest, $totalValue, $allTargetStocks);
         }
 
+        $cashReserve = 0.0;
+        if ($backtest->cash_call === BacktestCashCallEnum::CashCallIfNotEnoughStocks) {
+            $retainedValue = 0.0;
+            foreach ($this->holdings as $symbol => $holding) {
+                if (! isset($targets[$symbol])) {
+                    $retainedValue += $holding['quantity'] * $holding['last_known_price'];
+                }
+            }
+            $cashReserve = max($totalValue - $retainedValue - array_sum($targets), 0);
+        }
+
         // Phase 1: Execute trims (sells of overweight positions)
         foreach ($this->holdings as $symbol => $holding) {
             if (! isset($targets[$symbol])) {
@@ -1024,8 +1038,9 @@ class RunBacktestAction
         // Scale down if not enough cash
         $scaleFactor = 1.0;
         $estimatedCosts = $totalBuyBudget * $this->buyCostRate;
-        if (($totalBuyBudget + $estimatedCosts) > $this->cash && $totalBuyBudget > 0) {
-            $scaleFactor = $this->cash / ($totalBuyBudget + $estimatedCosts);
+        $availableCash = max($this->cash - $cashReserve, 0);
+        if (($totalBuyBudget + $estimatedCosts) > $availableCash && $totalBuyBudget > 0) {
+            $scaleFactor = $availableCash / ($totalBuyBudget + $estimatedCosts);
         }
 
         // Execute buys (in rank order)

@@ -4,6 +4,32 @@ use App\Enums\BacktestCashCallEnum;
 use App\Models\Backtest;
 use App\Models\User;
 
+it('offers and saves cash for unfilled slots with help for the selected weighting method', function () {
+    $user = User::factory()->create(['is_paid' => true]);
+    $backtest = Backtest::factory()->create(['user_id' => $user->id]);
+    $mode = BacktestCashCallEnum::CashCallIfNotEnoughStocks->value;
+    loginAs($user->email);
+
+    $page = visit('/backtests/'.$backtest->id.'?tab=settings')
+        ->select('cash_call', $mode)
+        ->select('weightage', 'equal_weight')
+        ->assertValue('cash_call', $mode)
+        ->assertSee('4 empty slots and 2 entries use half the available cash.')
+        ->assertMissing('[name="cash_call_index"]')
+        ->assertMissing('[name="cash_call_dma_period"]')
+        ->press('Save')
+        ->assertSee('Settings saved.')
+        ->refresh()
+        ->assertValue('cash_call', $mode)
+        ->assertNoJavaScriptErrors();
+
+    expect($backtest->refresh()->cash_call)->toBe(BacktestCashCallEnum::CashCallIfNotEnoughStocks);
+
+    $page->select('weightage', 'rank_weighted')
+        ->assertSee('80% in stocks and 20% in cash.')
+        ->assertNoJavaScriptErrors();
+});
+
 it('shows conditional gold DMA controls and saves their values', function () {
     $user = User::factory()->create(['is_paid' => true]);
     $backtest = Backtest::factory()->create(['user_id' => $user->id]);

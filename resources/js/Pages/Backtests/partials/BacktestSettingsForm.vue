@@ -1027,7 +1027,7 @@ const goldDmaBasedCashCall = computed(() => props.form.cash_call === 'only_exits
 
 const cashCallLabels: Record<string, string> = {
     no_cash_call: 'No cash call',
-    cash_call_if_not_enough_stocks: 'Hold cash when not enough stocks qualify (existing setting)',
+    cash_call_if_not_enough_stocks: 'Hold cash when not enough stocks qualify',
     full_cash_below_index_dma: 'Full cash below index DMA',
     only_exits_below_index_dma: 'Only exits below index DMA (no new buys)',
     allocate_to_gold_below_index_dma: 'Rotate to gold below index DMA',
@@ -1035,15 +1035,17 @@ const cashCallLabels: Record<string, string> = {
     only_exits_allocate_to_gold_above_dma_below_index_dma: 'Exits to gold below index DMA and gold above its DMA',
 };
 
-const cashCallHelp: Record<string, string> = {
+const cashCallHelp = computed<Record<string, string>>(() => ({
     no_cash_call: 'Keep capital in stocks. Use eligible replacements or add to existing stocks. Keep holdings if no replacement is available. Whole-share quantities and trade restrictions can leave unused cash.',
-    cash_call_if_not_enough_stocks: 'When fewer stocks qualify than the portfolio size, the shortfall stays in cash instead of forcing entries',
+    cash_call_if_not_enough_stocks: props.form.weightage === 'equal_weight'
+        ? 'Divide available cash by the empty stock slots. Buy only eligible new stocks and keep the unused portions in cash. For example, 4 empty slots and 2 entries use half the available cash. Holdings that remain in the portfolio keep their share quantities.'
+        : 'At each rebalance, keep the portion for unfilled stock slots in cash and apply the selected weights to the invested portion. For example, 8 holdings out of 10 target 80% in stocks and 20% in cash. Actual cash also depends on trade restrictions, charges, and whole shares.',
     full_cash_below_index_dma: 'Sell everything and hold cash while the index trades below its DMA',
     only_exits_below_index_dma: 'While the index is below its DMA, exits still happen but no new stocks are bought',
     allocate_to_gold_below_index_dma: 'Sell everything and hold gold while the index trades below its DMA',
     only_exits_allocate_to_gold_below_index_dma: 'While the index is below its DMA, exit proceeds are parked in gold and no new stocks are bought',
     only_exits_allocate_to_gold_above_dma_below_index_dma: 'Below the index DMA, only exit stocks. Buy GOLDBEES with available cash only when its adjusted close is above its selected DMA. Otherwise, keep the cash and any existing gold. Sell gold when the index recovers.',
-};
+}));
 
 const cashCallSelectOptions = computed(() =>
     props.cashCallOptions.map((option) => ({

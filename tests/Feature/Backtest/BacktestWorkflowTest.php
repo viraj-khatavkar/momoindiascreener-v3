@@ -264,15 +264,16 @@ it('ignores inactive stop loss controls when stop loss is disabled', function ()
         ->and($backtest->stop_loss_proceeds->value)->toBe('wait_for_rebalance');
 });
 
-it('offers the six supported cash call settings', function () {
+it('offers all seven cash call settings including cash for unfilled stock slots', function () {
     $user = User::factory()->create(['is_paid' => true]);
     $backtest = Backtest::factory()->create(['user_id' => $user->id]);
 
     $this->actingAs($user)->get('/backtests/'.$backtest->id)
         ->assertInertia(fn (Assert $page) => $page
-            ->has('cashCallOptions', 6)
+            ->has('cashCallOptions', 7)
             ->where('cashCallOptions.0.id', 'no_cash_call')
-            ->where('cashCallOptions.5.id', 'only_exits_allocate_to_gold_above_dma_below_index_dma')
+            ->where('cashCallOptions.1.id', 'cash_call_if_not_enough_stocks')
+            ->where('cashCallOptions.6.id', 'only_exits_allocate_to_gold_above_dma_below_index_dma')
             ->where('backtest.cash_call_gold_dma_period', 50));
 });
 
@@ -305,6 +306,7 @@ it('saves each cash call mode and its gold DMA setting', function (string $mode)
     Queue::assertNothingPushed();
 })->with([
     'no_cash_call',
+    'cash_call_if_not_enough_stocks',
     'full_cash_below_index_dma',
     'only_exits_below_index_dma',
     'allocate_to_gold_below_index_dma',
@@ -350,14 +352,14 @@ it('preserves inactive DMA settings when saving no cash call', function () {
         ->and($backtest->cash_call_gold_dma_period)->toBe(200);
 });
 
-it('preserves the retired cash mode only for backtests that already use it', function () {
+it('allows switching to cash for unfilled slots without requiring index DMA settings', function () {
     $user = User::factory()->create(['is_paid' => true]);
     $backtest = Backtest::factory()->create(['user_id' => $user->id]);
-    $payload = validBacktestUpdatePayload($backtest, ['cash_call' => 'cash_call_if_not_enough_stocks']);
-
-    $this->actingAs($user)->put('/backtests/'.$backtest->id, $payload)->assertSessionHasErrors('cash_call');
-
-    $backtest->update(['cash_call' => BacktestCashCallEnum::CashCallIfNotEnoughStocks]);
+    $payload = validBacktestUpdatePayload($backtest, [
+        'cash_call' => 'cash_call_if_not_enough_stocks',
+        'cash_call_index' => null,
+        'cash_call_dma_period' => null,
+    ]);
     $this->actingAs($user)->put('/backtests/'.$backtest->id, $payload)->assertSessionHasNoErrors();
 
     expect($backtest->refresh()->cash_call)->toBe(BacktestCashCallEnum::CashCallIfNotEnoughStocks);

@@ -107,6 +107,15 @@ class BuildDailyProcessStepsAction
                 command: 'backtest:adjust-corporate-action',
                 arguments: ["--date={$date}"],
             ),
+            ...($date >= '2026-02-17' ? [
+                $this->step(
+                    key: 'import-indices',
+                    name: 'Import indices',
+                    description: 'Import index prices and valuations for the selected date.',
+                    command: 'nse:import-indices',
+                    arguments: ["--date={$date}"],
+                ),
+            ] : []),
             ...($date >= '2024-03-01' ? [
                 $this->step(
                     key: 'import-marketcap',
@@ -184,6 +193,9 @@ class BuildDailyProcessStepsAction
             ['key' => NseFileEnum::Bhavcopy->value, 'name' => 'Bhavcopy'],
             ['key' => NseFileEnum::CorporateActions->value, 'name' => 'Corporate actions'],
             ['key' => NseFileEnum::Etf->value, 'name' => 'ETF list'],
+            ...($date >= '2026-02-17' ? [
+                ['key' => NseFileEnum::Index->value, 'name' => 'Indices'],
+            ] : []),
             ...($date >= '2024-03-01' ? [
                 ['key' => NseFileEnum::Marketcap->value, 'name' => 'Market cap'],
                 ['key' => NseFileEnum::PriceToEarnings->value, 'name' => 'Price to earnings'],
