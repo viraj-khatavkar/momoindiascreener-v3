@@ -26,6 +26,7 @@ use App\Http\Controllers\PaymentsController;
 use App\Http\Controllers\PricingController;
 use App\Http\Controllers\ProfileController;
 use App\Http\Controllers\RazorpayController;
+use App\Http\Controllers\RebalanceTrackerController;
 use App\Http\Controllers\ScreenColumnsController;
 use App\Http\Controllers\ScreenCsvController;
 use App\Http\Controllers\ScreensController;
@@ -123,8 +124,12 @@ Route::middleware(['auth', 'verified'])->group(function () {
     Route::delete('/screens/{screen}', [ScreensController::class, 'destroy']);
     Route::get('/screens/{screen}/csv', ScreenCsvController::class);
 
-    // Backtests (all routes require paid subscription)
+    // Tools that require a paid subscription.
     Route::middleware(VerifyIsPaid::class)->group(function () {
+        Route::get('/rebalance-tracker', [RebalanceTrackerController::class, 'index'])->name('rebalance-tracker.index');
+        Route::post('/rebalance-tracker/upload', [RebalanceTrackerController::class, 'upload'])->name('rebalance-tracker.upload');
+        Route::post('/rebalance-tracker/analyze', [RebalanceTrackerController::class, 'analyze'])->name('rebalance-tracker.analyze');
+
         Route::get('/backtests', [BacktestsController::class, 'index']);
         Route::get('/backtests/create', [BacktestsController::class, 'create']);
         Route::post('/backtests', [BacktestsController::class, 'store']);

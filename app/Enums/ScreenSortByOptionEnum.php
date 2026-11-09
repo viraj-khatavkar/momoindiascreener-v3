@@ -38,6 +38,7 @@ enum ScreenSortByOptionEnum: string
     case average_sharpe_return_twelve_three_months = 'average_sharpe_return_twelve_three_months';
     case average_sharpe_return_twelve_nine_three_one_months = 'average_sharpe_return_twelve_nine_three_one_months';
     case average_sharpe_return_twelve_nine_three_months = 'average_sharpe_return_twelve_nine_three_months';
+    case average_sharpe_return_six_three_months = 'average_sharpe_return_six_three_months';
     case rsi_one_year = 'rsi_one_year';
     case rsi_nine_months = 'rsi_nine_months';
     case rsi_six_months = 'rsi_six_months';

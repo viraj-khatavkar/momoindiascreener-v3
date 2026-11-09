@@ -123,6 +123,31 @@ it('saves settings without queueing a run', function () {
     Queue::assertNothingPushed();
 });
 
+it('offers and saves six and three month Sharpe sorting for all backtest factors', function () {
+    Queue::fake();
+    $user = User::factory()->create(['is_paid' => true]);
+    $backtest = Backtest::factory()->create(['user_id' => $user->id]);
+    $factor = 'average_sharpe_return_six_three_months';
+
+    $this->actingAs($user)->get('/backtests/'.$backtest->id)
+        ->assertSuccessful()
+        ->assertInertia(fn (Assert $page) => $page
+            ->where('sortByOptions', fn (mixed $options): bool => collect($options)->contains('id', $factor)));
+
+    $this->put('/backtests/'.$backtest->id, validBacktestUpdatePayload($backtest, [
+        'sort_by' => $factor,
+        'apply_factor_two' => true, 'factor_two_sort_by' => $factor,
+        'apply_factor_three' => true, 'factor_three_sort_by' => $factor,
+    ]))->assertSessionHasNoErrors()->assertRedirect('/backtests/'.$backtest->id.'?tab=settings');
+
+    $backtest->refresh();
+    expect($backtest->sort_by)->toBe($factor)
+        ->and($backtest->factor_two_sort_by)->toBe($factor)
+        ->and($backtest->factor_three_sort_by)->toBe($factor)
+        ->and($backtest->settings_changed_at)->not->toBeNull();
+    Queue::assertNothingPushed();
+});
+
 it('does not touch settings_changed_at when only the name changes', function () {
     Queue::fake();
     $user = User::factory()->create(['is_paid' => true]);

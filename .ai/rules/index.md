@@ -4,7 +4,7 @@ Before planning or editing, find the row whose globs match the file's path and r
 
 | Applies to | Rule file |
 | --- | --- |
-| app/Actions/ApplyScreenFiltersAction.php, app/Actions/BuildHomePageDataAction.php, app/Actions/ReadCsvAction.php, app/Actions/*MarketIndex*Action.php | .ai/rules/actions.md |
+| app/Actions/ApplyScreenFiltersAction.php, app/Actions/BuildHomePageDataAction.php, app/Actions/ReadCsvAction.php, app/Actions/*MarketIndex*Action.php, app/Actions/PrepareLegacyProductionImportAction.php, app/Actions/AnalyzeRebalancePortfolioAction.php, app/Actions/BuildPortfolioValuationAction.php | .ai/rules/actions.md |
 | app/Actions/AdminProcess/** | .ai/rules/admin-process.md |
 | app/Actions/Backtest/** | .ai/rules/backtest.md |
 | resources/js/Components/Charts/Instrument*.vue | .ai/rules/charts.md |

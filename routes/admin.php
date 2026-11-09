@@ -6,6 +6,11 @@ use App\Http\Controllers\Admin\DashboardController;
 use App\Http\Controllers\Admin\MarketIndexAliasesController;
 use App\Http\Controllers\Admin\NseFilesController;
 use App\Http\Controllers\Admin\OrdersController;
+use App\Http\Controllers\Admin\PortfolioCsvController;
+use App\Http\Controllers\Admin\PortfolioHoldingsController;
+use App\Http\Controllers\Admin\PortfolioQuoteController;
+use App\Http\Controllers\Admin\PortfoliosController;
+use App\Http\Controllers\Admin\PortfolioSymbolSearchController;
 use App\Http\Controllers\Admin\ProcessesController;
 use App\Http\Controllers\Admin\ProcessRunsController;
 use App\Http\Controllers\Admin\ProcessRunUpdatesController;
@@ -21,6 +26,16 @@ Route::get('/users/download', [UsersController::class, 'download'])->name('admin
 
 Route::get('/orders', [OrdersController::class, 'index'])->name('admin.orders.index');
 Route::get('/orders/download', [OrdersController::class, 'download'])->name('admin.orders.download');
+
+Route::get('/portfolios/symbols', PortfolioSymbolSearchController::class)->name('admin.portfolios.symbols');
+Route::get('/portfolios/quote', PortfolioQuoteController::class)->name('admin.portfolios.quote');
+Route::resource('/portfolios', PortfoliosController::class)->except(['destroy'])->names('admin.portfolios');
+Route::get('/portfolios/{portfolio}/download', PortfolioCsvController::class)->name('admin.portfolios.download');
+Route::scopeBindings()->group(function () {
+    Route::post('/portfolios/{portfolio}/holdings', [PortfolioHoldingsController::class, 'store'])->name('admin.portfolios.holdings.store');
+    Route::put('/portfolios/{portfolio}/holdings/{holding}', [PortfolioHoldingsController::class, 'update'])->name('admin.portfolios.holdings.update');
+    Route::delete('/portfolios/{portfolio}/holdings/{holding}', [PortfolioHoldingsController::class, 'destroy'])->name('admin.portfolios.holdings.destroy');
+});
 
 Route::resource('/nse-files', NseFilesController::class)->only(['index', 'create', 'store']);
 

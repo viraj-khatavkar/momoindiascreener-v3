@@ -4,6 +4,9 @@ paths:
   - app/Actions/BuildHomePageDataAction.php
   - app/Actions/ReadCsvAction.php
   - 'app/Actions/*MarketIndex*Action.php'
+  - app/Actions/PrepareLegacyProductionImportAction.php
+  - app/Actions/AnalyzeRebalancePortfolioAction.php
+  - app/Actions/BuildPortfolioValuationAction.php
 ---
 
 # Actions
@@ -28,3 +31,21 @@ NSE CSV files can contain Windows-1252 text, including byte 0x96 for an en dash 
 
 ## Use canonical ETF indexes and symbol-specific ambiguous aliases
 Treat TRI, TR, total-return, index suffixes and known fund-name variants as aliases of one canonical market index. Preserve strategy numbers, providers and bond maturities. Match exact canonical keys against active database indexes and approved aliases; never create a new index during import. Generic labels such as INDEX and COMMODITY, and conflicting changes for an existing ETF, require symbol-specific aliases. Preserve ignored/manual decisions and the previous etf_index while a change is pending. Canonical cleanup uses backtest:normalize-etf-indexes, with a preview by default and a backup plus transaction for --apply. Keep all aliases, suggestions and instrument slugs consistent when merging indexes.
+
+## Preserve the meaning of legacy screen settings during import
+The old production close field is adjusted; translate it to close_adjusted. In the old screen engine, both series flags off omitted the series filter; the current engine returns no rows. Validate secondary and tertiary ranking fields even when disabled because the result query selects them. Missing F&O membership, the six/three-month Sharpe field, and active legacy top-beta/top-volatility filters have no equivalent in the current engine: report affected screens and require an explicit skip, rather than silently changing them.
+
+## Omit both legacy top filters from the production import
+User decision: do not migrate ignore_top_beta or ignore_top_volatility. Omit both fields for every screen, including enabled values. These fields must not block import or require --skip-unsupported-screens. Report enabled values as information. This replaces the earlier rule that required a screen to be skipped for either active filter. Keep the other screen compatibility checks.
+
+## Distinguish the six and three month Sharpe column from its sorting option
+The current backtest_nse_instrument_prices table has average_sharpe_return_six_three_months as decimal(20,2). CalculateMomentumCommand already calculates it from the six and three month Sharpe returns. The value is absent from ScreenSortByOptionEnum, which causes the import compatibility check to reject it. The earlier statement that this field has no equivalent is incorrect. Check the sorting option separately from database column availability; no new database column is needed.
+
+## Import saved series flags and the six and three month Sharpe option
+User decision: preserve series_eq and series_be as saved, including when both are false. Empty series is information and must not block import. The current results behavior remains: both flags off returns no rows. ScreenSortByOptionEnum now supports average_sharpe_return_six_three_months for all three ranking factors in screen and backtest settings. Import this value unchanged; no new database column is needed. This replaces the earlier restrictions on empty series and the earlier note that this sorting option was absent. Keep the other compatibility checks.
+
+## Preserve saved screen behavior in the Rebalance Tracker
+Check portfolio symbols against the latest prices, but retain the saved screen historical date, combined ranking, and unique ETF selection during analysis. Show the resolved screen date in the results. Keep all entries within the worst-rank boundary. A blank entry limit uses the exit count, including zero. An empty screen result must produce a validation error rather than a full exit list.
+
+## Value saved portfolios from entered holdings and raw prices
+Saved portfolios contain current holding entries, not a dated trade ledger. Date selection values those same entries with the latest positive raw quote on or before that date; it does not reconstruct past holdings. Use indexed quote lookups in a fixed number of queries, shared by the page and CSV. Keep missing prices null and label partial totals. Compare quote dates with the last available market date to avoid weekend warnings. Store holding symbols without a foreign key to the instrument master, which imports replace. Corporate actions are shown for review and do not change entered holdings.

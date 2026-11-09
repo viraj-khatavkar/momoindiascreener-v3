@@ -4,6 +4,36 @@ use App\Models\Screen;
 use App\Models\User;
 use Inertia\Testing\AssertableInertia as Assert;
 
+it('offers saves and applies six and three month Sharpe sorting for all screen factors', function () {
+    $screen = Screen::factory()->create();
+    $factor = 'average_sharpe_return_six_three_months';
+    createScreenResultRow('ALPHA', 'Alpha Industries', '2026-07-31', ['sharpe_return_one_year' => 99, $factor => 10]);
+    createScreenResultRow('BETA', 'Beta Corp', '2026-07-31', ['sharpe_return_one_year' => 1, $factor => 20]);
+    createScreenResultRow('MISSING', 'Missing Factor', '2026-07-31', [$factor => null]);
+
+    $this->actingAs($screen->user)->put('/screens/'.$screen->id, array_replace($screen->toArray(), [
+        'sort_by' => $factor,
+        'apply_factor_two' => true, 'factor_two_sort_by' => $factor, 'factor_two_sort_direction' => 'desc',
+        'apply_factor_three' => true, 'factor_three_sort_by' => $factor, 'factor_three_sort_direction' => 'desc',
+    ]))->assertSessionHasNoErrors()->assertRedirect('/screens/'.$screen->id.'/edit');
+
+    $screen->refresh();
+    expect($screen->sort_by)->toBe($factor)
+        ->and($screen->factor_two_sort_by)->toBe($factor)
+        ->and($screen->factor_three_sort_by)->toBe($factor);
+
+    $this->get('/screens/'.$screen->id.'/edit')
+        ->assertSuccessful()
+        ->assertInertia(fn (Assert $page) => $page
+            ->where('sortByOptions', fn (mixed $options): bool => collect($options)->contains('id', $factor))
+            ->has('results', 2)
+            ->where('results.0.symbol', 'BETA')
+            ->where('results.0.factor_one_rank', 1)
+            ->where('results.0.factor_two_rank', 1)
+            ->where('results.0.factor_three_rank', 1)
+            ->where('results.1.symbol', 'ALPHA'));
+});
+
 it('shows screen results ordered by the sort factor on the edit page', function () {
     $user = User::factory()->create();
     $screen = Screen::factory()->create(['user_id' => $user->id]);

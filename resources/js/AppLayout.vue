@@ -215,6 +215,7 @@ import { Dialog, DialogPanel, Menu, MenuButton, MenuItem, MenuItems, TransitionC
 import {
     AdjustmentsHorizontalIcon,
     ArrowLeftStartOnRectangleIcon,
+    ArrowsRightLeftIcon,
     BanknotesIcon,
     BeakerIcon,
     Bars3Icon,
@@ -270,6 +271,12 @@ const navigation = computed(() => {
             href: '/market-health',
             icon: ChartBarIcon,
             current: page.url.startsWith('/market-health'),
+        },
+        {
+            name: 'Rebalance Tracker',
+            href: '/rebalance-tracker',
+            icon: ArrowsRightLeftIcon,
+            current: page.url.startsWith('/rebalance-tracker'),
         },
         {
             name: 'Corporate Actions',
@@ -334,8 +341,8 @@ const navigation = computed(() => {
     ];
 
     const user = page.props.auth.user;
-    const guestRestrictedItems = new Set(['Backtests', 'Profile', 'Change Password', 'Invoices', 'AMA Recording']);
-    const paidItems = new Set(['Backtests', 'AMA Recording']);
+    const guestRestrictedItems = new Set(['Backtests', 'Rebalance Tracker', 'Profile', 'Change Password', 'Invoices', 'AMA Recording']);
+    const paidItems = new Set(['Backtests', 'Rebalance Tracker', 'AMA Recording']);
     const visibleItems = items.filter((item) => {
         if (!user) {
             return !guestRestrictedItems.has(item.name);
@@ -361,6 +368,12 @@ const navigation = computed(() => {
 });
 
 const adminNavigation = computed(() => [
+    {
+        name: 'Portfolios',
+        href: '/admin/portfolios',
+        initial: 'P',
+        current: page.url.startsWith('/admin/portfolios'),
+    },
     {
         name: 'Dashboard',
         href: '/admin',

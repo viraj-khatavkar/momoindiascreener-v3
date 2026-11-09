@@ -126,6 +126,7 @@ import {
     ArrowsRightLeftIcon,
     BanknotesIcon,
     Bars3Icon,
+    BriefcaseIcon,
     CircleStackIcon,
     NewspaperIcon,
     PlayCircleIcon,
@@ -166,6 +167,7 @@ const navigationSections = computed(() => [
             navigationItem('NSE files', '/admin/nse-files', CircleStackIcon),
             navigationItem('ETF index mappings', '/admin/market-index-aliases', ArrowsRightLeftIcon),
             navigationItem('Corporate actions', '/admin/corporate-actions', BanknotesIcon),
+            navigationItem('Portfolios', '/admin/portfolios', BriefcaseIcon),
         ],
     },
     {
