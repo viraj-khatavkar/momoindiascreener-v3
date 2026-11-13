@@ -203,16 +203,30 @@ class CalculateBacktestPositionPerformanceAction
             return [];
         }
 
+        $prices = BacktestNseInstrumentPrice::query()
+            ->where('date', $lastDate->toDateString())
+            ->whereIn('date', $backtest->dailySnapshots()->select('date'))
+            ->whereIn('symbol', $symbols)
+            ->where('close_adjusted', '>', 0)
+            ->pluck('close_adjusted', 'symbol')
+            ->map(fn ($price): float => (float) $price)
+            ->all();
+
+        $missingSymbols = array_values(array_diff($symbols, array_keys($prices)));
+        if ($missingSymbols === []) {
+            return $prices;
+        }
+
         $table = (new BacktestNseInstrumentPrice)->getTable();
         $lastDates = BacktestNseInstrumentPrice::query()
             ->select('symbol')->selectRaw('MAX(date) as last_date')
             ->where('close_adjusted', '>', 0)
-            ->whereIn('symbol', $symbols)
+            ->whereIn('symbol', $missingSymbols)
             ->where('date', '<=', $lastDate->toDateString())
             ->whereIn('date', $backtest->dailySnapshots()->select('date'))
             ->groupBy('symbol');
 
-        return BacktestNseInstrumentPrice::query()
+        return $prices + BacktestNseInstrumentPrice::query()
             ->joinSub($lastDates, 'last_quotes', function (JoinClause $join) use ($table): void {
                 $join->on($table.'.symbol', '=', 'last_quotes.symbol')
                     ->on($table.'.date', '=', 'last_quotes.last_date');

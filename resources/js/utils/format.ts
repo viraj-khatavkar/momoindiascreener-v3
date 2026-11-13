@@ -19,7 +19,8 @@ export function formatCurrency(value: number | string): string {
 }
 
 /** value is a fraction (0.1234 → "12.34%"); signed adds a leading + for positives. */
-export function formatPercent(value: number, signed = false): string {
+export function formatPercent(value: number | null, signed = false): string {
+    if (value === null || !Number.isFinite(value * 100)) return '—';
     const pct = (value * 100).toFixed(2) + '%';
     return signed && value >= 0 ? '+' + pct : pct;
 }

@@ -86,7 +86,7 @@
                     v-if="hasDmaBasedCashCall(backtest.cash_call)"
                     class="rounded-md bg-amber-50 px-2 py-0.5 text-xs text-amber-700"
                 >
-                    {{ formatIndex(backtest.cash_call_index) }} DMA {{ backtest.cash_call_dma_period }}
+                    {{ backtest.cash_call_source === 'backtest' ? 'Source backtest NAV' : formatIndex(backtest.cash_call_index) }} DMA {{ backtest.cash_call_dma_period }}
                 </span>
                 <span
                     v-if="backtest.cash_call === 'only_exits_allocate_to_gold_above_dma_below_index_dma'"

@@ -184,7 +184,8 @@ const statusClasses = {
     failed: 'bg-rose-50 text-rose-700',
 };
 
-function returnColor(value: number): string {
+function returnColor(value: number | null): string {
+    if (value === null) return 'text-gray-700';
     return value > 0 ? 'text-emerald-700' : value < 0 ? 'text-rose-700' : 'text-gray-700';
 }
 </script>

@@ -4,6 +4,7 @@ namespace App\Models;
 
 use App\Enums\ApplyFiltersOnOptionEnum;
 use App\Enums\BacktestCashCallEnum;
+use App\Enums\BacktestCashCallSourceEnum;
 use App\Enums\BacktestRebalanceFrequencyEnum;
 use App\Enums\BacktestStatusEnum;
 use App\Enums\BacktestStopLossProceedsEnum;
@@ -25,6 +26,8 @@ class Backtest extends Model
 
     protected $attributes = [
         'is_public' => false,
+        'cash_call_source' => BacktestCashCallSourceEnum::Index->value,
+        'cash_call_backtest_id' => null,
         'cash_call_gold_dma_period' => 50,
         'apply_stop_loss' => false,
         'stop_loss_percentage' => 10,
@@ -40,6 +43,8 @@ class Backtest extends Model
             'rebalance_frequency' => BacktestRebalanceFrequencyEnum::class,
             'weightage' => BacktestWeightageEnum::class,
             'cash_call' => BacktestCashCallEnum::class,
+            'cash_call_source' => BacktestCashCallSourceEnum::class,
+            'cash_call_backtest_id' => 'integer',
             'cash_call_gold_dma_period' => 'integer',
             'index' => NseIndexEnum::class,
             'apply_filters_on' => ApplyFiltersOnOptionEnum::class,
@@ -107,6 +112,22 @@ class Backtest extends Model
     public function user(): BelongsTo
     {
         return $this->belongsTo(User::class);
+    }
+
+    public function usesBacktestNav(): bool
+    {
+        return $this->cash_call->usesIndexDma()
+            && $this->cash_call_source === BacktestCashCallSourceEnum::Backtest;
+    }
+
+    public function cashCallBacktest(): BelongsTo
+    {
+        return $this->belongsTo(self::class, 'cash_call_backtest_id');
+    }
+
+    public function cashCallDependents(): HasMany
+    {
+        return $this->hasMany(self::class, 'cash_call_backtest_id');
     }
 
     public function trades(): HasMany

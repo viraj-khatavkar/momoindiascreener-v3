@@ -4,6 +4,7 @@ use App\Actions\Backtest\CalculateBacktestMetricsAction;
 use App\Actions\Backtest\CalculateBacktestPositionPerformanceAction;
 use App\Models\Backtest;
 use App\Models\BacktestTrade;
+use Illuminate\Database\Events\QueryExecuted;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
 
@@ -17,6 +18,28 @@ function recordPositionTrade(Backtest $backtest, string $symbol, string $date, s
         'total_charges' => $charges, 'net_amount' => $quantity * $price + ($side === 'buy' ? $charges : -$charges),
     ]);
 }
+
+it('preserves a large profit factor when total closed losses are very small', function () {
+    $backtest = Backtest::factory()->create(['initial_capital' => 100000, 'cash_return_rate' => 0]);
+    recordPositionTrade($backtest, 'WIN', '2024-01-01', 'buy', 1000, 100);
+    recordPositionTrade($backtest, 'WIN', '2024-06-01', 'sell', 1000, 200);
+    recordPositionTrade($backtest, 'LOSS', '2024-06-02', 'buy', 1, 100);
+    recordPositionTrade($backtest, 'LOSS', '2024-12-31', 'sell', 1, 99.99);
+    foreach (['2024-01-01' => 100000, '2024-12-31' => 199999.99] as $date => $value) {
+        $backtest->dailySnapshots()->create([
+            'date' => $date, 'nav' => $value / 1000, 'total_value' => $value,
+            'cash' => $date === '2024-01-01' ? 0 : $value,
+            'portfolio_value' => $date === '2024-01-01' ? $value : 0,
+            'holdings_count' => $date === '2024-01-01' ? 1 : 0,
+        ]);
+    }
+
+    app(CalculateBacktestMetricsAction::class)->execute($backtest);
+
+    expect((float) $backtest->summaryMetrics->profit_factor)->toBe(10000000.0)
+        ->and($backtest->summaryMetrics->stock_performance['closed']['profit_factor'])->toEqual(10000000)
+        ->and($backtest->summaryMetrics->stock_performance['closed']['count'])->toBe(2);
+});
 
 it('keeps repeated stock entries separate and uses only completed positions for statistics', function () {
     $backtest = Backtest::factory()->create();
@@ -121,6 +144,41 @@ it('uses the last available close for final holdings without reading later price
         'unrealized_value' => 1200.0, 'realized_pnl' => 0.0, 'unrealized_pnl' => 190.0, 'net_pnl' => 190.0,
     ]);
 });
+
+it('reads final date quotes first and searches history only for missing holdings', function (bool $missingQuote) {
+    $backtest = Backtest::factory()->create();
+    foreach (['CURRENT', 'OTHER'] as $symbol) {
+        recordPositionTrade($backtest, $symbol, '2020-01-01', 'buy', 10, 100);
+        createBacktestPriceRow($symbol, '2020-01-02', ['close_adjusted' => 120]);
+        createBacktestPriceRow($symbol, '2020-01-04', ['close_adjusted' => 900]);
+        createBacktestPriceRow($symbol, '2020-01-05', [
+            'close_adjusted' => $missingQuote && $symbol === 'OTHER' ? 0 : 150,
+        ]);
+        createBacktestPriceRow($symbol, '2020-01-06', ['close_adjusted' => 1000]);
+    }
+    foreach (['2020-01-02', '2020-01-05'] as $date) {
+        $backtest->dailySnapshots()->create([
+            'date' => $date, 'nav' => 100, 'portfolio_value' => 2000,
+            'cash' => 0, 'total_value' => 2000, 'holdings_count' => 2,
+        ]);
+    }
+    $priceQueries = [];
+    DB::listen(function (QueryExecuted $query) use (&$priceQueries): void {
+        if (str_contains($query->sql, 'backtest_nse_instrument_prices')) {
+            $priceQueries[] = $query;
+        }
+    });
+
+    $performance = app(CalculateBacktestPositionPerformanceAction::class)->execute($backtest, Carbon::parse('2020-01-05'));
+    $holdings = collect($performance['open_positions'])->keyBy('symbol');
+
+    expect($holdings['CURRENT']['unrealized_value'])->toBe(1500.0)
+        ->and($holdings['OTHER']['unrealized_value'])->toBe($missingQuote ? 1200.0 : 1500.0)
+        ->and($priceQueries)->toHaveCount($missingQuote ? 2 : 1);
+    if ($missingQuote) {
+        expect($priceQueries[1]->bindings)->toContain('OTHER')->not->toContain('CURRENT');
+    }
+})->with([false, true]);
 
 it('keeps distinct bounded top lists for amount and percentage with stable ties', function () {
     $backtest = Backtest::factory()->create();

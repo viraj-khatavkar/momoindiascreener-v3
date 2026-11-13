@@ -10,6 +10,12 @@ use RuntimeException;
 
 class CalculateBacktestMetricsAction
 {
+    /** Daily NAV is stored with six decimal places. */
+    private const NAV_PRECISION = 0.000001;
+
+    /** Exclusive limit for the nullable DECIMAL(10, 4) Sharpe and K-ratio columns. */
+    private const RATIO_STORAGE_LIMIT = 1000000.0;
+
     public function __construct(private CalculateBacktestPositionPerformanceAction $positionPerformance) {}
 
     public function execute(Backtest $backtest): void
@@ -59,7 +65,7 @@ class CalculateBacktestMetricsAction
 
         BacktestSummaryMetric::create([
             'backtest_id' => $backtest->id,
-            'cagr' => round($cagr, 4),
+            'cagr' => is_finite($cagr) ? round($cagr, 4) : null,
             'max_drawdown' => round($maxDrawdown, 4),
             'max_drawdown_start_date' => $ddStartDate,
             'max_drawdown_end_date' => $ddEndDate,
@@ -165,9 +171,9 @@ class CalculateBacktestMetricsAction
     }
 
     /**
-     * Sharpe Ratio = (annualized return - risk free rate) / annualized volatility of daily returns
+     * Annualize daily excess return using the same compounded cash rate as the simulation.
      */
-    private function calculateSharpeRatio($snapshots, float $riskFreeRate): ?float
+    private function calculateSharpeRatio(Collection $snapshots, float $riskFreeRate): ?float
     {
         if ($snapshots->count() < 3) {
             return null;
@@ -190,14 +196,13 @@ class CalculateBacktestMetricsAction
         $variance = array_sum(array_map(fn ($r) => ($r - $meanReturn) ** 2, $dailyReturns)) / (count($dailyReturns) - 1);
         $dailyStdDev = sqrt($variance);
 
-        $annualizedReturn = $meanReturn * 252;
-        $annualizedVol = $dailyStdDev * sqrt(252);
-
-        if ($annualizedVol == 0) {
+        if ($dailyStdDev <= $this->navRoundingTolerance($snapshots)) {
             return null;
         }
 
-        return round(($annualizedReturn - $riskFreeRate / 100) / $annualizedVol, 4);
+        $dailyRiskFreeRate = pow(1 + $riskFreeRate / 100, 1 / 252) - 1;
+
+        return $this->storableRatio(($meanReturn - $dailyRiskFreeRate) / $dailyStdDev * sqrt(252));
     }
 
     /**
@@ -223,11 +228,12 @@ class CalculateBacktestMetricsAction
         }
 
         $downsideVariance = array_sum(array_map(fn (float $excess): float => min(0, $excess) ** 2, $excessReturns)) / count($excessReturns);
-        if ($downsideVariance <= 0) {
+        $downsideDeviation = sqrt($downsideVariance);
+        if ($downsideDeviation <= $this->navRoundingTolerance($snapshots)) {
             return null;
         }
 
-        return round(array_sum($excessReturns) / count($excessReturns) / sqrt($downsideVariance) * sqrt(252), 4);
+        return $this->storableRatio(array_sum($excessReturns) / count($excessReturns) / $downsideDeviation * sqrt(252), 1e16);
     }
 
     /**
@@ -265,7 +271,7 @@ class CalculateBacktestMetricsAction
      * K-Ratio = slope of log(NAV) regression / standard error of slope
      * Measures return consistency — higher is better
      */
-    private function calculateKRatio($snapshots): ?float
+    private function calculateKRatio(Collection $snapshots): ?float
     {
         $n = $snapshots->count();
         if ($n < 3) {
@@ -316,16 +322,40 @@ class CalculateBacktestMetricsAction
         $mse = $ssResidual / ($n - 2);
         $sxDeviation = $sumX2 - ($sumX * $sumX) / $n;
 
-        if ($sxDeviation <= 0 || $mse < 0) {
+        if ($sxDeviation <= 0 || ! is_finite($mse) || $mse < 0) {
+            return null;
+        }
+
+        if (sqrt($mse) <= $this->navRoundingTolerance($snapshots)) {
             return null;
         }
 
         $stdErrorSlope = sqrt($mse / $sxDeviation);
 
-        if ($stdErrorSlope == 0) {
-            return null;
+        return $this->storableRatio($slope / $stdErrorSlope);
+    }
+
+    /**
+     * Relative NAV rounding bounds both daily-return noise and log-NAV residual noise.
+     * Keep a floating-point floor when NAV grows beyond the stored decimal precision.
+     */
+    private function navRoundingTolerance(Collection $snapshots): float
+    {
+        $tolerance = 1e-12;
+        foreach ($snapshots as $snapshot) {
+            $nav = (float) $snapshot->nav;
+            if ($nav > 0) {
+                $tolerance = max($tolerance, self::NAV_PRECISION / $nav);
+            }
         }
 
-        return round($slope / $stdErrorSlope, 4);
+        return $tolerance;
+    }
+
+    private function storableRatio(float $ratio, float $storageLimit = self::RATIO_STORAGE_LIMIT): ?float
+    {
+        $rounded = round($ratio, 4);
+
+        return is_finite($rounded) && abs($rounded) < $storageLimit ? $rounded : null;
     }
 }

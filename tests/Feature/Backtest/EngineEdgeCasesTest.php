@@ -3,7 +3,6 @@
 use App\Actions\Backtest\CalculateBacktestMetricsAction;
 use App\Actions\Backtest\RunBacktestAction;
 use App\Actions\Backtest\StartBacktestRunAction;
-use App\Actions\Backtest\StoreMarketCapAllocationAction;
 use App\Enums\BacktestStatusEnum;
 use App\Enums\CorporateActionTypeEnum;
 use App\Jobs\RunBacktestJob;
@@ -46,6 +45,62 @@ function edgeSnapshots(Backtest $backtest, array $navs): void
         ]);
     }
 }
+
+it('fills slots freed by missing volatility before restoring portfolio weights', function (string $cashMode, bool $nextDay, ?float $volatility) {
+    foreach (['2024-01-08', '2024-01-09', '2024-01-15', '2024-01-16'] as $date) {
+        foreach (['A' => 30, 'B' => 20, 'C' => 10] as $symbol => $score) {
+            edgeQuote($symbol, $date, 100, [
+                'absolute_return_one_year' => $score,
+                'volatility_one_year' => $symbol === 'A' && $date >= '2024-01-15' ? $volatility : 0.4,
+            ]);
+        }
+    }
+    $backtest = edgeBacktest([
+        'weightage' => 'inverse_volatility', 'sort_by' => 'absolute_return_one_year',
+        'cash_call' => $cashMode, 'execute_next_trading_day' => $nextDay,
+        'apply_hold_above_dma' => true, 'hold_above_dma_period' => 50,
+    ]);
+
+    app(RunBacktestAction::class)->execute($backtest);
+
+    $sale = $backtest->trades()->where('symbol', 'A')->where('trade_type', 'sell')->sole();
+    $replacement = $backtest->trades()->where('symbol', 'C')->where('trade_type', 'buy')->sole();
+    $lastSnapshot = $backtest->dailySnapshots()->orderByDesc('date')->first();
+    expect($sale->date->toDateString())->toBe($nextDay ? '2024-01-16' : '2024-01-15')
+        ->and($sale->reason)->toContain('No volatility data')
+        ->and($replacement->date->toDateString())->toBe($sale->date->toDateString())
+        ->and($replacement->quantity)->toBe(50)
+        ->and($lastSnapshot->holdings_count)->toBe(2)
+        ->and((float) $lastSnapshot->cash)->toBe(0.0)
+        ->and((float) $lastSnapshot->total_value)->toBe(10000.0);
+})->with(['no_cash_call', 'cash_call_if_not_enough_stocks'])->with([false, true])->with([null, 0.0, -0.1]);
+
+it('reserves the shares value and slot when a missing volatility exit cannot trade', function (string $restriction, bool $nextDay) {
+    foreach (['2024-01-08', '2024-01-09', '2024-01-15', '2024-01-16'] as $date) {
+        foreach (['A' => 40, 'B' => 30, 'C' => 10, 'D' => 20] as $symbol => $score) {
+            $later = $date >= '2024-01-15';
+            if ($symbol === 'A' && $later && $restriction === 'missing quote' && (! $nextDay || $date === '2024-01-16')) {
+                continue;
+            }
+            edgeQuote($symbol, $date, 100, [
+                'absolute_return_one_year' => $symbol === 'D' && $later ? 0 : $score,
+                'volatility_one_year' => $symbol === 'A' && $later ? null : 0.4,
+                't_percent' => $symbol === 'A' && $later && $restriction === 'circuit' ? 5 : 1,
+            ]);
+        }
+    }
+    $backtest = edgeBacktest([
+        'weightage' => 'inverse_volatility', 'sort_by' => 'absolute_return_one_year',
+        'max_stocks_to_hold' => 3, 'worst_rank_held' => 3, 'execute_next_trading_day' => $nextDay,
+    ]);
+
+    app(RunBacktestAction::class)->execute($backtest);
+
+    expect($backtest->trades()->where('symbol', 'A')->count())->toBe(1)
+        ->and($backtest->trades()->where('symbol', 'B')->count())->toBe(1)
+        ->and($backtest->trades()->where('symbol', 'C')->where('trade_type', 'buy')->sole()->quantity)->toBe(33)
+        ->and($backtest->dailySnapshots()->orderByDesc('date')->first()->holdings_count)->toBe(3);
+})->with(['circuit', 'missing quote'])->with([false, true]);
 
 it('keeps shares and their last valid valuation when the execution quote is absent or zero', function (string $weightage, bool $nextDay, ?float $missingQuote) {
     $backtest = edgeBacktest(['max_stocks_to_hold' => 1, 'weightage' => $weightage, 'execute_next_trading_day' => $nextDay]);
@@ -211,7 +266,7 @@ it('shows no Sortino value when there is no downside', function () {
     expect($backtest->summaryMetrics->sortino_ratio)->toBeNull();
 });
 
-it('rejects insufficient data before clearing saved results or queueing work', function (bool $oneDay) {
+it('queues insufficient data and fails in the worker before clearing saved results', function (bool $oneDay) {
     Queue::fake();
     $backtest = edgeBacktest(['status' => BacktestStatusEnum::Completed]);
     edgeSnapshots($backtest, [100, 101]);
@@ -219,11 +274,13 @@ it('rejects insufficient data before clearing saved results or queueing work', f
     if ($oneDay) {
         edgeQuote('A', '2024-01-08', 100);
     }
-    expect(fn () => app(StartBacktestRunAction::class)->execute($backtest))->toThrow(ValidationException::class, 'Insufficient trading data');
-    expect($backtest->refresh()->status)->toBe(BacktestStatusEnum::Completed)
+    app(StartBacktestRunAction::class)->execute($backtest);
+    $job = Queue::pushed(RunBacktestJob::class)->sole();
+    expect(fn () => app()->call([$job, 'handle']))->toThrow(ValidationException::class, 'Insufficient trading data');
+    expect($backtest->refresh()->status)->toBe(BacktestStatusEnum::Failed)
         ->and($backtest->summaryMetrics()->count())->toBe(1)
         ->and($backtest->dailySnapshots()->count())->toBe(2);
-    Queue::assertNothingPushed();
+    Queue::assertPushed(RunBacktestJob::class, 1);
 })->with([false, true]);
 
 it('fails an already queued run with insufficient data instead of marking it complete', function (bool $oneDay) {
@@ -231,20 +288,26 @@ it('fails an already queued run with insufficient data instead of marking it com
     if ($oneDay) {
         edgeQuote('A', '2024-01-08', 100);
     }
-    expect(fn () => (new RunBacktestJob($backtest))->handle(app(RunBacktestAction::class), app(CalculateBacktestMetricsAction::class), app(StoreMarketCapAllocationAction::class)))
+    expect(fn () => app()->call([new RunBacktestJob($backtest), 'handle']))
         ->toThrow(ValidationException::class, 'Insufficient trading data');
     expect($backtest->refresh()->status)->toBe(BacktestStatusEnum::Failed)
         ->and($backtest->summaryMetrics()->exists())->toBeFalse()
         ->and($backtest->trades()->exists())->toBeFalse();
 })->with([false, true]);
 
-it('returns a clear validation error through the run endpoint without removing results', function () {
+it('accepts the run request before data checks and saves the worker error without removing results', function () {
+    Queue::fake();
     $backtest = edgeBacktest(['status' => BacktestStatusEnum::Completed]);
     $backtest->user->update(['is_paid' => true]);
     edgeSnapshots($backtest, [100, 101]);
     $this->actingAs($backtest->user)->postJson('/backtests/'.$backtest->id.'/run')
-        ->assertUnprocessable()->assertJsonValidationErrors('start_date');
-    expect($backtest->refresh()->status)->toBe(BacktestStatusEnum::Completed)
+        ->assertRedirect()->assertSessionHasNoErrors();
+    expect($backtest->refresh()->status)->toBe(BacktestStatusEnum::Running);
+
+    $job = Queue::pushed(RunBacktestJob::class)->sole();
+    expect(fn () => app()->call([$job, 'handle']))->toThrow(ValidationException::class, 'Insufficient trading data');
+    expect($backtest->refresh()->status)->toBe(BacktestStatusEnum::Failed)
+        ->and($backtest->error_message)->toContain('Insufficient trading data')
         ->and($backtest->dailySnapshots()->count())->toBe(2);
 });
 

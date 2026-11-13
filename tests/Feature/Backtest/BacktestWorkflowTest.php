@@ -1,7 +1,9 @@
 <?php
 
+use App\Actions\Backtest\BacktestNavSourceAction;
 use App\Actions\Backtest\CalculateBacktestMetricsAction;
 use App\Actions\Backtest\RunBacktestAction;
+use App\Actions\Backtest\StartBacktestRunAction;
 use App\Actions\Backtest\StoreMarketCapAllocationAction;
 use App\Enums\BacktestCashCallEnum;
 use App\Enums\BacktestStatusEnum;
@@ -10,19 +12,55 @@ use App\Models\Backtest;
 use App\Models\BacktestDailySnapshot;
 use App\Models\BacktestSummaryMetric;
 use App\Models\BacktestTrade;
+use App\Models\NseIndex;
 use App\Models\User;
+use Carbon\Carbon;
+use Illuminate\Database\Events\QueryExecuted;
 use Illuminate\Queue\MaxAttemptsExceededException;
+use Illuminate\Support\Facades\Bus;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Queue;
 use Inertia\Testing\AssertableInertia as Assert;
 
 use function Pest\Laravel\mock;
 
-function seedRunAvailability(Backtest $backtest): void
+function seedRunAvailability(Backtest $backtest, bool $includeIndexData = false): void
 {
     foreach (['2024-01-08', '2024-01-09'] as $date) {
         createScreenResultRow('AVAILABLE', 'Available stock', $date, [$backtest->index->isIndexFieldName() => true]);
     }
+
+    if ($includeIndexData) {
+        $date = Carbon::parse('2024-01-08')->subWeekdays($backtest->cash_call_dma_period - 1);
+        while ($date->toDateString() <= '2024-01-09') {
+            NseIndex::query()->insert([
+                'symbol' => 'Nifty 50', 'slug' => $backtest->cash_call_index, 'date' => $date->toDateString(),
+                'open' => 100, 'high' => 100, 'low' => 100, 'close' => 100,
+                'points_change' => 0, 'percentage_change' => 0, 'volume' => 0, 'turnover' => 0,
+                'price_to_earnings' => 20, 'price_to_book' => 3, 'dividend_yield' => 1.5,
+            ]);
+            $date->addWeekday();
+        }
+    }
 }
+
+it('marks an independent run failed when dispatch fails and permits a new attempt', function () {
+    $backtest = Backtest::factory()->create();
+    seedRunAvailability($backtest);
+    Bus::shouldReceive('dispatch')->once()->andThrow(new RuntimeException('Queue unavailable'));
+
+    expect(fn () => app(StartBacktestRunAction::class)->execute($backtest))->toThrow(RuntimeException::class, 'Queue unavailable');
+
+    expect($backtest->refresh()->status)->toBe(BacktestStatusEnum::Failed)
+        ->and($backtest->error_message)->toBe('Queue unavailable')
+        ->and($backtest->user->can('run', $backtest))->toBeTrue();
+
+    Bus::fake();
+    app(StartBacktestRunAction::class)->execute($backtest);
+    expect($backtest->refresh()->status)->toBe(BacktestStatusEnum::Running)
+        ->and($backtest->error_message)->toBeNull();
+    Bus::assertDispatched(RunBacktestJob::class);
+});
 
 /**
  * Build a full valid update payload from the backtest's current attributes,
@@ -394,7 +432,7 @@ it('queues the saved gold DMA configuration with save and run', function () {
     Queue::fake();
     $user = User::factory()->create(['is_paid' => true]);
     $backtest = Backtest::factory()->create(['user_id' => $user->id]);
-    seedRunAvailability($backtest);
+    seedRunAvailability($backtest, includeIndexData: true);
 
     $this->actingAs($user)->put('/backtests/'.$backtest->id, validBacktestUpdatePayload($backtest, [
         'cash_call' => 'only_exits_allocate_to_gold_above_dma_below_index_dma',
@@ -417,12 +455,18 @@ it('rejects out-of-range transaction cost rates', function () {
     )->assertSessionHasErrors(['brokerage_rate', 'gst_rate']);
 });
 
-it('saves settings, clears old results, and queues a run when the run flag is set', function () {
+it('saves settings and queues a run without reading market data or clearing old results', function () {
     Queue::fake();
     $user = User::factory()->create(['is_paid' => true]);
     $backtest = Backtest::factory()->create(['user_id' => $user->id, 'status' => BacktestStatusEnum::Completed]);
     seedBacktestResults($backtest);
     seedRunAvailability($backtest);
+    $marketQueries = [];
+    DB::listen(function (QueryExecuted $query) use (&$marketQueries): void {
+        if (preg_match('/backtest_nse_|nse_indices/', $query->sql)) {
+            $marketQueries[] = $query->sql;
+        }
+    });
 
     $response = $this->actingAs($user)->put(
         '/backtests/'.$backtest->id,
@@ -434,24 +478,26 @@ it('saves settings, clears old results, and queues a run when the run flag is se
     expect($backtest->name)->toBe('Renamed Strategy')
         ->and($backtest->status)->toBe(BacktestStatusEnum::Running)
         ->and($backtest->progress)->toBe(0)
-        ->and($backtest->trades()->count())->toBe(0)
-        ->and($backtest->dailySnapshots()->count())->toBe(0)
-        ->and($backtest->summaryMetrics)->toBeNull();
+        ->and($backtest->trades()->count())->toBe(1)
+        ->and($backtest->dailySnapshots()->count())->toBe(1)
+        ->and($backtest->summaryMetrics)->not->toBeNull()
+        ->and($marketQueries)->toBe([]);
     Queue::assertPushed(RunBacktestJob::class);
 });
 
-it('saves settings but does not queue a run when one is already in progress', function () {
+it('rejects settings changes and does not queue another run when one is already in progress', function () {
     Queue::fake();
     $user = User::factory()->create(['is_paid' => true]);
     $backtest = Backtest::factory()->create(['user_id' => $user->id, 'status' => BacktestStatusEnum::Running]);
+    $originalName = $backtest->name;
 
     $response = $this->actingAs($user)->put(
         '/backtests/'.$backtest->id,
         validBacktestUpdatePayload($backtest, ['name' => 'Renamed Strategy', 'run' => true])
     );
 
-    $response->assertRedirect('/backtests/'.$backtest->id.'?tab=settings');
-    expect($backtest->refresh()->name)->toBe('Renamed Strategy');
+    $response->assertSessionHasErrors('cash_call_backtest_id');
+    expect($backtest->refresh()->name)->toBe($originalName);
     Queue::assertNothingPushed();
 });
 
@@ -516,9 +562,9 @@ it('queues a run from the standalone run endpoint', function () {
     $backtest->refresh();
     expect($backtest->status)->toBe(BacktestStatusEnum::Running)
         ->and($backtest->completed_at)->toBeNull()
-        ->and($backtest->trades()->count())->toBe(0)
-        ->and($backtest->dailySnapshots()->count())->toBe(0)
-        ->and($backtest->summaryMetrics)->toBeNull();
+        ->and($backtest->trades()->count())->toBe(1)
+        ->and($backtest->dailySnapshots()->count())->toBe(1)
+        ->and($backtest->summaryMetrics)->not->toBeNull();
     Queue::assertPushed(RunBacktestJob::class);
 });
 
@@ -529,8 +575,14 @@ it('reports preparation progress when a queue worker starts the run', function (
         'progress' => 0,
         'started_at' => $startedAt,
     ]);
+    seedBacktestResults($backtest);
     $runAction = mock(RunBacktestAction::class);
-    $runAction->shouldReceive('validateDataAvailability')->once()->with($backtest);
+    $runAction->shouldReceive('validateDataAvailability')->once()->with($backtest)
+        ->andReturnUsing(function (Backtest $runningBacktest): void {
+            expect($runningBacktest->trades()->count())->toBe(1)
+                ->and($runningBacktest->dailySnapshots()->count())->toBe(1)
+                ->and($runningBacktest->summaryMetrics()->exists())->toBeTrue();
+        });
     $metricsAction = mock(CalculateBacktestMetricsAction::class);
 
     $runAction->shouldReceive('execute')
@@ -541,7 +593,10 @@ it('reports preparation progress when a queue worker starts the run', function (
             expect($runningBacktest->is($backtest))->toBeTrue()
                 ->and($runningBacktest->status)->toBe(BacktestStatusEnum::Running)
                 ->and($runningBacktest->progress)->toBe(1)
-                ->and($runningBacktest->started_at)->not->toBeNull();
+                ->and($runningBacktest->started_at)->not->toBeNull()
+                ->and($runningBacktest->trades()->exists())->toBeFalse()
+                ->and($runningBacktest->dailySnapshots()->exists())->toBeFalse()
+                ->and($runningBacktest->summaryMetrics()->exists())->toBeFalse();
 
             return true;
         });
@@ -553,7 +608,7 @@ it('reports preparation progress when a queue worker starts the run', function (
         return true;
     });
 
-    (new RunBacktestJob($backtest))->handle($runAction, $metricsAction, $storeAllocation);
+    (new RunBacktestJob($backtest))->handle($runAction, $metricsAction, $storeAllocation, app(BacktestNavSourceAction::class));
 
     expect($backtest->refresh()->status)->toBe(BacktestStatusEnum::Completed)
         ->and($backtest->progress)->toBe(100)
@@ -612,7 +667,7 @@ it('marks an ordinary exception as failed at each execution stage', function (st
         }
     }
 
-    expect(fn () => (new RunBacktestJob($backtest))->handle(...array_values($actions)))
+    expect(fn () => (new RunBacktestJob($backtest))->handle(...[...array_values($actions), app(BacktestNavSourceAction::class)]))
         ->toThrow(RuntimeException::class, 'Stage failed.');
     expect($backtest->refresh()->status)->toBe(BacktestStatusEnum::Failed)
         ->and($backtest->completed_at)->toBeNull()

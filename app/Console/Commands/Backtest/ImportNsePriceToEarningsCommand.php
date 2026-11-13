@@ -11,7 +11,7 @@ class ImportNsePriceToEarningsCommand extends Command
 {
     protected $signature = 'backtest:import-price-to-earnings {--date=}';
 
-    protected $description = 'Import NSE ADJUSTED P/E values for the selected date';
+    protected $description = 'Import NSE P/E using adjusted values with a standalone fallback';
 
     public function handle(ImportNseValuationAction $importNseValuation): int
     {
@@ -23,7 +23,7 @@ class ImportNsePriceToEarningsCommand extends Command
             return self::FAILURE;
         }
 
-        $this->info("ADJUSTED P/E saved for {$result['matched']} price rows. {$result['unmatched']} file rows had no matching price row.");
+        $this->info("P/E saved for {$result['matched']} price rows. {$result['unmatched']} file rows had no matching price row.");
 
         return self::SUCCESS;
     }

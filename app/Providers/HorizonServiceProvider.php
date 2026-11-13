@@ -2,9 +2,14 @@
 
 namespace App\Providers;
 
+use App\Listeners\PreventBacktestJobRetry;
+use Illuminate\Contracts\Queue\Factory as QueueFactory;
+use Illuminate\Foundation\Application;
 use Illuminate\Support\Facades\Gate;
+use Laravel\Horizon\Contracts\JobRepository;
 use Laravel\Horizon\Horizon;
 use Laravel\Horizon\HorizonApplicationServiceProvider;
+use Laravel\Horizon\Jobs\RetryFailedJob;
 
 class HorizonServiceProvider extends HorizonApplicationServiceProvider
 {
@@ -14,6 +19,17 @@ class HorizonServiceProvider extends HorizonApplicationServiceProvider
     public function boot(): void
     {
         parent::boot();
+
+        $this->app->bindMethod([RetryFailedJob::class, 'handle'], function (RetryFailedJob $retry, Application $app): void {
+            $jobs = $app->make(JobRepository::class);
+            $failed = $jobs->findFailed($retry->id);
+            if ($failed === null) {
+                return;
+            }
+
+            $app->make(PreventBacktestJobRetry::class)->assertCanRetry(json_decode($failed->payload, true) ?? []);
+            $retry->handle($app->make(QueueFactory::class), $jobs);
+        });
 
         // Horizon::routeSmsNotificationsTo('15556667777');
         // Horizon::routeMailNotificationsTo('example@example.com');

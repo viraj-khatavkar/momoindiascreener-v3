@@ -124,6 +124,11 @@ class ImportNseValuationAction
 
                 $rawValue = $record[$isMarketcap ? 'MARKET CAP(RS.)' : 'ADJUSTED P/E'];
                 $value = $this->parseValue($rawValue, $isMarketcap, $rowNumber);
+
+                if (! $isMarketcap && $value === null) {
+                    $value = $this->parseValue($record['SYMBOL P/E'] ?? '', false, $rowNumber);
+                }
+
                 $key = $isMarketcap ? "{$symbol}|{$record['SERIES']}" : $symbol;
 
                 if (array_key_exists($key, $values) && $values[$key] !== $value) {
@@ -152,13 +157,21 @@ class ImportNseValuationAction
         $value = str_replace(',', '', $value);
 
         if (! is_numeric($value) || ! is_finite((float) $value) || ($isMarketcap && (float) $value < 0)) {
-            throw new InvalidArgumentException("Invalid numeric value on row {$rowNumber}.");
+            if ($isMarketcap) {
+                throw new InvalidArgumentException("Invalid numeric value on row {$rowNumber}.");
+            }
+
+            return null;
         }
 
         $converted = round((float) $value / ($isMarketcap ? 10_000_000 : 1), $isMarketcap ? 0 : 2);
 
         if (abs($converted) >= ($isMarketcap ? PHP_INT_MAX : 1e6)) {
-            throw new InvalidArgumentException("Value on row {$rowNumber} exceeds the column limit.");
+            if ($isMarketcap) {
+                throw new InvalidArgumentException("Value on row {$rowNumber} exceeds the column limit.");
+            }
+
+            return null;
         }
 
         return number_format($converted, $isMarketcap ? 0 : 2, '.', '');

@@ -19,7 +19,15 @@ class BacktestCsvController extends Controller
         $filename = str($backtest->name)->replace(' ', '_').'_'.$type.'.csv';
 
         return response()->streamDownload(
-            fn () => $type === 'trades' ? $this->writeTrades($backtest) : $this->writeNav($backtest),
+            function () use ($backtest, $type): void {
+                $connection = $backtest->getConnection();
+                if ($connection->getDriverName() === 'mysql' && $connection->transactionLevel() === 0) {
+                    $connection->statement('SET TRANSACTION ISOLATION LEVEL REPEATABLE READ');
+                }
+                $connection->transaction(
+                    fn () => $type === 'trades' ? $this->writeTrades($backtest) : $this->writeNav($backtest),
+                );
+            },
             $filename,
             ['Content-Type' => 'text/csv'],
         );

@@ -44,7 +44,7 @@ export interface BacktestPositionPerformance {
 export interface BacktestSummaryMetric {
     id: number;
     backtest_id: number;
-    cagr: number;
+    cagr: number | null;
     max_drawdown: number;
     max_drawdown_start_date: string | null;
     max_drawdown_end_date: string | null;

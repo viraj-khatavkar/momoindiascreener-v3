@@ -4,6 +4,8 @@ use App\Actions\Backtest\FindAssumedDelistingExitsAction;
 use App\Actions\Backtest\InvalidateAssumedDelistingsAction;
 use App\Actions\Backtest\StartBacktestRunAction;
 use App\Actions\Backtest\UpdateAssumedDelistingsAction;
+use App\Enums\BacktestStatusEnum;
+use App\Jobs\RunBacktestJob;
 use App\Models\Backtest;
 use App\Models\BacktestNseTradingGap;
 use App\Models\BacktestNseTradingGapState;
@@ -117,7 +119,7 @@ it('counts the selected simulation calendar before scheduling an exit', function
     expect(app(FindAssumedDelistingExitsAction::class)->execute(Backtest::factory()->create(), $shorterCalendar))->toBe([]);
 });
 
-it('rejects missing or stale shared data before deleting saved results', function (string $state) {
+it('rejects missing or stale shared data in the worker before deleting saved results', function (string $state) {
     $dates = sharedGapCalendar(102);
     if ($state !== 'missing') {
         BacktestNseTradingGapState::factory()->create([
@@ -131,9 +133,12 @@ it('rejects missing or stale shared data before deleting saved results', functio
         'cash' => 10000, 'total_value' => 10000, 'holdings_count' => 0,
     ]);
     Queue::fake();
-    expect(fn () => app(StartBacktestRunAction::class)->execute($backtest))->toThrow(ValidationException::class);
+    app(StartBacktestRunAction::class)->execute($backtest);
+    $job = Queue::pushed(RunBacktestJob::class)->sole();
+    expect(fn () => app()->call([$job, 'handle']))->toThrow(ValidationException::class);
     $this->assertModelExists($snapshot);
-    Queue::assertNothingPushed();
+    expect($backtest->refresh()->status)->toBe(BacktestStatusEnum::Failed);
+    Queue::assertPushed(RunBacktestJob::class, 1);
 })->with(['missing', 'outdated', 'dirty']);
 
 it('removes an assumed exit after corrected historical quotes fill the gap', function () {

@@ -1,6 +1,7 @@
 ---
 paths:
   - app/Http/Controllers/BacktestsController.php
+  - app/Http/Controllers/BacktestCsvController.php
 ---
 
 # Controllers
@@ -10,3 +11,6 @@ Return trade logs through a deferred Inertia scroll prop with at most 100 trades
 
 ## Expose only selected completed backtests through public read routes
 Use backtests.is_public, with a default of false, to select guest examples. Only completed backtests with this flag enabled can appear on the home page or public results routes. Use the publiclyVisible scope and viewPublic policy for public pages, deferred requests and benchmark data, including after the flag is cleared. Reuse the results page with readOnly enabled and hide owner IDs, errors, settings, run, duplicate and CSV controls. Private routes retain authentication, verification, paid access and ownership checks. Copies start private even when the source is an example.
+
+## Export CSV batches from one database snapshot
+Keep trade and NAV exports in bounded lazy batches inside one repeatable-read transaction for the full stream. On MySQL, set the transaction isolation before starting the export transaction. A concurrent rerun can replace saved rows, but an export must not mix old and new batches. Verify with two committed test-database connections; mutations on the export connection do not model concurrency.

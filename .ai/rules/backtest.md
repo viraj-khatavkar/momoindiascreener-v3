@@ -85,3 +85,42 @@ Read new quotes once in small date windows using bnip_date_symbol_unique; carry 
 
 ## Keep cash for unfilled stock slots
 Offer cash_call_if_not_enough_stocks for new selections. Plain Equal Weight divides available cash, including net sale proceeds, by empty portfolio slots; buy eligible unheld stocks and retain unused portions without topping up holdings. Rebalanced methods reserve the unfilled-slot portion of allocatable portfolio value and apply selected weights to the invested part; purchase budgets must preserve that reserve after charges and share rounding. For forced replacements between rebalances, divide exit proceeds by replacement slots, not by candidates found. Keep other cash modes, trade restrictions, and stop-loss cash reserves unchanged.
+
+## Run a selected backtest NAV source before its dependent
+DMA cash calls may use an owned independent NoCashCall backtest. Run the full source job to successful completion before dispatching the dependent job, using one captured market-data end date. Validate source ownership, no self/dependency chains, full DMA warmup and date coverage before clearing results. Source failures stop the dependent; protect in-use source settings and results from concurrent edits or reruns. Reuse the existing cash, gold, execution and assumed-delisting rules. The user accepts the retrospective assumed-delisting assumption. Save only the source selector and ID with the dependent settings: do not save copies of source settings, source run dates, or source NAV. Completed dependent results change only on rerun; show the agreed notice.
+
+## Distinguish defensive gold from ranked ETF holdings
+Track defensive gold as an in-memory holding purpose. GOLDBEES selected through ranking follows normal rank, filter, stop-loss, BE and weight rules. Cash-call gold purchases, and existing gold retained by a full gold rotation, make the holding defensive; its full exit clears that purpose. Defensive gold follows cash-call exits and reserves its value if a recovery sale is blocked. Never buy back a same-day forced exit through the gold allocation path.
+
+## Keep Sharpe and K-ratio stable and within storage limits
+Portfolio Sharpe uses the same compounded daily cash rate as simulation interest. Return null for volatility or log-NAV residuals at the six-decimal NAV rounding scale, with a floating-point floor. Round Sharpe and K-ratio to four decimals and return null for non-finite or out-of-range DECIMAL(10,4) results; an optional ratio must not fail a valid cash-only run or its dependent. Preserve measurable variation and ordinary ratio values. Saved metrics change only on rerun.
+
+## Fill inverse-volatility exit slots before selecting entries
+On a scheduled weighting rebalance, execute exits for actual missing or non-positive decision-date volatility before counting free slots and selecting entries. Preserve execution-quote and circuit restrictions, defensive gold and cash-call rules. Reserve the value and occupied slot of holdings whose sale cannot execute.
+
+## Require complete index DMA data before running
+For index-based DMA cash calls, require positive finite index closes, period minus one prior observations, and coverage of simulation dates and known warmup market dates. Reject missing data before clearing results and check again in the worker. Bound reads by the run end date; do not treat an unavailable signal as above DMA. NoCashCall and shortage cash mode need no index data.
+
+## Handle independent queue dispatch failures
+Catch queue dispatch failures for independent runs as well as source chains. Use the job failure handler to set Failed with an error so the user can retry; keep the existing run timestamp guards.
+
+## Preserve large metrics and ignore Sortino rounding noise
+Store CAGR and profit factor as nullable DOUBLE values, retaining four-decimal calculation rounding and finite large values. Non-finite CAGR is unavailable; show unavailable CAGR and derived metrics as missing, never zero. Keep money columns decimal. Apply the NAV rounding tolerance to Sortino downside deviation and its own DECIMAL(20,4) storage bound.
+
+## Use standalone P/E when adjusted P/E cannot be stored
+User decision: use ADJUSTED P/E first. If it is missing, non-numeric, non-finite, or outside DECIMAL(8,2) after rounding, use SYMBOL P/E. Save null if neither value can be stored. Keep valid zero and negative values. This replaces the earlier rule to use only ADJUSTED P/E. Keep market cap validation and CSV structure checks strict.
+
+## Queue market-data validation and retain results until it passes
+User decision: this replaces the earlier requirement to validate market data before queueing. Save and Run checks settings, ownership and run conflicts, then queues without reading price/index/gap history or deleting results. RunBacktestJob validates dates, shared gaps, index DMA and source NAV history before clearing that run’s trades, snapshots and metrics. A validation error marks the run Failed and keeps the saved result rows. The source worker captures the common end date and chains the dependent; the dependent starts only after the full source succeeds.
+
+## Read long trading calendars without scanning all price rows
+Use BacktestTradingCalendarAction for calendar reads. Full ranges select distinct dates through bnip_date_symbol_unique, then use a limited scalar membership lookup per date. Preserve selected-universe membership, zero-quote calendar dates and inclusive bounds. Use the limited backward scan for recent dates and DMA warmup. Do not restore a full DISTINCT membership-filtered price scan or a persistent cache that can become stale after imports.
+
+## Allow one active backtest sequence per user
+Lock the owner user row before checking active runs or changing saved backtest settings. Reject Save and Run before saving settings when that user has a Running backtest. Admit a source and its dependent together as one sequence; queue the source first and let its successful full job chain the dependent. Block changes and deletion for every Running backtest, and keep a completed source locked until its dependent finishes. Idle backtests may still be saved without running; different users may run concurrently. Keep market-data checks in the worker.
+
+## Read final-day holdings quotes before searching history
+For open-position valuation, query positive adjusted closes on the final saved simulation date first. Query historical last prices only for holdings missing a final-day quote. Both paths must restrict prices to saved simulation dates and never read a later date. Preserve all position and metric formulas.
+
+## Check stock calendar data before importing a missing holiday index price
+A backtest with index DMA needs pre-start history (period minus one earlier index closes). Calendar validation derives expected dates from stock price rows. Synthetic stock fixtures on a market holiday can therefore cause a missing-index error even when the index history is complete. Inspect the price rows for that date and repair confirmed bad source data with a backup and approval; do not fabricate index prices or disable the completeness check. Rebuild shared trading gaps after historical price or calendar corrections. Keep test fixtures in the isolated test database.

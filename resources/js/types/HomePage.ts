@@ -12,7 +12,7 @@ export interface HomeBacktest {
     updated_at: string | null;
     url: string;
     summary_metrics: {
-        cagr: number;
+        cagr: number | null;
         max_drawdown: number;
     } | null;
 }

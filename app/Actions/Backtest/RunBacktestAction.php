@@ -11,7 +11,6 @@ use App\Models\BacktestDailySnapshot;
 use App\Models\BacktestNseCorporateAction;
 use App\Models\BacktestNseInstrumentPrice;
 use App\Models\BacktestTrade;
-use App\Models\NseIndex;
 use Carbon\Carbon;
 use Illuminate\Support\Collection;
 use Illuminate\Validation\ValidationException;
@@ -19,8 +18,6 @@ use Illuminate\Validation\ValidationException;
 class RunBacktestAction
 {
     private const DEFAULT_START_DATE = '2011-01-05';
-
-    private string $startDate;
 
     /** Buy-side cost fraction derived from the backtest's configured rates. */
     private float $buyCostRate = 0;
@@ -70,17 +67,19 @@ class RunBacktestAction
 
     private int $dmaPeriod = 50;
 
+    private string $cashSignalName = 'Index';
+
     public function __construct(
         private ApplyBacktestFiltersAction $filtersAction,
         private CalculateTransactionCostsAction $costsAction,
         private FindAssumedDelistingExitsAction $findAssumedDelistingExits,
+        private BacktestNavSourceAction $navSource,
+        private LoadBacktestIndexDataAction $indexDataLoader,
+        private BacktestTradingCalendarAction $tradingCalendar,
     ) {}
 
-    public function execute(Backtest $backtest): void
+    public function execute(Backtest $backtest, ?string $throughDate = null): void
     {
-        $this->startDate = $backtest->start_date
-            ? Carbon::parse($backtest->start_date)->format('Y-m-d')
-            : self::DEFAULT_START_DATE;
         $this->initialCapital = (float) $backtest->initial_capital;
         $this->cash = $this->initialCapital;
         $this->stopLossCash = 0;
@@ -100,7 +99,7 @@ class RunBacktestAction
         $this->dailyCashReturnRate = pow(1 + $annualRate / 100, 1.0 / 252) - 1;
         $this->buyCostRate = $this->costsAction->buyCostRate($backtest);
 
-        $tradingDates = $this->loadTradingDates($backtest);
+        $tradingDates = $this->loadTradingDates($backtest, $throughDate);
 
         if ($tradingDates->isEmpty()) {
             return;
@@ -111,8 +110,13 @@ class RunBacktestAction
         $this->assumedDelistingExitDates = $this->findAssumedDelistingExits->execute($backtest, $tradingDates);
 
         $this->dmaPeriod = (int) $backtest->cash_call_dma_period;
+        $this->cashSignalName = $backtest->usesBacktestNav() ? 'Source NAV' : 'Index';
         if ($backtest->cash_call->usesIndexDma()) {
-            $this->loadIndexData($backtest->cash_call_index);
+            if ($backtest->usesBacktestNav()) {
+                $this->indexData = $this->navSource->load($backtest, $tradingDates);
+            } else {
+                $this->indexData = $this->indexDataLoader->execute($backtest, $tradingDates);
+            }
             $this->computeDma($this->dmaPeriod);
         }
         $this->computeRebalanceDates($backtest, $tradingDates);
@@ -212,13 +216,14 @@ class RunBacktestAction
         $backtest->update(['progress' => 95]);
     }
 
-    public function validateDataAvailability(Backtest $backtest): void
+    public function validateDataAvailability(Backtest $backtest, ?string $throughDate = null, bool $validateSourceNav = true): void
     {
-        $dates = BacktestNseInstrumentPrice::query()
-            ->where($backtest->index->isIndexFieldName(), true)
-            ->where('date', '>=', $backtest->start_date?->toDateString() ?? self::DEFAULT_START_DATE)
-            ->select('date')->distinct()->orderByDesc('date')
-            ->limit(FindAssumedDelistingExitsAction::MISSING_TRADING_DAYS + 1)->toBase()->pluck('date');
+        $dates = $this->tradingCalendar->latestDates(
+            $backtest->index,
+            $backtest->start_date?->toDateString() ?? self::DEFAULT_START_DATE,
+            $throughDate,
+            FindAssumedDelistingExitsAction::MISSING_TRADING_DAYS + 1,
+        );
 
         if ($dates->count() < 2) {
             throw ValidationException::withMessages([
@@ -229,34 +234,26 @@ class RunBacktestAction
         if ($dates->count() > FindAssumedDelistingExitsAction::MISSING_TRADING_DAYS) {
             $this->findAssumedDelistingExits->assertReadyThrough($dates->first());
         }
+
+        if ($backtest->cash_call->usesIndexDma() && (! $backtest->usesBacktestNav() || $validateSourceNav)) {
+            $tradingDates = $this->loadTradingDates($backtest, $throughDate);
+            if ($backtest->usesBacktestNav()) {
+                $this->navSource->load($backtest, $tradingDates);
+            } else {
+                $this->indexDataLoader->execute($backtest, $tradingDates);
+            }
+        }
     }
 
-    private function loadTradingDates(Backtest $backtest)
+    private function loadTradingDates(Backtest $backtest, ?string $throughDate = null): Collection
     {
-        return BacktestNseInstrumentPrice::query()
-            ->where($backtest->index->isIndexFieldName(), true)
-            ->where('date', '>=', $this->startDate)
-            ->select('date')
-            ->distinct()
-            ->orderBy('date')
+        return $this->tradingCalendar->query(
+            $backtest->index,
+            $backtest->start_date?->toDateString() ?? self::DEFAULT_START_DATE,
+            $throughDate,
+        )
             ->pluck('date')
             ->map(fn ($d) => Carbon::parse($d));
-    }
-
-    private function loadIndexData(string $slug): void
-    {
-        // Load enough history before START_DATE for the DMA period to be computed
-        // 200 DMA needs ~280 calendar days of prior data; use generous buffer
-        $loadFrom = Carbon::parse($this->startDate)->subDays($this->dmaPeriod * 2)->format('Y-m-d');
-
-        NseIndex::query()
-            ->where('slug', $slug)
-            ->where('date', '>=', $loadFrom)
-            ->orderBy('date')
-            ->get(['date', 'close'])
-            ->each(function ($row) {
-                $this->indexData[$row->date->format('Y-m-d')] = (float) $row->close;
-            });
     }
 
     private function computeDma(int $period): void
@@ -430,7 +427,13 @@ class RunBacktestAction
         $close = $this->indexData[$decisionDate] ?? null;
         $dma = $this->dmaData[$decisionDate] ?? null;
 
-        return $close !== null && $dma !== null && $close < $dma;
+        if ($close === null || $dma === null) {
+            throw ValidationException::withMessages([
+                $this->cashSignalName === 'Source NAV' ? 'cash_call_backtest_id' : 'cash_call_index' => $this->cashSignalName.' or its '.$this->dmaPeriod.' DMA is unavailable on '.$decisionDate.'. Complete the signal data before running this backtest.',
+            ]);
+        }
+
+        return $close < $dma;
     }
 
     private function rebalance(Backtest $backtest, Carbon $date, ?string $filterDate = null, array $blockedBuySymbols = []): void
@@ -444,36 +447,37 @@ class RunBacktestAction
         // execute_next_trading_day (filters use $filterDate, trades use $executionDateStr).
         $this->loadCircuitSymbols($backtest, $executionDateStr, $rankedStocks);
 
-        // Cash call DMA check uses decision date (not execution date)
-        $indexBelowDma = $this->indexIsBelowDma($filterDate);
-
-        // Determine cash call behavior
         $cashCall = $backtest->cash_call;
+        $indexBelowDma = $cashCall->usesIndexDma() && $this->indexIsBelowDma($filterDate);
 
         if ($cashCall === BacktestCashCallEnum::FullCashBelowIndexDma && $indexBelowDma) {
-            $this->sellEverything($backtest, $date, 'Cash call - index below '.$this->dmaPeriod.' DMA');
+            $this->sellEverything($backtest, $date, 'Cash call - '.lcfirst($this->cashSignalName).' below '.$this->dmaPeriod.' DMA');
 
             return;
         }
 
         if ($cashCall === BacktestCashCallEnum::AllocateToGoldBelowIndexDma && $indexBelowDma) {
-            $this->allocateToGold($backtest, $date, $filterDate);
+            $this->allocateToGold($backtest, $date, $filterDate, $blockedBuySymbols);
 
             return;
         }
 
         // If gold allocation was active but index recovered, sell GOLDBEES first
-        if ($cashCall->allocatesToGold() && ! $indexBelowDma && isset($this->holdings['GOLDBEES'])) {
-            $this->executeSell($backtest, $date, 'GOLDBEES', $this->holdings['GOLDBEES']['quantity'], 'Index recovered above '.$this->dmaPeriod.' DMA - exiting gold');
+        if ($cashCall->allocatesToGold() && ! $indexBelowDma && $this->isDefensiveGold('GOLDBEES')) {
+            $this->executeSell($backtest, $date, 'GOLDBEES', $this->holdings['GOLDBEES']['quantity'], $this->cashSignalName.' recovered above '.$this->dmaPeriod.' DMA - exiting gold');
         }
 
         $onlyExits = $cashCall->usesIndexDma() && $indexBelowDma;
 
-        // Determine sells (exclude GOLDBEES from normal rank checks)
+        if (! $onlyExits) {
+            $this->exitHoldingsWithoutVolatility($backtest, $date, $filterDate);
+        }
+
+        // Determine sells, excluding only gold held for a defensive cash call.
         $symbolsToSell = [];
         $excludedSymbols = [];
         foreach ($this->holdings as $symbol => $holding) {
-            if ($symbol === 'GOLDBEES') {
+            if ($this->isDefensiveGold($symbol)) {
                 continue;
             }
             if (! $rankedBySymbol->has($symbol)) {
@@ -523,7 +527,7 @@ class RunBacktestAction
 
         if ($onlyExits) {
             if ($cashCall->allocatesToGold()) {
-                $this->buyGold($backtest, $date, $filterDate, $this->cash, 'Index below '.$this->dmaPeriod.' DMA - allocating exits to gold');
+                $this->buyGold($backtest, $date, $filterDate, $this->cash, $this->cashSignalName.' below '.$this->dmaPeriod.' DMA - allocating exits to gold', $blockedBuySymbols);
             }
 
             return;
@@ -709,7 +713,7 @@ class RunBacktestAction
         foreach ($this->holdings as $symbol => &$holding) {
             $price = $dailyPrices->get($symbol);
 
-            if ($symbol === 'GOLDBEES' || ! $price || (float) $price->close_adjusted <= 0) {
+            if ($this->isDefensiveGold($symbol) || ! $price || (float) $price->close_adjusted <= 0) {
                 continue;
             }
 
@@ -741,7 +745,7 @@ class RunBacktestAction
 
         $heldSymbols = array_values(array_filter(
             array_keys($this->holdings),
-            fn (string $symbol): bool => $symbol !== 'GOLDBEES',
+            fn (string $symbol): bool => ! $this->isDefensiveGold($symbol),
         ));
 
         if (empty($heldSymbols)) {
@@ -823,7 +827,7 @@ class RunBacktestAction
 
             if ($backtest->cash_call->usesIndexDma() && $this->indexIsBelowDma($decisionDate)) {
                 if ($backtest->cash_call->allocatesToGold()) {
-                    $this->buyGold($backtest, $date, $decisionDate, $replacementBudget, $reason.' - allocating to gold');
+                    $this->buyGold($backtest, $date, $decisionDate, $replacementBudget, $reason.' - allocating to gold', [...$exitedSymbols, ...$additionalBlockedSymbols]);
                 }
 
                 return;
@@ -922,6 +926,23 @@ class RunBacktestAction
         };
     }
 
+    private function exitHoldingsWithoutVolatility(Backtest $backtest, Carbon $date, string $decisionDate): void
+    {
+        if ($backtest->weightage !== BacktestWeightageEnum::InverseVolatility || $this->holdings === []) {
+            return;
+        }
+
+        $volatilities = BacktestNseInstrumentPrice::query()
+            ->where('date', $decisionDate)->whereIn('symbol', array_keys($this->holdings))
+            ->toBase()->pluck('volatility_one_year', 'symbol');
+
+        foreach ($this->holdings as $symbol => $holding) {
+            if (! $this->isDefensiveGold($symbol) && (float) $volatilities->get($symbol) <= 0) {
+                $this->executeSell($backtest, $date, $symbol, $holding['quantity'], 'No volatility data for inverse volatility weighting');
+            }
+        }
+    }
+
     private function rebalanceWeights(Backtest $backtest, Carbon $date, Collection $rankedBySymbol, Collection $buyCandidates, string $decisionDate): void
     {
         $portfolioValue = $this->calculatePortfolioValue();
@@ -930,7 +951,10 @@ class RunBacktestAction
         $unrankedHeldStocks = collect();
 
         if (in_array($backtest->weightage, [BacktestWeightageEnum::EqualWeightRebalanced, BacktestWeightageEnum::InverseVolatility, BacktestWeightageEnum::PriceWeighted], true)) {
-            $unrankedHeldSymbols = array_diff(array_keys($this->holdings), $rankedBySymbol->keys()->all(), ['GOLDBEES']);
+            $unrankedHeldSymbols = array_values(array_filter(
+                array_diff(array_keys($this->holdings), $rankedBySymbol->keys()->all()),
+                fn (string $symbol): bool => ! $this->isDefensiveGold($symbol),
+            ));
 
             if ($unrankedHeldSymbols !== []) {
                 $quoteDate = $backtest->weightage === BacktestWeightageEnum::EqualWeightRebalanced ? $date->format('Y-m-d') : $decisionDate;
@@ -948,6 +972,9 @@ class RunBacktestAction
 
         // Add kept holdings
         foreach ($this->holdings as $symbol => $holding) {
+            if ($this->isDefensiveGold($symbol)) {
+                continue;
+            }
             $stockData = $rankedBySymbol->get($symbol) ?? $unrankedHeldStocks->get($symbol);
             if ($stockData) {
                 $allTargetStocks->put($symbol, $stockData);
@@ -965,23 +992,6 @@ class RunBacktestAction
 
         // Calculate target per stock
         $targets = $this->calculateTargetAllocations($backtest, $totalValue, $allTargetStocks);
-
-        // Phase 0: For inverse volatility, sell held stocks with no volatility data
-        if ($backtest->weightage === BacktestWeightageEnum::InverseVolatility) {
-            foreach ($this->holdings as $symbol => $holding) {
-                if ($symbol === 'GOLDBEES') {
-                    continue;
-                }
-                if (! isset($targets[$symbol])) {
-                    $this->executeSell($backtest, $date, $symbol, $holding['quantity'], 'No volatility data for inverse volatility weighting');
-                }
-            }
-
-            // Recalculate total value after selling null-vol stocks
-            $portfolioValue = $this->calculatePortfolioValue();
-            $totalValue = $portfolioValue + $this->cash;
-            $targets = $this->calculateTargetAllocations($backtest, $totalValue, $allTargetStocks);
-        }
 
         $cashReserve = 0.0;
         if ($backtest->cash_call === BacktestCashCallEnum::CashCallIfNotEnoughStocks) {
@@ -1060,6 +1070,9 @@ class RunBacktestAction
         $targets = [];
         $cashCall = $backtest->cash_call;
         $allTargetStocks = $allTargetStocks->filter(fn ($stock): bool => (float) $stock->close_adjusted > 0);
+        if ($backtest->weightage === BacktestWeightageEnum::InverseVolatility) {
+            $allTargetStocks = $allTargetStocks->filter(fn ($stock): bool => (float) $stock->volatility_one_year > 0);
+        }
         $retainedValue = 0.0;
         $retainedCount = 0;
         foreach ($this->holdings as $symbol => $holding) {
@@ -1073,19 +1086,17 @@ class RunBacktestAction
         $n = $allTargetStocks->count();
 
         if ($backtest->weightage === BacktestWeightageEnum::InverseVolatility) {
-            $validStocks = $allTargetStocks->filter(fn ($stock) => $stock->volatility_one_year > 0);
-
-            if ($validStocks->isEmpty()) {
+            if ($allTargetStocks->isEmpty()) {
                 return $targets;
             }
 
-            $invVolSum = $validStocks->sum(fn ($stock) => 1.0 / (float) $stock->volatility_one_year);
+            $invVolSum = $allTargetStocks->sum(fn ($stock) => 1.0 / (float) $stock->volatility_one_year);
 
-            foreach ($validStocks as $symbol => $stock) {
+            foreach ($allTargetStocks as $symbol => $stock) {
                 $weight = (1.0 / (float) $stock->volatility_one_year) / $invVolSum;
 
                 if ($cashCall === BacktestCashCallEnum::CashCallIfNotEnoughStocks) {
-                    $scale = min($validStocks->count() / $availableSlots, 1);
+                    $scale = min($allTargetStocks->count() / $availableSlots, 1);
                     $targets[$symbol] = $totalValue * $weight * $scale;
                 } else {
                     $targets[$symbol] = $totalValue * $weight;
@@ -1331,22 +1342,34 @@ class RunBacktestAction
         }
     }
 
-    private function allocateToGold(Backtest $backtest, Carbon $date, string $decisionDate): void
+    private function isDefensiveGold(string $symbol): bool
     {
+        return $symbol === 'GOLDBEES' && ($this->holdings[$symbol]['is_defensive_gold'] ?? false);
+    }
+
+    /** @param list<string> $blockedBuySymbols */
+    private function allocateToGold(Backtest $backtest, Carbon $date, string $decisionDate, array $blockedBuySymbols = []): void
+    {
+        /** A full rotation keeps existing gold as the defensive holding without an unnecessary sale and repurchase. */
+        if (isset($this->holdings['GOLDBEES'])) {
+            $this->holdings['GOLDBEES']['is_defensive_gold'] = true;
+        }
+
         // Sell all non-GOLDBEES holdings
         $symbols = array_keys($this->holdings);
         foreach ($symbols as $symbol) {
             if ($symbol !== 'GOLDBEES') {
-                $this->executeSell($backtest, $date, $symbol, $this->holdings[$symbol]['quantity'], 'Index below '.$this->dmaPeriod.' DMA - rotating to gold');
+                $this->executeSell($backtest, $date, $symbol, $this->holdings[$symbol]['quantity'], $this->cashSignalName.' below '.$this->dmaPeriod.' DMA - rotating to gold');
             }
         }
 
-        $this->buyGold($backtest, $date, $decisionDate, $this->cash, 'Index below '.$this->dmaPeriod.' DMA - allocating to gold');
+        $this->buyGold($backtest, $date, $decisionDate, $this->cash, $this->cashSignalName.' below '.$this->dmaPeriod.' DMA - allocating to gold', $blockedBuySymbols);
     }
 
-    private function buyGold(Backtest $backtest, Carbon $date, string $decisionDate, float $budget, string $reason): void
+    /** @param list<string> $blockedBuySymbols */
+    private function buyGold(Backtest $backtest, Carbon $date, string $decisionDate, float $budget, string $reason, array $blockedBuySymbols = []): void
     {
-        if ($budget <= 0 || $this->cash <= 0) {
+        if ($budget <= 0 || $this->cash <= 0 || in_array('GOLDBEES', $blockedBuySymbols, true)) {
             return;
         }
 
@@ -1374,7 +1397,7 @@ class RunBacktestAction
             return;
         }
 
-        $this->executeBuy($backtest, $date, $goldData, min($budget, $this->cash), $reason);
+        $this->executeBuy($backtest, $date, $goldData, min($budget, $this->cash), $reason, defensiveGold: true);
     }
 
     private function executeSell(Backtest $backtest, Carbon $date, string $symbol, int $quantity, string $reason, bool $force = false): void
@@ -1440,7 +1463,7 @@ class RunBacktestAction
         }
     }
 
-    private function executeBuy(Backtest $backtest, Carbon $date, $stock, float $budget, string $reason): void
+    private function executeBuy(Backtest $backtest, Carbon $date, BacktestNseInstrumentPrice $stock, float $budget, string $reason, bool $defensiveGold = false): void
     {
         if ($budget <= 0 || $this->cash <= 0) {
             return;
@@ -1532,7 +1555,12 @@ class RunBacktestAction
                 'last_known_price' => $buyPrice,
                 'last_known_raw_price' => $rawPrice,
                 'name' => $stock->name ?? null,
+                'is_defensive_gold' => false,
             ];
+        }
+
+        if ($defensiveGold) {
+            $this->holdings[$symbol]['is_defensive_gold'] = true;
         }
 
         $this->holdings[$symbol]['last_price_date'] = $date->format('Y-m-d');

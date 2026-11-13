@@ -299,7 +299,8 @@ const sortedBacktests = computed(() => {
 
 // --- Table formatters ---
 
-function formatPercent(value: number): string {
+function formatPercent(value: number | null): string {
+    if (value === null || !Number.isFinite(value * 100)) return '—';
     return (value * 100).toFixed(2) + '%';
 }
 
@@ -331,7 +332,7 @@ function formatRelativeDate(dateStr: string): string {
 }
 
 function cagrColor(bt: BacktestWithMetrics): string {
-    if (!bt.summary_metrics) return 'text-gray-400';
+    if (bt.summary_metrics?.cagr == null) return 'text-gray-400';
     return bt.summary_metrics.cagr >= 0 ? 'text-green-700' : 'text-red-700';
 }
 

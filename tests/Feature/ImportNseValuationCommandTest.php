@@ -29,7 +29,7 @@ it('imports market cap in crores for the matching date symbol and series and can
     }
 });
 
-it('imports adjusted PE and handles blank lines and missing values', function () {
+it('imports adjusted PE and uses standalone PE for missing values', function () {
     $price = createBacktestPriceRow('CIPLA', '2024-03-01', ['series' => 'EQ', 'marketcap' => 25]);
     $otherSeries = createBacktestPriceRow('OTHER', '2024-03-01', ['series' => 'BE']);
     $blank = createBacktestPriceRow('BLANK', '2024-03-01', ['price_to_earnings' => 8]);
@@ -46,13 +46,68 @@ it('imports adjusted PE and handles blank lines and missing values', function ()
         expect((float) $price->fresh()->price_to_earnings)->toBe(29.88)
             ->and((float) $otherSeries->fresh()->price_to_earnings)->toBe(29.88)
             ->and((float) $price->fresh()->marketcap)->toBe(25.0)
-            ->and($blank->fresh()->price_to_earnings)->toBeNull()
-            ->and($missing->fresh()->price_to_earnings)->toBeNull()
+            ->and((float) $blank->fresh()->price_to_earnings)->toBe(123.0)
+            ->and((float) $missing->fresh()->price_to_earnings)->toBe(20.0)
             ->and((float) $zero->fresh()->price_to_earnings)->toBe(0.0)
             ->and((float) $negative->fresh()->price_to_earnings)->toBe(-2.5)
             ->and((float) $otherDate->fresh()->price_to_earnings)->toBe(10.0)
             ->and(BacktestNseInstrumentPrice::count())->toBe(7);
     }
+});
+
+it('uses the first storable PE from adjusted then standalone or saves null', function (string $adjusted, string $standalone, ?string $expected) {
+    $price = createBacktestPriceRow('RIIL', '2026-08-03', ['price_to_earnings' => 12, 'marketcap' => 25]);
+    $otherDate = createBacktestPriceRow('RIIL', '2026-07-31', ['price_to_earnings' => 15]);
+    Storage::put('uploads/2026-08-03/price_to_earnings.csv', "SYMBOL,SYMBOL P/E,ADJUSTED P/E\nRIIL,\"{$standalone}\",\"{$adjusted}\"\n");
+
+    for ($attempt = 0; $attempt < 2; $attempt++) {
+        $this->artisan('backtest:import-price-to-earnings', ['--date' => '2026-08-03'])
+            ->expectsOutputToContain('1 price rows. 0 file rows had no matching price row.')
+            ->assertSuccessful();
+
+        expect($price->fresh()->price_to_earnings)->toBe($expected)
+            ->and((int) $price->fresh()->marketcap)->toBe(25)
+            ->and($otherDate->fresh()->price_to_earnings)->toBe('15.00');
+    }
+})->with([
+    'adjusted has priority' => ['93.74', '86.88', '93.74'],
+    'valid adjusted ignores invalid standalone' => ['93.74', 'Infinity', '93.74'],
+    'zero adjusted has priority' => ['0', '92.44', '0.00'],
+    'negative adjusted has priority' => ['-2.5', '92.44', '-2.50'],
+    'infinite adjusted' => ['Infinity', '92.44', '92.44'],
+    'negative infinite adjusted' => ['-Infinity', '92.44', '92.44'],
+    'not a number adjusted' => ['NaN', '92.44', '92.44'],
+    'invalid adjusted' => ['invalid', '92.44', '92.44'],
+    'blank adjusted' => ['', '92.44', '92.44'],
+    'missing adjusted' => ['N/A', '92.44', '92.44'],
+    'adjusted exceeds column limit' => ['1000000', '92.44', '92.44'],
+    'negative adjusted exceeds column limit' => ['-1000000', '92.44', '92.44'],
+    'adjusted rounds beyond column limit' => ['999999.995', '92.44', '92.44'],
+    'adjusted exceeds float limit' => ['1e309', '92.44', '92.44'],
+    'standalone at column limit' => ['Infinity', '999999.99', '999999.99'],
+    'standalone with commas and spaces' => ['Infinity', ' 1,234.567 ', '1234.57'],
+    'zero standalone' => ['Infinity', '0', '0.00'],
+    'negative standalone' => ['Infinity', '-2.5', '-2.50'],
+    'both infinite' => ['Infinity', 'Infinity', null],
+    'both missing' => ['-', 'NA', null],
+    'blank standalone' => ['Infinity', '', null],
+    'invalid standalone' => ['Infinity', 'invalid', null],
+    'not a number standalone' => ['Infinity', 'NaN', null],
+    'standalone exceeds column limit' => ['Infinity', '1000000', null],
+    'standalone rounds beyond column limit' => ['Infinity', '999999.995', null],
+    'standalone exceeds float limit' => ['Infinity', '1e309', null],
+]);
+
+it('imports PE when the standalone column is absent', function () {
+    $price = createBacktestPriceRow('THERMAX', '2026-08-03', ['price_to_earnings' => 12]);
+    $unavailable = createBacktestPriceRow('ZODIACLOTH', '2026-08-03', ['price_to_earnings' => 15]);
+    Storage::put('uploads/2026-08-03/price_to_earnings.csv', "SYMBOL,ADJUSTED P/E\nTHERMAX,93.74\nZODIACLOTH,Infinity\n");
+
+    $this->artisan('backtest:import-price-to-earnings', ['--date' => '2026-08-03'])
+        ->assertSuccessful();
+
+    expect($price->fresh()->price_to_earnings)->toBe('93.74')
+        ->and($unavailable->fresh()->price_to_earnings)->toBeNull();
 });
 
 it('rounds raw market cap to whole crores', function (string $rawValue, int $expected) {
@@ -113,10 +168,11 @@ it('does not save partial imports when a file is invalid', function (string $fil
     'wrong file' => ['marketcap', 'backtest:import-marketcap', "SYMBOL,ADJUSTED P/E\nCIPLA,25", 'Invalid marketcap.csv headers'],
     'wrong date' => ['marketcap', 'backtest:import-marketcap', "Trade Date,Symbol,Series,Market Cap(Rs.)\n01 MAR 2024,CIPLA,EQ,25000000\n29 FEB 2024,OTHER,EQ,10000000", 'does not match 2024-03-01'],
     'negative cap' => ['marketcap', 'backtest:import-marketcap', "Trade Date,Symbol,Series,Market Cap(Rs.)\n01 MAR 2024,CIPLA,EQ,-10000000", 'Invalid numeric value'],
-    'invalid number' => ['price_to_earnings', 'backtest:import-price-to-earnings', "SYMBOL,ADJUSTED P/E\nCIPLA,25\nOTHER,invalid", 'Invalid numeric value'],
+    'invalid number' => ['marketcap', 'backtest:import-marketcap', "Trade Date,Symbol,Series,Market Cap(Rs.)\n01 MAR 2024,CIPLA,EQ,25000000\n01 MAR 2024,OTHER,EQ,invalid", 'Invalid numeric value'],
+    'infinite cap' => ['marketcap', 'backtest:import-marketcap', "Trade Date,Symbol,Series,Market Cap(Rs.)\n01 MAR 2024,CIPLA,EQ,25000000\n01 MAR 2024,OTHER,EQ,Infinity", 'Invalid numeric value'],
     'empty file' => ['price_to_earnings', 'backtest:import-price-to-earnings', "\nSYMBOL,ADJUSTED P/E\n", 'No instrument data'],
     'no match' => ['price_to_earnings', 'backtest:import-price-to-earnings', "SYMBOL,ADJUSTED P/E\nUNKNOWN,25", 'No file rows match'],
     'short row' => ['price_to_earnings', 'backtest:import-price-to-earnings', "SYMBOL,ADJUSTED P/E\nCIPLA,25\nOTHER", 'Invalid column count'],
-    'overflow' => ['price_to_earnings', 'backtest:import-price-to-earnings', "SYMBOL,ADJUSTED P/E\nCIPLA,1000000", 'exceeds the column limit'],
+    'overflow' => ['marketcap', 'backtest:import-marketcap', "Trade Date,Symbol,Series,Market Cap(Rs.)\n01 MAR 2024,CIPLA,EQ,25000000\n01 MAR 2024,OTHER,EQ,1e30", 'exceeds the column limit'],
     'conflicting duplicate' => ['price_to_earnings', 'backtest:import-price-to-earnings', "SYMBOL,ADJUSTED P/E\nCIPLA,25\nCIPLA,26", 'Conflicting values'],
 ]);

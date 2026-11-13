@@ -1,8 +1,14 @@
 <template>
     <form @submit.prevent="$emit('save')">
+        <ErrorAlert v-if="form.errors.run" class="mb-4">
+            {{ form.errors.run }}
+        </ErrorAlert>
         <ErrorAlert v-if="errorFieldLabels.length > 0" class="mb-4">
             Please fix the following {{ errorFieldLabels.length === 1 ? 'field' : 'fields' }}:
             {{ errorFieldLabels.join(', ') }}.
+        </ErrorAlert>
+        <ErrorAlert v-if="form.errors.cash_call_backtest_id && (!dmaBasedCashCall || form.cash_call_source !== 'backtest')" class="mb-4">
+            {{ form.errors.cash_call_backtest_id }}
         </ErrorAlert>
 
         <!-- Portfolio -->
@@ -173,7 +179,7 @@
                         :options="cashCallSelectOptions"
                         :error="form.errors.cash_call"
                     />
-                    <p class="mt-1 text-xs text-gray-500">{{ cashCallHelp[form.cash_call] }}</p>
+                    <p class="mt-1 text-xs text-gray-500">{{ cashCallHelpText }}</p>
                 </div>
                 <TextInput
                     v-model="form.cash_return_rate"
@@ -187,11 +193,27 @@
                     class="grid grid-cols-1 gap-x-8 gap-y-6 sm:col-span-2 sm:grid-cols-2 lg:col-span-3 lg:grid-cols-3"
                 >
                     <SelectInput
+                        v-model="form.cash_call_source"
+                        label="Signal Source"
+                        name="cash_call_source"
+                        :options="cashCallSourceOptions"
+                        :error="form.errors.cash_call_source"
+                    />
+                    <SelectInput
+                        v-if="form.cash_call_source !== 'backtest'"
                         v-model="form.cash_call_index"
                         label="Cash Call Index / Benchmark"
                         name="cash_call_index"
                         :options="cashCallIndexOptions"
                         :error="form.errors.cash_call_index"
+                    />
+                    <SelectInput
+                        v-else
+                        v-model="form.cash_call_backtest_id"
+                        label="Source Backtest"
+                        name="cash_call_backtest_id"
+                        :options="sourceBacktestOptions"
+                        :error="form.errors.cash_call_backtest_id"
                     />
                     <SelectInput
                         v-model="form.cash_call_dma_period"
@@ -210,6 +232,18 @@
                     />
                 </div>
             </div>
+            <InfoAlert v-if="dmaBasedCashCall && form.cash_call_source === 'backtest'" class="mt-4">
+                This backtest uses the NAV of {{ sourceBacktestName }}. Each run first reruns the source backtest.
+                Changes to the source settings or market data can change the results.
+                Saved results remain unchanged until you rerun this backtest.
+            </InfoAlert>
+            <p v-if="dmaBasedCashCall && form.cash_call_source === 'backtest'" class="mt-2 text-xs text-gray-500">
+                Select one of your backtests with No cash call. The source must have {{ form.cash_call_dma_period }} trading days of NAV
+                by this backtest's first decision date. Start the source earlier if needed.
+            </p>
+            <p v-if="dmaBasedCashCall && form.cash_call_source === 'backtest' && cashCallBacktestOptions.length === 0" class="mt-2 text-xs text-amber-700">
+                No eligible source is available. Create another backtest with No cash call, then select it here.
+            </p>
             <p v-if="dmaBasedCashCall" class="mt-4 text-xs text-gray-500">Cash call signals use the rebalance decision date. Trades follow the selected execution schedule. Replacement purchases after demerger, BE-series, or assumed-delisting exits also follow the cash call rule.</p>
         </div>
 
@@ -880,11 +914,11 @@
             <div class="flex flex-wrap items-center gap-4">
                 <button
                     type="button"
-                    :disabled="form.processing || running"
+                    :disabled="form.processing || runBlocked"
                     class="cursor-pointer rounded-md bg-purple-600 px-4 py-2 text-sm font-semibold text-white shadow-xs hover:bg-purple-500 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-purple-600 disabled:cursor-not-allowed disabled:opacity-75"
                     @click="$emit('saveAndRun')"
                 >
-                    {{ running ? 'Run in progress…' : 'Save & Run Backtest' }}
+                    {{ running ? 'Run in progress…' : 'Save and Run' }}
                 </button>
                 <button
                     type="submit"
@@ -933,6 +967,7 @@ import TextInput from '@/Components/Form/TextInput.vue';
 import SelectInput from '@/Components/Form/SelectInput.vue';
 import Toggle from '@/Components/Form/Toggle.vue';
 import ErrorAlert from '@/Components/Alerts/ErrorAlert.vue';
+import InfoAlert from '@/Components/Alerts/InfoAlert.vue';
 import PurpleAlert from '@/Components/Alerts/PurpleAlert.vue';
 import { formatCompactNumber, formatCurrency } from '@/utils/format';
 import type { SelectOption } from '@/types/SelectOption';
@@ -940,6 +975,7 @@ import type { SelectOption } from '@/types/SelectOption';
 const props = defineProps<{
     form: InertiaForm<Record<string, any>>;
     running: boolean;
+    runBlocked: boolean;
     initialCapital: number | string;
     indices: SelectOption[];
     sortByOptions: SelectOption[];
@@ -951,6 +987,7 @@ const props = defineProps<{
     cashCallOptions: SelectOption[];
     stopLossProceedsOptions: SelectOption[];
     cashCallIndexOptions: SelectOption[];
+    cashCallBacktestOptions: SelectOption[];
 }>();
 
 defineEmits<{
@@ -1014,6 +1051,19 @@ const customFilterKeys = [
 
 // --- Cash call ---
 
+const cashCallSourceOptions = [
+    { id: 'index', name: 'Market index' },
+    { id: 'backtest', name: 'Another backtest’s NAV' },
+];
+
+const sourceBacktestOptions = computed(() => [
+    { id: '', name: 'Select a source backtest' },
+    ...props.cashCallBacktestOptions,
+]);
+
+const sourceBacktestName = computed(() => props.cashCallBacktestOptions
+    .find((option) => String(option.id) === String(props.form.cash_call_backtest_id))?.name ?? 'the selected source backtest');
+
 const dmaBasedCashCalls = [
     'full_cash_below_index_dma',
     'only_exits_below_index_dma',
@@ -1047,10 +1097,15 @@ const cashCallHelp = computed<Record<string, string>>(() => ({
     only_exits_allocate_to_gold_above_dma_below_index_dma: 'Below the index DMA, only exit stocks. Buy GOLDBEES with available cash only when its adjusted close is above its selected DMA. Otherwise, keep the cash and any existing gold. Sell gold when the index recovers.',
 }));
 
+const cashCallHelpText = computed(() => {
+    const help = cashCallHelp.value[props.form.cash_call];
+    return props.form.cash_call_source === 'backtest' ? help?.replaceAll('index', 'source NAV') : help;
+});
+
 const cashCallSelectOptions = computed(() =>
     props.cashCallOptions.map((option) => ({
         id: option.id,
-        name: cashCallLabels[option.id] ?? option.name,
+        name: (cashCallLabels[option.id] ?? option.name).replace('index DMA', props.form.cash_call_source === 'backtest' ? 'source NAV DMA' : 'index DMA'),
     })),
 );
 
@@ -1396,6 +1451,8 @@ const fieldLabels: Record<string, string> = {
     rebalance_day: 'Rebalance Day',
     cash_call: 'Cash Call',
     cash_call_index: 'Cash Call Index / Benchmark',
+    cash_call_source: 'Signal Source',
+    cash_call_backtest_id: 'Source Backtest',
     cash_call_dma_period: 'Cash Call DMA Period',
     cash_call_gold_dma_period: 'GOLDBEES DMA Period',
     cash_return_rate: 'Cash Return Rate (% p.a.)',

@@ -24,16 +24,20 @@
                 <button
                     v-if="!readOnly"
                     type="button"
-                    :disabled="backtest.status === 'running' || form.processing"
+                    data-test="save-and-run"
+                    :disabled="runBlocked || form.processing"
                     class="inline-flex cursor-pointer items-center gap-1.5 rounded-lg bg-purple-600 px-4 py-2 text-sm font-semibold text-white shadow-xs transition-all duration-200 hover:bg-purple-500 hover:shadow-md disabled:cursor-not-allowed disabled:opacity-75"
                     @click="saveAndRun"
                 >
                     <PlayIcon class="h-4 w-4" aria-hidden="true" />
-                    {{ backtest.status === 'running' ? 'Running…' : form.isDirty ? 'Save & Run' : 'Run Backtest' }}
+                    {{ backtest.status === 'running' ? 'Running…' : 'Save and Run' }}
                 </button>
             </div>
         </div>
         <p v-if="form.isDirty" class="mt-2 text-sm text-gray-500">Save settings before you duplicate this backtest.</p>
+        <InfoAlert v-if="!readOnly && activeBacktest" class="mt-4">
+            “{{ activeBacktest.name }}” is running. You can start another backtest after this run sequence finishes.
+        </InfoAlert>
 
         <!-- Tabs -->
         <div v-if="!readOnly" class="mt-2 border-b border-gray-200">
@@ -79,7 +83,7 @@
                 <button
                     v-if="!readOnly"
                     type="button"
-                    :disabled="form.processing"
+                    :disabled="runBlocked || form.processing"
                     class="cursor-pointer rounded-md bg-amber-600 px-3 py-1.5 text-xs font-semibold text-white shadow-xs hover:bg-amber-500 disabled:cursor-not-allowed disabled:opacity-75"
                     @click="saveAndRun"
                 >
@@ -126,7 +130,7 @@
                     aria-valuemin="0"
                     aria-valuemax="100"
                     aria-live="polite"
-                    :aria-label="backtest.progress === 0 ? 'Backtest is waiting for a worker' : `Backtest ${backtest.progress}% complete`"
+                    :aria-label="backtest.progress === 0 ? progressStageLabel : `Backtest ${backtest.progress}% complete`"
                 >
                     <!-- Animated background grid -->
                     <div class="pointer-events-none absolute inset-0 opacity-[0.03]" style="background-image: linear-gradient(rgba(255,255,255,.1) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,.1) 1px, transparent 1px); background-size: 24px 24px;" />
@@ -143,7 +147,7 @@
                             <span class="text-5xl font-black tabular-nums tracking-tight text-white">{{ backtest.progress }}</span>
                             <span class="text-lg font-medium text-white/40">%</span>
                         </div>
-                        <span v-else class="text-3xl font-black tracking-tight text-white">Starting</span>
+                        <span v-else class="text-3xl font-black tracking-tight text-white">{{ sourceIsRunning ? 'Source first' : 'Starting' }}</span>
                         <div class="flex items-center gap-2 pb-2">
                             <span class="relative flex h-2.5 w-2.5">
                                 <span class="absolute inline-flex h-full w-full rounded-full bg-purple-400 opacity-75 motion-safe:animate-ping"></span>
@@ -179,7 +183,10 @@
                         <span class="rounded-full bg-white/10 px-3 py-1 font-medium text-white/50">
                             {{ progressStageLabel }}
                         </span>
-                        <span v-if="backtest.progress === 0" class="text-white/40">
+                        <span v-if="sourceIsRunning" class="text-white/40">
+                            This backtest will start only after the source completes successfully. You can leave this page.
+                        </span>
+                        <span v-else-if="backtest.progress === 0" class="text-white/40">
                             Your run will start when a worker is free. You can leave this page.
                         </span>
                         <span v-else-if="backtest.progress < 5" class="text-white/40">
@@ -195,17 +202,17 @@
             <!-- Failed state -->
             <div v-else-if="backtest.status === 'failed'" class="mt-6 space-y-4">
                 <ErrorAlert>
-                    This run failed partway through. Your settings are unchanged — you can try running it again.
-                    If it keeps failing, contact support and mention backtest #{{ backtest.id }}.
+                    This run failed. It will not retry. Select Save and Run to start a new run.
+                    If it fails again, contact support and give backtest #{{ backtest.id }}.
                 </ErrorAlert>
                 <div class="flex items-center gap-4">
                     <button
                         type="button"
-                        :disabled="retrying"
+                        :disabled="runBlocked || form.processing"
                         class="cursor-pointer rounded-md bg-purple-600 px-4 py-2 text-sm font-semibold text-white shadow-xs hover:bg-purple-500 disabled:cursor-not-allowed disabled:opacity-75"
-                        @click="retryRun"
+                        @click="saveAndRun"
                     >
-                        {{ retrying ? 'Queuing…' : 'Retry run' }}
+                        {{ form.processing ? 'Queuing…' : 'Save and Run' }}
                     </button>
                     <button
                         v-if="backtest.error_message"
@@ -228,7 +235,7 @@
                 <InfoAlert>
                     This backtest hasn't been run yet. Review the rules above, tweak them in the
                     <button type="button" class="cursor-pointer font-semibold text-blue-700 underline" @click="setTab('settings')">Settings tab</button>,
-                    then click "Save &amp; Run Backtest".
+                    then click "Save and Run".
                 </InfoAlert>
             </div>
 
@@ -263,7 +270,7 @@
                     <!-- Accent top rule (fades from signal color to transparent) -->
                     <div
                         class="h-[3px] w-full rounded-full"
-                        :class="summaryMetrics.cagr >= 0 ? 'bg-linear-to-r from-emerald-500 via-gray-200/80 to-transparent' : 'bg-linear-to-r from-red-500 via-gray-200/80 to-transparent'"
+                        :class="summaryMetrics.cagr === null ? 'bg-gray-200' : summaryMetrics.cagr >= 0 ? 'bg-linear-to-r from-emerald-500 via-gray-200/80 to-transparent' : 'bg-linear-to-r from-red-500 via-gray-200/80 to-transparent'"
                         aria-hidden="true"
                     />
 
@@ -282,11 +289,11 @@
                             <dd class="mt-2 flex items-baseline gap-1">
                                 <span
                                     class="text-3xl font-bold tabular-nums leading-none tracking-tight sm:text-4xl md:text-5xl"
-                                    :class="summaryMetrics.cagr >= 0 ? 'text-emerald-700' : 'text-red-700'"
+                                    :class="summaryMetrics.cagr === null ? 'text-gray-500' : summaryMetrics.cagr >= 0 ? 'text-emerald-700' : 'text-red-700'"
                                 >
-                                    {{ (summaryMetrics.cagr * 100).toFixed(2) }}
+                                    {{ formatPercent(summaryMetrics.cagr).replace(/%$/, '') }}
                                 </span>
-                                <span class="text-2xl font-semibold text-gray-300">%</span>
+                                <span v-if="summaryMetrics.cagr !== null && Number.isFinite(summaryMetrics.cagr * 100)" class="text-2xl font-semibold text-gray-300">%</span>
                             </dd>
                             <dd v-if="backtestPeriod" class="mt-3 text-[11px] text-gray-500">over {{ backtestYears }} years</dd>
                         </div>
@@ -566,7 +573,7 @@
                             </div>
                             <div>
                                 <span class="text-gray-500">Alpha vs {{ selectedBenchmarkName }} (CAGR): </span>
-                                <span :class="benchmarkMetrics.alpha >= 0 ? 'text-emerald-700' : 'text-red-700'" class="font-semibold">
+                                <span :class="benchmarkMetrics.alpha === null ? 'text-gray-500' : benchmarkMetrics.alpha >= 0 ? 'text-emerald-700' : 'text-red-700'" class="font-semibold">
                                     {{ formatPercent(benchmarkMetrics.alpha) }}
                                 </span>
                             </div>
@@ -1025,24 +1032,31 @@
 
         <!-- ============ SETTINGS TAB ============ -->
         <div v-if="!readOnly" v-show="activeTab === 'settings'" class="mt-6">
-            <BacktestSettingsForm
-                :form="form"
-                :running="backtest.status === 'running'"
-                :initial-capital="backtest.initial_capital"
-                :indices="indices"
-                :sort-by-options="sortByOptions"
-                :apply-filters-on-options="applyFiltersOnOptions"
-                :custom-filter-value-options="customFilterValueOptions"
-                :custom-filter-comparator-options="customFilterComparatorOptions"
-                :rebalance-frequency-options="rebalanceFrequencyOptions"
-                :weightage-options="weightageOptions"
-                :cash-call-options="cashCallOptions"
-                :stop-loss-proceeds-options="stopLossProceedsOptions"
-                :cash-call-index-options="cashCallIndexOptions"
-                @save="save"
-                @save-and-run="saveAndRun"
-                @delete="destroy"
-            />
+            <InfoAlert v-if="settingsLocked" class="mb-4">
+                Settings are locked until this backtest and any dependent backtest finish.
+            </InfoAlert>
+            <fieldset :disabled="settingsLocked" :inert="settingsLocked" class="min-w-0">
+                <BacktestSettingsForm
+                    :form="form"
+                    :running="backtest.status === 'running'"
+                    :run-blocked="runBlocked"
+                    :initial-capital="backtest.initial_capital"
+                    :indices="indices"
+                    :sort-by-options="sortByOptions"
+                    :apply-filters-on-options="applyFiltersOnOptions"
+                    :custom-filter-value-options="customFilterValueOptions"
+                    :custom-filter-comparator-options="customFilterComparatorOptions"
+                    :rebalance-frequency-options="rebalanceFrequencyOptions"
+                    :weightage-options="weightageOptions"
+                    :cash-call-options="cashCallOptions"
+                    :stop-loss-proceeds-options="stopLossProceedsOptions"
+                    :cash-call-index-options="cashCallIndexOptions"
+                    :cash-call-backtest-options="cashCallBacktestOptions"
+                    @save="save"
+                    @save-and-run="saveAndRun"
+                    @delete="destroy"
+                />
+            </fieldset>
         </div>
     </div>
 </template>
@@ -1081,6 +1095,8 @@ const props = withDefaults(
     defineProps<{
         backtest: Backtest;
         readOnly?: boolean;
+        settingsLocked: boolean;
+        activeBacktest: Pick<Backtest, 'id' | 'name'> | null;
         summaryMetrics: BacktestSummaryMetric | null;
         // Deferred Inertia props — absent on the first render while their groups load.
         dailySnapshots?: BacktestDailySnapshot[];
@@ -1100,6 +1116,8 @@ const props = withDefaults(
         cashCallOptions: SelectOption[];
         stopLossProceedsOptions: SelectOption[];
         cashCallIndexOptions: SelectOption[];
+        cashCallBacktestOptions: SelectOption[];
+        cashCallBacktest: Pick<Backtest, 'id' | 'name' | 'status' | 'progress'> | null;
     }>(),
     {
         dailySnapshots: () => [],
@@ -1126,6 +1144,7 @@ function initialTab(): Tab {
 }
 
 const activeTab = ref<Tab>(initialTab());
+const runBlocked = computed(() => props.settingsLocked || props.backtest.status === 'running' || props.activeBacktest !== null);
 
 function setTab(tab: Tab): void {
     if (props.readOnly && tab === 'settings') {
@@ -1159,6 +1178,8 @@ const form = useForm({
     rebalance_day: props.backtest.rebalance_day,
     weightage: props.backtest.weightage,
     cash_call: props.backtest.cash_call,
+    cash_call_source: props.backtest.cash_call_source ?? 'index',
+    cash_call_backtest_id: props.backtest.cash_call_backtest_id ?? '',
     cash_call_index: props.backtest.cash_call_index,
     cash_call_dma_period: props.backtest.cash_call_dma_period,
     cash_call_gold_dma_period: props.backtest.cash_call_gold_dma_period,
@@ -1245,6 +1266,10 @@ const form = useForm({
 });
 
 function save(): void {
+    if (props.settingsLocked || form.processing) {
+        return;
+    }
+
     form.transform((data) => data).put(`/backtests/${props.backtest.id}`, {
         preserveScroll: true,
         onSuccess: () => form.defaults(),
@@ -1252,6 +1277,10 @@ function save(): void {
 }
 
 function saveAndRun(): void {
+    if (runBlocked.value || form.processing) {
+        return;
+    }
+
     form.transform((data) => ({ ...data, run: true })).put(`/backtests/${props.backtest.id}`, {
         onSuccess: () => {
             form.defaults();
@@ -1262,23 +1291,13 @@ function saveAndRun(): void {
 }
 
 function destroy(): void {
+    if (props.settingsLocked) {
+        return;
+    }
+
     if (confirm(`Delete "${props.backtest.name}"? This permanently removes the backtest and all of its results, trades, and snapshots.`)) {
         router.delete(`/backtests/${props.backtest.id}`);
     }
-}
-
-const retrying = ref(false);
-
-function retryRun(): void {
-    router.post(`/backtests/${props.backtest.id}/run`, {}, {
-        preserveScroll: true,
-        onStart: () => (retrying.value = true),
-        onFinish: () => (retrying.value = false),
-        onError: (errors) => {
-            form.setError(errors);
-            setTab('settings');
-        },
-    });
 }
 
 // --- Collapsible cards & error details ---
@@ -1382,7 +1401,7 @@ const settingsChangedSinceRun = computed<boolean>(() => {
 let pollInterval: ReturnType<typeof setInterval> | null = null;
 
 onMounted(() => {
-    if (props.backtest.status === 'running') {
+    if (!props.readOnly) {
         startPolling();
     }
 
@@ -1400,20 +1419,13 @@ onUnmounted(() => {
 watch(() => props.backtest.status, (newStatus, oldStatus) => {
     if (newStatus === 'completed' && oldStatus !== 'completed') {
         // Job just finished — reload triggers deferred prop loading for charts/trades
-        stopPolling();
         router.reload();
-    } else if (newStatus === 'running') {
-        if (!pollInterval) {
-            startPolling();
-        }
-    } else {
-        stopPolling();
     }
 });
 
 function startPolling(): void {
     pollInterval = setInterval(() => {
-        router.reload({ only: ['backtest'] });
+        router.reload({ only: ['backtest', 'cashCallBacktest', 'settingsLocked', 'activeBacktest'] });
     }, 2000);
 }
 
@@ -1481,7 +1493,7 @@ const benchmarkMetrics = computed(() => {
     const years = (last.getTime() - first.getTime()) / (365.25 * 24 * 60 * 60 * 1000);
 
     const cagr = years > 0 ? Math.pow(lastNav / firstNav, 1 / years) - 1 : 0;
-    const alpha = props.summaryMetrics ? props.summaryMetrics.cagr - cagr : 0;
+    const alpha = props.summaryMetrics?.cagr == null ? null : props.summaryMetrics.cagr - cagr;
 
     // Max drawdown
     let peak = 0;
@@ -1516,8 +1528,13 @@ function rollingReturnColor(value: number): string {
 
 // Honest stages: 0% is the queue wait, 1-4% is preparation, 5-94% is the
 // trading-day simulation, 95-97% is metrics, and 98-99% is market cap allocation.
+const sourceIsRunning = computed(() => props.backtest.progress === 0 && props.cashCallBacktest?.status === 'running');
+
 const progressStageLabel = computed(() => {
     const p = props.backtest.progress;
+    if (p === 0 && props.cashCallBacktest?.status === 'running') {
+        return `Running source backtest: ${props.cashCallBacktest.name} (${props.cashCallBacktest.progress}%)`;
+    }
     if (p === 0) return 'Waiting for a worker';
     if (p < 5) return 'Preparing market data';
     if (p < 95) return 'Simulating trades';
@@ -1588,7 +1605,7 @@ const heroBenchmarkCagr = computed<number | null>(() => {
 });
 
 const benchmarkDelta = computed<number | null>(() => {
-    if (heroBenchmarkCagr.value === null || !props.summaryMetrics) return null;
+    if (heroBenchmarkCagr.value === null || props.summaryMetrics?.cagr == null) return null;
     return props.summaryMetrics.cagr - heroBenchmarkCagr.value;
 });
 
@@ -1670,7 +1687,7 @@ const chargesPctOfCapital = computed<string | null>(() => {
 // max_drawdown arrives as a decimal string, so coerce before the zero guard.
 const calmarRatio = computed<number | null>(() => {
     const m = props.summaryMetrics;
-    if (!m || Number(m.max_drawdown) === 0) return null;
+    if (!m || m.cagr === null || Number(m.max_drawdown) === 0) return null;
     return Number(m.cagr) / Math.abs(Number(m.max_drawdown));
 });
 
