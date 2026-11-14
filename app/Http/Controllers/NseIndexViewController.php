@@ -3,7 +3,6 @@
 namespace App\Http\Controllers;
 
 use App\Models\NseIndex;
-use Illuminate\Support\Facades\DB;
 use Inertia\Inertia;
 use Inertia\Response;
 
@@ -21,6 +20,10 @@ class NseIndexViewController extends Controller
         return inertia('NseIndexView', [
             'index' => $index,
             'slug' => $slug,
+            'availableIndices' => fn () => NseIndex::query()
+                ->where('date', NseIndex::query()->selectRaw('MAX(date)'))
+                ->orderBy('symbol')
+                ->get(['slug', 'symbol']),
             'priceHistory' => Inertia::defer(fn () => $this->getPriceHistory($slug), 'chart'),
             'metricHistory' => Inertia::defer(fn () => $this->getMetricHistory($slug), 'metrics'),
             'monthlyReturns' => Inertia::defer(fn () => $this->getMonthlyReturns($slug), 'returns'),
@@ -50,34 +53,32 @@ class NseIndexViewController extends Controller
     {
         $rows = NseIndex::query()
             ->where('slug', $slug)
-            ->whereNotNull('price_to_earnings')
             ->orderBy('date')
             ->get(['date', 'price_to_earnings', 'price_to_book', 'dividend_yield']);
 
         return [
             'pe' => $rows->map(fn (NseIndex $row) => [
                 'time' => $row->date->format('Y-m-d'),
-                'value' => (float) $row->price_to_earnings,
+                'value' => $row->price_to_earnings === null ? null : (float) $row->price_to_earnings,
             ])->all(),
             'pb' => $rows->map(fn (NseIndex $row) => [
                 'time' => $row->date->format('Y-m-d'),
-                'value' => (float) $row->price_to_book,
+                'value' => $row->price_to_book === null ? null : (float) $row->price_to_book,
             ])->all(),
             'dividendYield' => $rows->map(fn (NseIndex $row) => [
                 'time' => $row->date->format('Y-m-d'),
-                'value' => (float) $row->dividend_yield,
+                'value' => $row->dividend_yield === null ? null : (float) $row->dividend_yield,
             ])->all(),
         ];
     }
 
     /**
-     * @return array<int, array{year: int, months: array<int, float|null>, yearReturn: float|null}>
+     * @return array<int, array{year: int, months: array<int, float|null>, yearReturn: float|null, throughDate: string}>
      */
     private function getMonthlyReturns(string $slug): array
     {
-        $monthEndDates = DB::query()
+        $monthEndDates = NseIndex::query()
             ->selectRaw('YEAR(date) as yr, MONTH(date) as mo, MAX(date) as max_date')
-            ->from('nse_indices')
             ->where('slug', $slug)
             ->groupByRaw('YEAR(date), MONTH(date)');
 
@@ -88,13 +89,15 @@ class NseIndexViewController extends Controller
             ->where('nse_indices.slug', $slug)
             ->orderBy('me.yr')
             ->orderBy('me.mo')
-            ->select(['me.yr', 'me.mo', 'nse_indices.close'])
+            ->select(['me.yr', 'me.mo', 'nse_indices.close', 'nse_indices.date'])
             ->get();
 
-        // Build lookup: year → month → close
         $lookup = [];
         foreach ($monthEndPrices as $row) {
-            $lookup[(int) $row->yr][(int) $row->mo] = (float) $row->close;
+            $lookup[(int) $row->yr][(int) $row->mo] = [
+                'close' => (float) $row->close,
+                'date' => $row->date->format('Y-m-d'),
+            ];
         }
 
         $years = array_keys($lookup);
@@ -107,11 +110,11 @@ class NseIndexViewController extends Controller
 
         foreach ($years as $year) {
             $months = [];
-            $firstMonthClose = null;
             $lastMonthClose = null;
+            $throughDate = '';
 
             for ($m = 1; $m <= 12; $m++) {
-                $currentClose = $lookup[$year][$m] ?? null;
+                $currentClose = $lookup[$year][$m]['close'] ?? null;
 
                 if ($currentClose === null) {
                     $months[$m] = null;
@@ -119,60 +122,32 @@ class NseIndexViewController extends Controller
                     continue;
                 }
 
-                if ($firstMonthClose === null) {
-                    // Find previous month's close for first month return
-                    $prevClose = $this->getPreviousClose($lookup, $year, $m);
-                    $months[$m] = $prevClose !== null
-                        ? round(($currentClose - $prevClose) / $prevClose * 100, 2)
-                        : null;
-                    $firstMonthClose = $prevClose ?? $currentClose;
-                } else {
-                    // Get previous month's close
-                    $prevClose = $this->getPreviousClose($lookup, $year, $m);
-                    $months[$m] = $prevClose !== null
-                        ? round(($currentClose - $prevClose) / $prevClose * 100, 2)
-                        : null;
-                }
-
+                $previousYear = $m === 1 ? $year - 1 : $year;
+                $previousMonth = $m === 1 ? 12 : $m - 1;
+                $months[$m] = $this->percentageReturn($currentClose, $lookup[$previousYear][$previousMonth]['close'] ?? null);
                 $lastMonthClose = $currentClose;
+                $throughDate = $lookup[$year][$m]['date'];
             }
-
-            // Year return: Dec close vs previous Dec close (or first available)
-            $prevYearDec = $lookup[$year - 1][12] ?? null;
-            $yearReturn = ($lastMonthClose !== null && $prevYearDec !== null)
-                ? round(($lastMonthClose - $prevYearDec) / $prevYearDec * 100, 2)
-                : null;
 
             $result[] = [
                 'year' => $year,
                 'months' => $months,
-                'yearReturn' => $yearReturn,
+                'yearReturn' => $lastMonthClose === null ? null : $this->percentageReturn($lastMonthClose, $lookup[$year - 1][12]['close'] ?? null),
+                'throughDate' => $throughDate,
             ];
         }
 
         return array_reverse($result);
     }
 
-    private function getPreviousClose(array $lookup, int $year, int $month): ?float
+    private function percentageReturn(float $currentClose, ?float $previousClose): ?float
     {
-        if ($month > 1) {
-            // Look backwards in same year
-            for ($m = $month - 1; $m >= 1; $m--) {
-                if (isset($lookup[$year][$m])) {
-                    return $lookup[$year][$m];
-                }
-            }
+        if ($previousClose === null || $previousClose <= 0) {
+            return null;
         }
 
-        // Look at previous year's December, then backwards
-        if (isset($lookup[$year - 1])) {
-            for ($m = 12; $m >= 1; $m--) {
-                if (isset($lookup[$year - 1][$m])) {
-                    return $lookup[$year - 1][$m];
-                }
-            }
-        }
+        $return = ($currentClose - $previousClose) / $previousClose * 100;
 
-        return null;
+        return is_finite($return) ? round($return, 2) : null;
     }
 }

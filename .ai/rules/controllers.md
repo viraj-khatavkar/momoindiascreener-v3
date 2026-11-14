@@ -2,6 +2,7 @@
 paths:
   - app/Http/Controllers/BacktestsController.php
   - app/Http/Controllers/BacktestCsvController.php
+  - app/Http/Controllers/NseIndexViewController.php
 ---
 
 # Controllers
@@ -14,3 +15,6 @@ Use backtests.is_public, with a default of false, to select guest examples. Only
 
 ## Export CSV batches from one database snapshot
 Keep trade and NAV exports in bounded lazy batches inside one repeatable-read transaction for the full stream. On MySQL, set the transaction isolation before starting the export transaction. A concurrent rerun can replace saved rows, but an export must not mix old and new batches. Verify with two committed test-database connections; mutations on the export connection do not model concurrency.
+
+## Correct index presentation without changing stored market data
+Index page fixes must only read stored market data. Keep P/E, P/B and dividend yield independent and preserve nulls. A percentage return needs a positive starting close and the immediately preceding month; missing or zero baselines return null. Include the actual last date for partial periods. Regression tests use a mocked connection that refuses database access.
