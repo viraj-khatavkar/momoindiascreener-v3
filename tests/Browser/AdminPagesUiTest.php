@@ -78,6 +78,16 @@ it('shows the main admin pages without browser errors', function () {
         ->toBeTrue();
 });
 
+it('keeps the NSE file picker CSV only and explains the F&O format', function () {
+    visit('/admin/nse-files/create')
+        ->select('Filename', 'fno')
+        ->assertSee('Only the UDiFF format is accepted.')
+        ->assertAttribute('input[type="file"]', 'accept', '.csv')
+        ->select('Filename', 'bhavcopy')
+        ->assertAttribute('input[type="file"]', 'accept', '.csv')
+        ->assertNoJavaScriptErrors();
+});
+
 it('keeps the admin pages clear on a mobile screen', function () {
     $dashboard = visit('/admin')
         ->on()

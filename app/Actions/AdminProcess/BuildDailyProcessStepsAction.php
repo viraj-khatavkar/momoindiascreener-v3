@@ -3,6 +3,7 @@
 namespace App\Actions\AdminProcess;
 
 use App\Enums\NseFileEnum;
+use App\Enums\NseIndexEnum;
 
 class BuildDailyProcessStepsAction
 {
@@ -62,6 +63,13 @@ class BuildDailyProcessStepsAction
                 command: 'backtest:import-corporate-actions',
                 arguments: ['--series=BZ', "--date={$date}"],
             ),
+            ...array_map(fn (string $series): array => $this->step(
+                key: 'import-corporate-actions-'.strtolower($series),
+                name: "Import {$series} corporate actions",
+                description: "Import distributions, dividends, and interest for the {$series} series.",
+                command: 'backtest:import-corporate-actions',
+                arguments: ["--series={$series}", "--date={$date}"],
+            ), ['RR', 'IV']),
             $this->step(
                 key: 'calculate-dividend-adjustment-factor',
                 name: 'Preview dividend adjustment factors',
@@ -147,6 +155,13 @@ class BuildDailyProcessStepsAction
                 arguments: ["--date={$date}"],
             ),
             $this->step(
+                key: 'import-fno-constituents',
+                name: 'Import F&O membership',
+                description: 'Set F&O stock membership from the NSE file for this date.',
+                command: 'backtest:import-fno-constituents',
+                arguments: ["--date={$date}"],
+            ),
+            $this->step(
                 key: 'calculate-t-percent',
                 name: 'Calculate T percent',
                 description: 'Calculate the delivery percentage data.',
@@ -193,6 +208,9 @@ class BuildDailyProcessStepsAction
             ['key' => NseFileEnum::Bhavcopy->value, 'name' => 'Bhavcopy'],
             ['key' => NseFileEnum::CorporateActions->value, 'name' => 'Corporate actions'],
             ['key' => NseFileEnum::Etf->value, 'name' => 'ETF list'],
+            ...(! in_array($date, NseIndexEnum::FNO_IGNORED_DATES, true) ? [
+                ['key' => NseFileEnum::Fno->value, 'name' => 'F&O membership'],
+            ] : []),
             ...($date >= '2026-02-17' ? [
                 ['key' => NseFileEnum::Index->value, 'name' => 'Indices'],
             ] : []),

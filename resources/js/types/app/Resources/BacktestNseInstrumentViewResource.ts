@@ -54,5 +54,5 @@ export interface BacktestNseInstrumentViewResource {
     series: string;
     beta: number;
     median_volume_one_year: number;
-    indices: string[];
+    indices: { name: string; slug: string; url: string }[];
 }

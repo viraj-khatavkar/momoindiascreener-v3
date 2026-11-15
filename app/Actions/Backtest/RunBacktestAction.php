@@ -6,6 +6,7 @@ use App\Enums\BacktestCashCallEnum;
 use App\Enums\BacktestStopLossProceedsEnum;
 use App\Enums\BacktestWeightageEnum;
 use App\Enums\CorporateActionTypeEnum;
+use App\Enums\NseIndexEnum;
 use App\Models\Backtest;
 use App\Models\BacktestDailySnapshot;
 use App\Models\BacktestNseCorporateAction;
@@ -80,6 +81,7 @@ class RunBacktestAction
 
     public function execute(Backtest $backtest, ?string $throughDate = null): void
     {
+        $this->validateFnoMembership($backtest, $throughDate);
         $this->initialCapital = (float) $backtest->initial_capital;
         $this->cash = $this->initialCapital;
         $this->stopLossCash = 0;
@@ -218,6 +220,7 @@ class RunBacktestAction
 
     public function validateDataAvailability(Backtest $backtest, ?string $throughDate = null, bool $validateSourceNav = true): void
     {
+        $this->validateFnoMembership($backtest, $throughDate);
         $dates = $this->tradingCalendar->latestDates(
             $backtest->index,
             $backtest->start_date?->toDateString() ?? self::DEFAULT_START_DATE,
@@ -242,6 +245,23 @@ class RunBacktestAction
             } else {
                 $this->indexDataLoader->execute($backtest, $tradingDates);
             }
+        }
+    }
+
+    private function validateFnoMembership(Backtest $backtest, ?string $throughDate): void
+    {
+        if ($backtest->index !== NseIndexEnum::NIFTY_FNO) {
+            return;
+        }
+        $startDate = $backtest->start_date?->toDateString() ?? self::DEFAULT_START_DATE;
+        $expected = $this->tradingCalendar->priceDates($startDate, $throughDate)
+            ->whereNotIn('date', NseIndexEnum::FNO_IGNORED_DATES)->orderBy('date')->pluck('date');
+        $imported = $this->tradingCalendar->query(NseIndexEnum::NIFTY_FNO, $startDate, $throughDate)->pluck('date');
+        $missing = $expected->diff($imported);
+        if ($missing->isNotEmpty()) {
+            throw ValidationException::withMessages([
+                'index' => 'F&O membership is missing for '.$missing->count().' trading date(s), starting with '.$missing->first().'. Import the dated F&O files before running this backtest.',
+            ]);
         }
     }
 

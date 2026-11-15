@@ -172,7 +172,7 @@ class ImportNseInstrumentsCommand extends Command
                     $instrument[$field] = $row[$index];
                 }
 
-                if (! in_array($instrument['series'], ['EQ', 'BE', 'SM', 'ST', 'SZ', 'BZ'], true)
+                if (! in_array($instrument['series'], ['EQ', 'BE', 'SM', 'ST', 'SZ', 'BZ', 'RR', 'IV'], true)
                     || Str::endsWith($instrument['symbol'], ['-RE', '-RE1', '-RE2', '-RE3'])
                     || $instrument['segment'] !== 'CM') {
                     continue;

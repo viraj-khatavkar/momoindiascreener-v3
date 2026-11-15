@@ -4,39 +4,36 @@ namespace App\Console\Commands\Backtest;
 
 use App\Models\BacktestNseInstrumentPrice;
 use App\Models\MarketHeartbeat;
+use Closure;
 use Illuminate\Console\Command;
+use Illuminate\Support\Collection;
+use Illuminate\Support\Facades\Validator;
 use Illuminate\Support\Str;
+use stdClass;
 
 class CalculateMarketHeartbeatCommand extends Command
 {
-    /**
-     * The name and signature of the console command.
-     *
-     * @var string
-     */
-    protected $signature = 'backtest:calculate-market-heartbeat {--date=}';
+    protected $signature = 'backtest:calculate-market-heartbeat {--date=} {--index= : Calculate only the selected index}';
 
-    /**
-     * The console command description.
-     *
-     * @var string
-     */
-    protected $description = 'Calculate market heartbeat for backtests table';
+    protected $description = 'Calculate market breadth from the stored index membership and available metrics for a date';
 
-    /**
-     * Execute the console command.
-     */
-    public function handle()
+    public function handle(): int
     {
         $date = $this->option('date');
 
-        if (is_null($date)) {
+        if ($date === null) {
             $this->error('Please provide a date');
 
-            return Command::FAILURE;
+            return self::FAILURE;
         }
 
-        $indicesToCheck = [
+        if (Validator::make(['date' => $date], ['date' => ['required', 'date_format:Y-m-d']])->fails()) {
+            $this->error('Please provide a valid date in YYYY-MM-DD format.');
+
+            return self::FAILURE;
+        }
+
+        $indices = [
             'nifty-50',
             'nifty-next-50',
             'nifty-100',
@@ -44,115 +41,80 @@ class CalculateMarketHeartbeatCommand extends Command
             'nifty-midcap-100',
             'nifty-midcap-150',
             'nifty-500',
+            'nifty-total-market',
             'nifty-smallcap-250',
+            'nifty-microcap-250',
             'nifty-largemidcap-250',
             'nifty-midsmallcap-400',
             'nifty-allcap',
+            'nifty-fno',
         ];
+        if ($this->option('index') !== null) {
+            if (! in_array($this->option('index'), $indices, true)) {
+                $this->error('Unknown market heartbeat index.');
 
-        foreach ($indicesToCheck as $index) {
-            $indexColumn = Str::of($index)->replace('-', '_')->prepend('is_')->toString();
+                return self::FAILURE;
+            }
+            $indices = [$this->option('index')];
+        }
+        $membershipColumns = array_map(fn (string $index): string => 'is_'.Str::replace('-', '_', $index), $indices);
 
-            $backtestNseInstrumentPrices = BacktestNseInstrumentPrice::query()
-                ->where('date', $date)
-                ->where($indexColumn, true)
-                ->select(
-                    'id',
-                    'ma_200',
-                    'ma_100',
-                    'ma_50',
-                    'ma_20',
-                    'away_from_high_all_time',
-                    'close_adjusted',
-                    'absolute_return_one_year',
-                    't_percent'
-                )
-                ->get();
+        $prices = BacktestNseInstrumentPrice::query()
+            ->where('date', $date)
+            ->toBase()
+            ->get([
+                ...$membershipColumns,
+                'ma_200', 'ma_100', 'ma_50', 'ma_20', 'away_from_high_all_time',
+                'close_adjusted', 'absolute_return_one_year', 't_percent',
+            ]);
 
-            if ($backtestNseInstrumentPrices->count() === 0) {
+        foreach ($indices as $position => $index) {
+            $members = $prices->where($membershipColumns[$position], true);
+
+            if ($members->isEmpty()) {
                 continue;
             }
 
-            $percentageAboveMa200 = $backtestNseInstrumentPrices->filter(function ($backtestNseInstrumentPrice) {
-                return $backtestNseInstrumentPrice->close_adjusted > $backtestNseInstrumentPrice->ma_200;
-            })->count() / $backtestNseInstrumentPrices->count() * 100;
+            $values = [];
+            foreach ([200, 100, 50, 20] as $period) {
+                $column = 'ma_'.$period;
+                $values['percentage_above_'.$column] = $this->percentageMatching(
+                    $members, $column, fn (stdClass $price): bool => $price->close_adjusted > $price->{$column},
+                );
+            }
+            foreach (['zero' => 0, 'ten' => 10, 'hundred' => 100] as $label => $threshold) {
+                $values['percentage_of_stocks_with_returns_one_year_above_'.$label] = $this->percentageMatching(
+                    $members, 'absolute_return_one_year', fn (stdClass $price): bool => $price->absolute_return_one_year > $threshold,
+                );
+            }
+            foreach (['ten' => -10, 'twenty' => -20, 'thirty' => -30] as $label => $threshold) {
+                $values['percentage_of_stocks_within_'.$label.'_percent_of_ath'] = $this->percentageMatching(
+                    $members, 'away_from_high_all_time', fn (stdClass $price): bool => $price->away_from_high_all_time > $threshold,
+                );
+            }
 
-            $percentageAboveMa100 = $backtestNseInstrumentPrices->filter(function ($backtestNseInstrumentPrice) {
-                return $backtestNseInstrumentPrice->close_adjusted > $backtestNseInstrumentPrice->ma_100;
-            })->count() / $backtestNseInstrumentPrices->count() * 100;
+            $advances = $members->where('t_percent', '>', 0)->count();
+            $declines = $members->where('t_percent', '<', 0)->count();
 
-            $percentageAboveMa50 = $backtestNseInstrumentPrices->filter(function ($backtestNseInstrumentPrice) {
-                return $backtestNseInstrumentPrice->close_adjusted > $backtestNseInstrumentPrice->ma_50;
-            })->count() / $backtestNseInstrumentPrices->count() * 100;
-
-            $percentageAboveMa20 = $backtestNseInstrumentPrices->filter(function ($backtestNseInstrumentPrice) {
-                return $backtestNseInstrumentPrice->close_adjusted > $backtestNseInstrumentPrice->ma_20;
-            })->count() / $backtestNseInstrumentPrices->count() * 100;
-
-            $percentageOfStocksWithReturnsOneYearAboveZero = $backtestNseInstrumentPrices->filter(
-                function ($backtestNseInstrumentPrice) {
-                    return $backtestNseInstrumentPrice->absolute_return_one_year > 0;
-                }
-            )->count() / $backtestNseInstrumentPrices->count() * 100;
-
-            $percentageOfStocksWithReturnsOneYearAboveTen = $backtestNseInstrumentPrices->filter(
-                function ($backtestNseInstrumentPrice) {
-                    return $backtestNseInstrumentPrice->absolute_return_one_year > 10;
-                }
-            )->count() / $backtestNseInstrumentPrices->count() * 100;
-
-            $percentageOfStocksWithReturnsOneYearAboveHundred = $backtestNseInstrumentPrices->filter(
-                function ($backtestNseInstrumentPrice) {
-                    return $backtestNseInstrumentPrice->absolute_return_one_year > 100;
-                }
-            )->count() / $backtestNseInstrumentPrices->count() * 100;
-
-            $percentageOfStocksWithinTenPercentOfATH = $backtestNseInstrumentPrices->filter(
-                function ($backtestNseInstrumentPrice) {
-                    return $backtestNseInstrumentPrice->away_from_high_all_time > -10;
-                }
-            )->count() / $backtestNseInstrumentPrices->count() * 100;
-
-            $percentageOfStocksWithinTwentyPercentOfATH = $backtestNseInstrumentPrices->filter(
-                function ($backtestNseInstrumentPrice) {
-                    return $backtestNseInstrumentPrice->away_from_high_all_time > -20;
-                }
-            )->count() / $backtestNseInstrumentPrices->count() * 100;
-
-            $percentageOfStocksWithinThirtyPercentOfATH = $backtestNseInstrumentPrices->filter(
-                function ($backtestNseInstrumentPrice) {
-                    return $backtestNseInstrumentPrice->away_from_high_all_time > -30;
-                }
-            )->count() / $backtestNseInstrumentPrices->count() * 100;
-
-            $advances = $backtestNseInstrumentPrices->filter(function ($backtestNseInstrumentPrice) {
-                return $backtestNseInstrumentPrice->t_percent > 0;
-            })->count();
-
-            $declines = $backtestNseInstrumentPrices->filter(function ($backtestNseInstrumentPrice) {
-                return $backtestNseInstrumentPrice->t_percent < 0;
-            })->count();
-
-            $advanceDeclineRatio = $advances / ($declines > 0 ? $declines : 1);
-
-            MarketHeartbeat::updateOrInsert([
-                'index' => $index,
-                'date' => $date,
-            ], [
-                'percentage_above_ma_200' => $percentageAboveMa200,
-                'percentage_above_ma_100' => $percentageAboveMa100,
-                'percentage_above_ma_50' => $percentageAboveMa50,
-                'percentage_above_ma_20' => $percentageAboveMa20,
-                'percentage_of_stocks_with_returns_one_year_above_zero' => $percentageOfStocksWithReturnsOneYearAboveZero,
-                'percentage_of_stocks_with_returns_one_year_above_ten' => $percentageOfStocksWithReturnsOneYearAboveTen,
-                'percentage_of_stocks_with_returns_one_year_above_hundred' => $percentageOfStocksWithReturnsOneYearAboveHundred,
-                'percentage_of_stocks_within_ten_percent_of_ath' => $percentageOfStocksWithinTenPercentOfATH,
-                'percentage_of_stocks_within_twenty_percent_of_ath' => $percentageOfStocksWithinTwentyPercentOfATH,
-                'percentage_of_stocks_within_thirty_percent_of_ath' => $percentageOfStocksWithinThirtyPercentOfATH,
+            MarketHeartbeat::updateOrInsert(['index' => $index, 'date' => $date], [
+                ...$values,
                 'advances' => $advances,
                 'declines' => $declines,
-                'advance_decline_ratio' => $advanceDeclineRatio,
+                'advance_decline_ratio' => $advances / ($declines > 0 ? $declines : 1),
             ]);
         }
+
+        return self::SUCCESS;
+    }
+
+    /**
+     * @param  Collection<int, stdClass>  $members
+     * @param  Closure(stdClass): bool  $matches
+     */
+    private function percentageMatching(Collection $members, string $column, Closure $matches): ?float
+    {
+        $available = $members->whereNotNull($column);
+
+        return $available->isEmpty() ? null : $available->filter($matches)->count() / $available->count() * 100;
     }
 }

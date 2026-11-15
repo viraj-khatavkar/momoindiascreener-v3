@@ -1,6 +1,7 @@
 ---
 paths:
   - 'app/Actions/Backtest/**'
+  - app/Actions/Backtest/ImportNseValuationAction.php
 ---
 
 # Backtest
@@ -124,3 +125,15 @@ For open-position valuation, query positive adjusted closes on the final saved s
 
 ## Check stock calendar data before importing a missing holiday index price
 A backtest with index DMA needs pre-start history (period minus one earlier index closes). Calendar validation derives expected dates from stock price rows. Synthetic stock fixtures on a market holiday can therefore cause a missing-index error even when the index history is complete. Inspect the price rows for that date and repair confirmed bad source data with a backup and approval; do not fabricate index prices or disable the completeness check. Rebuild shared trading gaps after historical price or calendar corrections. Keep test fixtures in the isolated test database.
+
+## Import REIT and InvIT market caps
+The daily market cap import must accept RR and IV alongside the existing equity series. Match date, symbol and series, and save whole crores using the existing conversion. Historical trust market cap repairs use dated MCAP files from official NSE PR archives and verified symbol aliases; update only existing price rows. P/E remains source-driven and null when the NSE file has no value.
+
+## Use date-specific F&O coverage and decile counts
+F&O membership is stored in is_nifty_fno with daily source records in backtest_nse_fno_imports. Require source coverage for every market trading date in an F&O backtest before clearing saved results. F&O deciles use the source member_count for the selected date. Keep the approved fixed constituent counts for other universes. Price metrics continue to use the existing equity price calculations.
+
+## Exclude the approved F&O special session
+The user explicitly excludes 2024-03-02 from F&O history because that special session has trust quotes but no stock quotes in this database. Use BacktestNseFnoImport::IGNORED_DATES for the F&O import and backtest coverage check. Do not change the other price rows or ignore other missing trading dates automatically.
+
+## Use price flags as the only F&O membership source
+User decision: use backtest_nse_instrument_prices.is_nifty_fno for dated membership, coverage checks and decile counts. Count all flagged rows before metric filters. Use the indexed trading calendar for coverage. The backtest_nse_fno_imports table is removed; do not add a second membership source. Reject a daily import before changing flags if any source symbol lacks a price match. NseIndexEnum::FNO_IGNORED_DATES keeps the approved 2024-03-02 exclusion. This replaces the earlier source-record and source-count rules.

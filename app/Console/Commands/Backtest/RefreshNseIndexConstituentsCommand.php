@@ -54,6 +54,7 @@ class RefreshNseIndexConstituentsCommand extends Command
             'nifty_microcap_250',
             'nifty_largemidcap_250',
             'nifty_midsmallcap_400',
+            'nifty_fno',
         ];
 
         foreach ($indices as $index) {

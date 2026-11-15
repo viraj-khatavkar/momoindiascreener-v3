@@ -144,10 +144,17 @@ it('blocks unsupported screens by default and skips them only with the explicit 
     $report = json_decode(Storage::disk('local')->get('skip-audit.json'), true, flags: JSON_THROW_ON_ERROR);
     expect($report['unsupported_screen_ids'])->toBe([41 => true]);
 })->with([
-    'F&O index' => [['index' => 'nifty_fno']],
+    'unknown index' => [['index' => 'unknown_index']],
     'missing rank' => [['sort_by' => 'unknown_ranking_field']],
     'inactive but selected rank' => [['apply_factor_two' => false, 'factor_two_sort_by' => 'unknown_ranking_field']],
 ]);
+
+it('imports saved F&O screens now that dated membership is supported', function () {
+    $this->legacyRows['screens'][0]['index'] = 'nifty_fno';
+    writeLegacyTestDumps($this->legacyDirectory, $this->legacyRows);
+    $this->artisan('legacy:import-production', $this->importOptions + ['--apply' => true])->assertSuccessful();
+    expect(Screen::sole()->index->value)->toBe('nifty_fno');
+});
 
 it('imports screens with both series flags off and preserves the saved values', function () {
     $this->legacyRows['screens'][0]['series_eq'] = false;

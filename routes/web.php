@@ -20,6 +20,8 @@ use App\Http\Controllers\InstrumentSearchController;
 use App\Http\Controllers\InvoiceDownloadController;
 use App\Http\Controllers\InvoicesController;
 use App\Http\Controllers\MarketHealthController;
+use App\Http\Controllers\NseIndexConstituentsController;
+use App\Http\Controllers\NseIndexConstituentsCsvController;
 use App\Http\Controllers\NseIndexViewController;
 use App\Http\Controllers\OrdersController;
 use App\Http\Controllers\PaymentsController;
@@ -78,11 +80,13 @@ Route::get('/pricing', PricingController::class);
 Route::post('/razorpay/callback', [RazorpayController::class, 'callback']);
 Route::get('/razorpay/cancel', [RazorpayController::class, 'cancel']);
 
-Route::get('/dashboard', IndicesDashboardController::class);
-Route::get('/nse-index/{slug}', NseIndexViewController::class);
+Route::get('/dashboard', IndicesDashboardController::class)->name('indices.index');
+Route::get('/nse-index/{slug}/constituents/export', NseIndexConstituentsCsvController::class)->name('nse-index.constituents.export');
+Route::get('/nse-index/{slug}/constituents', NseIndexConstituentsController::class)->name('nse-index.constituents.index');
+Route::get('/nse-index/{slug}', NseIndexViewController::class)->name('nse-index.show');
 
 Route::get('/instruments/search', InstrumentSearchController::class);
-Route::get('/instruments/{symbol}', BacktestNseInstrumentViewController::class);
+Route::get('/instruments/{symbol}', BacktestNseInstrumentViewController::class)->name('instruments.show');
 
 Route::get('/market-health/{index?}', MarketHealthController::class);
 

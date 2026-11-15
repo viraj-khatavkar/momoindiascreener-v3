@@ -42,7 +42,7 @@ CSV;
 });
 
 it('keeps the supported series and excludes rights and non cash market rows', function () {
-    $rows = array_map(fn (string $series): array => ['TckrSymb' => "STOCK{$series}", 'SctySrs' => $series], ['EQ', 'BE', 'SM', 'ST', 'SZ', 'BZ']);
+    $rows = array_map(fn (string $series): array => ['TckrSymb' => "STOCK{$series}", 'SctySrs' => $series], ['EQ', 'BE', 'SM', 'ST', 'SZ', 'BZ', 'RR', 'IV']);
     $rows[] = ['TckrSymb' => 'OTHERSEGMENT', 'Sgmt' => 'FO'];
     $rows[] = ['TckrSymb' => 'OTHERSERIES', 'SctySrs' => 'IT'];
 
@@ -54,7 +54,7 @@ it('keeps the supported series and excludes rights and non cash market rows', fu
     $this->artisan('backtest:import-instruments', ['--date' => '2024-03-04'])->assertSuccessful();
 
     expect(BacktestNseInstrumentPrice::orderBy('symbol')->pluck('symbol')->all())
-        ->toBe(['STOCKBE', 'STOCKBZ', 'STOCKEQ', 'STOCKSM', 'STOCKST', 'STOCKSZ']);
+        ->toBe(['STOCKBE', 'STOCKBZ', 'STOCKEQ', 'STOCKIV', 'STOCKRR', 'STOCKSM', 'STOCKST', 'STOCKSZ']);
 });
 
 it('uses header names and handles whitespace blank lines and quoted company names', function () {

@@ -36,7 +36,7 @@ class BacktestTradingCalendarAction
             ->orderByDesc('date')->limit($limit)->pluck('date');
     }
 
-    private function priceDates(?string $fromDate, ?string $throughDate): Builder
+    public function priceDates(?string $fromDate = null, ?string $throughDate = null): Builder
     {
         return BacktestNseInstrumentPrice::query()->forceIndex('bnip_date_symbol_unique')->toBase()
             ->select('date')->distinct()

@@ -29,6 +29,42 @@ it('imports market cap in crores for the matching date symbol and series and can
     }
 });
 
+it('imports REIT and InvIT market caps from the dated NSE file', function () {
+    $date = '2026-10-30';
+    $reit = createBacktestPriceRow('EMBASSY', $date, ['series' => 'RR', 't_percent' => 2]);
+    $invit = createBacktestPriceRow('CUBEINVIT', $date, ['series' => 'IV']);
+    $previous = createBacktestPriceRow('EMBASSY', '2026-10-29', ['series' => 'RR', 'marketcap' => 39000]);
+    Storage::put("uploads/{$date}/marketcap.csv", "Trade Date,Symbol,Series,Market Cap(Rs.)\n30 OCT 2026,EMBASSY,RR,392655504100.30\n30 OCT 2026,CUBEINVIT,IV,202860449178.65\n30 OCT 2026,SEITINVIT,IV,39690000000.00\n30 OCT 2026,Total,,635205953278.95\n");
+
+    for ($attempt = 0; $attempt < 2; $attempt++) {
+        $this->artisan('backtest:import-marketcap', ['--date' => $date])
+            ->expectsOutputToContain('2 price rows. 1 file rows had no matching price row.')
+            ->assertSuccessful();
+
+        expect((int) $reit->fresh()->marketcap)->toBe(39266)
+            ->and((int) $invit->fresh()->marketcap)->toBe(20286)
+            ->and((int) $previous->fresh()->marketcap)->toBe(39000)
+            ->and((float) $reit->fresh()->t_percent)->toBe(2.0)
+            ->and(BacktestNseInstrumentPrice::count())->toBe(3);
+    }
+});
+
+it('imports supplied trust PE values and keeps unavailable values null', function () {
+    $date = '2026-10-30';
+    $reit = createBacktestPriceRow('EMBASSY', $date, ['series' => 'RR']);
+    $invit = createBacktestPriceRow('CUBEINVIT', $date, ['series' => 'IV']);
+    $unavailable = createBacktestPriceRow('SEITINVIT', $date, ['series' => 'IV']);
+    $absent = createBacktestPriceRow('BIRET', $date, ['series' => 'RR']);
+    Storage::put("uploads/{$date}/price_to_earnings.csv", "SYMBOL,SYMBOL P/E,ADJUSTED P/E\nEMBASSY,21,20.75\nCUBEINVIT,18.25,NA\nSEITINVIT,NA,NA\n");
+
+    $this->artisan('backtest:import-price-to-earnings', ['--date' => $date])->assertSuccessful();
+
+    expect($reit->fresh()->price_to_earnings)->toBe('20.75')
+        ->and($invit->fresh()->price_to_earnings)->toBe('18.25')
+        ->and($unavailable->fresh()->price_to_earnings)->toBeNull()
+        ->and($absent->fresh()->price_to_earnings)->toBeNull();
+});
+
 it('imports adjusted PE and uses standalone PE for missing values', function () {
     $price = createBacktestPriceRow('CIPLA', '2024-03-01', ['series' => 'EQ', 'marketcap' => 25]);
     $otherSeries = createBacktestPriceRow('OTHER', '2024-03-01', ['series' => 'BE']);

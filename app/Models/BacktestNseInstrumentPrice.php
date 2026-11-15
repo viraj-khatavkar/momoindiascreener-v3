@@ -26,6 +26,7 @@ class BacktestNseInstrumentPrice extends Model
             'is_nifty_largemidcap_250' => 'boolean',
             'is_nifty_midsmallcap_400' => 'boolean',
             'is_nifty_allcap' => 'boolean',
+            'is_nifty_fno' => 'boolean',
             'is_etf' => 'boolean',
         ];
     }

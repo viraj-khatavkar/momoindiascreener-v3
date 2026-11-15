@@ -38,11 +38,19 @@ it('shows all tracked equity universes on the market health page', function () {
                 'nifty-midcap-100',
                 'nifty-midcap-150',
                 'nifty-500',
+                'nifty-total-market',
                 'nifty-smallcap-250',
+                'nifty-microcap-250',
                 'nifty-largemidcap-250',
                 'nifty-midsmallcap-400',
                 'nifty-allcap',
+                'nifty-fno',
             ])
             ->has('heartbeats', 1)
         );
 });
+
+it('opens the new market health indices before any history is available', function (string $index) {
+    $this->get('/market-health/'.$index)->assertSuccessful()
+        ->assertInertia(fn (Assert $page) => $page->component('MarketHealth')->where('index', $index)->has('heartbeats', 0));
+})->with(['nifty-total-market', 'nifty-microcap-250', 'nifty-fno']);

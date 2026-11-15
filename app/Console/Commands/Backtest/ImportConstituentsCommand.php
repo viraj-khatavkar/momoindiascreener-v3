@@ -57,7 +57,7 @@ class ImportConstituentsCommand extends Command
 
         BacktestNseInstrumentPrice::query()
             ->where('date', $date)
-            ->whereIn('series', ['EQ', 'BE'])
+            ->whereIn('series', ['EQ', 'BE', 'RR', 'IV'])
             ->where('is_etf', false)
             ->update(['is_nifty_allcap' => true]);
 

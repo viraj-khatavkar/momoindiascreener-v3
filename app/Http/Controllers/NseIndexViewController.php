@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Enums\NseIndexEnum;
 use App\Models\NseIndex;
 use Inertia\Inertia;
 use Inertia\Response;
@@ -16,10 +17,14 @@ class NseIndexViewController extends Controller
             ->first();
 
         abort_if($index === null, 404);
+        $membershipIndex = NseIndexEnum::tryFrom(str_replace('-', '_', $slug));
 
         return inertia('NseIndexView', [
             'index' => $index,
             'slug' => $slug,
+            'constituentsUrl' => $membershipIndex !== null
+                ? route('nse-index.constituents.index', ['slug' => $membershipIndex->slug(), 'date' => $index->date->toDateString()], false)
+                : null,
             'availableIndices' => fn () => NseIndex::query()
                 ->where('date', NseIndex::query()->selectRaw('MAX(date)'))
                 ->orderBy('symbol')

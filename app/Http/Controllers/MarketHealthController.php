@@ -16,10 +16,13 @@ class MarketHealthController extends Controller
         'nifty-midcap-100',
         'nifty-midcap-150',
         'nifty-500',
+        'nifty-total-market',
         'nifty-smallcap-250',
+        'nifty-microcap-250',
         'nifty-largemidcap-250',
         'nifty-midsmallcap-400',
         'nifty-allcap',
+        'nifty-fno',
     ];
 
     public function __invoke(string $index = 'nifty-500'): Response
@@ -34,7 +37,7 @@ class MarketHealthController extends Controller
         return inertia('MarketHealth', [
             'heartbeats' => $heartbeats,
             'index' => $index,
-            'indexName' => Str::of($index)->replace('-', ' ')->title()->toString(),
+            'indexName' => $index === 'nifty-fno' ? 'NSE F&O Stocks' : Str::of($index)->replace('-', ' ')->title()->toString(),
             'availableIndices' => self::AVAILABLE_INDICES,
         ]);
     }

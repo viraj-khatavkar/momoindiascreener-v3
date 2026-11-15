@@ -110,7 +110,7 @@ class ImportNseValuationAction
                 $record = array_combine($headers, $row);
                 $symbol = $record['SYMBOL'];
 
-                if ($isMarketcap && ! in_array($record['SERIES'], ['EQ', 'BE', 'SM', 'ST', 'SZ', 'BZ'], true)) {
+                if ($isMarketcap && ! in_array($record['SERIES'], ['EQ', 'BE', 'SM', 'ST', 'SZ', 'BZ', 'RR', 'IV'], true)) {
                     continue;
                 }
 

@@ -59,7 +59,7 @@ it('shows a dated market brief with usable charts at different screen widths', f
         ->assertNoJavaScriptErrors();
 
     expect($page->script('document.documentElement.scrollWidth <= window.innerWidth'))->toBeTrue();
-    expect($page->script('document.querySelectorAll("#market-health-index option").length'))->toBe(11);
+    expect($page->script('document.querySelectorAll("#market-health-index option").length'))->toBe(14);
 })->with(['desktop' => [1440, 1000], 'phone' => [390, 844], 'small phone' => [320, 740]]);
 
 it('opens every metric with the correct unit and preserves the chart period', function () {
@@ -115,6 +115,9 @@ it('can return from an index with no history without losing the chart selection'
         ->assertSeeIn('[data-testid="market-metric-value"]', '—')
         ->assertSeeIn('[data-testid="market-advances"]', '—')
         ->assertNotPresent('canvas')
+        ->select('#market-health-index', 'nifty-fno')
+        ->assertPathIs('/market-health/nifty-fno')
+        ->assertSee('No market health history is available for NSE F&O Stocks.')
         ->select('#market-health-index', 'nifty-500')
         ->assertSeeIn('[data-testid="market-metric-value"]', '0.44×')
         ->assertAriaAttribute('button[aria-label="Show 3 months"]', 'pressed', 'true')

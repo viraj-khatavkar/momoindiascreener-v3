@@ -489,6 +489,9 @@ function formatDate(value: string): string {
     );
 }
 function formatIndexLabel(slug: string): string {
+    if (slug === 'nifty-fno') {
+        return 'NSE F&O Stocks';
+    }
     return slug.replace(/-/g, ' ').replace(/\b\w/g, (letter) => letter.toUpperCase());
 }
 async function selectMetric(key: MetricKey, revealChart = false): Promise<void> {

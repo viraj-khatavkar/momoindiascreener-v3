@@ -50,15 +50,19 @@ class CalculateCovarianceCommand extends Command
 
         $fromDateBeforeOneYear = $todayDate->copy()->subMonths(12)->addDay()->format('Y-m-d');
 
-        $niftyDailyMinusAverage = $this->fetchNiftyDailyMinusAverage($fromDateBeforeOneYear, $date);
-        $niftyVariance = $this->fetchNiftyVariance($fromDateBeforeOneYear, $date);
-
         $backtestNseInstrumentPrice = BacktestNseInstrumentPrice::query()
             ->where('date', $date)
             ->where('symbol', $symbol)
             ->first();
 
         $backtestNseInstrumentPrices = $this->fetchPrices($symbol, $fromDateBeforeOneYear, $date);
+
+        if (in_array($backtestNseInstrumentPrice->series, ['RR', 'IV'], true)) {
+            return $this->calculateTrustCovariance($backtestNseInstrumentPrice, $fromDateBeforeOneYear, $date);
+        }
+
+        $niftyDailyMinusAverage = $this->fetchNiftyDailyMinusAverage($fromDateBeforeOneYear, $date);
+        $niftyVariance = $this->fetchNiftyVariance($fromDateBeforeOneYear, $date);
 
         $averageReturn = $backtestNseInstrumentPrices->average('t_percent');
 
@@ -96,6 +100,54 @@ class CalculateCovarianceCommand extends Command
         $backtestNseInstrumentPrice->save();
 
         return Command::SUCCESS;
+    }
+
+    private function calculateTrustCovariance(BacktestNseInstrumentPrice $current, string $from, string $through): int
+    {
+        $current->covariance = null;
+        $current->beta = null;
+        $prices = BacktestNseInstrumentPrice::query()->where('symbol', $current->symbol)
+            ->whereBetween('date', [$from, $through])->orderBy('date')->get(['date', 't_percent_raw']);
+        $previousDate = BacktestNseInstrumentPrice::query()->where('symbol', $current->symbol)->where('date', '<', $from)->max('date');
+        if ($prices->count() < 235 || $previousDate === null || $current->variance_one_year === null) {
+            $current->save();
+
+            return self::SUCCESS;
+        }
+        $benchmark = NseIndex::query()->where('slug', 'nifty-50')->whereBetween('date', [$previousDate, $through])->get(['date', 'close'])
+            ->keyBy(fn (NseIndex $index): string => $index->date->toDateString());
+        $pairs = [];
+        foreach ($prices as $price) {
+            $date = $price->date->toDateString();
+            $before = $benchmark->get($previousDate);
+            $after = $benchmark->get($date);
+            if ($before === null || $after === null || $before->close <= 0 || $after->close <= 0) {
+                $current->save();
+
+                return self::SUCCESS;
+            }
+            $pairs[] = [(float) $price->t_percent_raw, (float) $after->close / (float) $before->close - 1];
+            $previousDate = $date;
+        }
+        $stockMean = array_sum(array_column($pairs, 0)) / count($pairs);
+        $indexMean = array_sum(array_column($pairs, 1)) / count($pairs);
+        $cross = 0.0;
+        $squares = 0.0;
+        foreach ($pairs as [$stock, $index]) {
+            $cross += ($stock - $stockMean) * ($index - $indexMean);
+            $squares += ($index - $indexMean) ** 2;
+        }
+        if ($squares > 1.0e-16) {
+            $covariance = $cross / (count($pairs) - 1);
+            $beta = $cross / $squares;
+            if (is_finite($covariance) && is_finite($beta) && abs($beta) < 10000000000) {
+                $current->covariance = round($covariance, 10);
+                $current->beta = round($beta, 10);
+            }
+        }
+        $current->save();
+
+        return self::SUCCESS;
     }
 
     protected function fetchPrices($symbol, $fromDate, $toDate)

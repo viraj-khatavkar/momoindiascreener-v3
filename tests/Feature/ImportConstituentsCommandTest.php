@@ -1,6 +1,7 @@
 <?php
 
 use App\Models\BacktestNseIndexConstituent;
+use App\Models\MarketHeartbeat;
 
 it('fails when no date is provided', function () {
     $this->artisan('backtest:import-constituents')
@@ -55,4 +56,31 @@ it('resets a stale flag for a symbol that is no longer a constituent', function 
     expect(isIndexFlagged('DROPPED', $date, 'is_nifty_smallcap_250'))->toBeFalse()
         ->and(isIndexFlagged('DROPPED', $date, 'is_nifty_microcap_250'))->toBeFalse()
         ->and(isIndexFlagged('DROPPED', $date, 'is_nifty_total_market'))->toBeFalse();
+});
+
+it('includes REITs and InvITs in allcap membership and heartbeat while excluding ETFs', function () {
+    $date = '2019-04-01';
+    foreach (['EQ', 'BE', 'RR', 'IV', 'SM'] as $series) {
+        createBacktestPriceRow($series, $date, [
+            'series' => $series, 'is_nifty_allcap' => true,
+            'close_adjusted' => 100, 'ma_200' => 50, 't_percent' => 1,
+        ]);
+    }
+    createBacktestPriceRow('ETF', $date, ['series' => 'EQ', 'is_etf' => true, 'is_nifty_allcap' => true]);
+
+    $this->artisan('backtest:import-constituents', ['--date' => $date])->assertSuccessful();
+
+    foreach (['EQ', 'BE', 'RR', 'IV'] as $symbol) {
+        expect(isIndexFlagged($symbol, $date, 'is_nifty_allcap'))->toBeTrue();
+    }
+    foreach (['SM', 'ETF'] as $symbol) {
+        expect(isIndexFlagged($symbol, $date, 'is_nifty_allcap'))->toBeFalse();
+    }
+
+    $this->artisan('backtest:calculate-market-heartbeat', ['--date' => $date])->assertSuccessful();
+
+    $heartbeat = MarketHeartbeat::sole();
+    expect($heartbeat->index)->toBe('nifty-allcap')
+        ->and($heartbeat->advances)->toBe(4)
+        ->and((float) $heartbeat->percentage_above_ma_200)->toBe(100.0);
 });

@@ -27,7 +27,7 @@ it('adds the shared delisting update after all existing daily steps', function (
     $run = app(CreateAdminProcessRunAction::class)->execute($this->admin, '2024-03-01');
     $step = $run->steps->last();
     expect($step->key)->toBe('update-assumed-delistings')
-        ->and($step->position)->toBe(22)
+        ->and($step->position)->toBe(25)
         ->and($step->command_line)->toBe('php artisan backtest:update-assumed-delistings --date=2024-03-01');
 
     $this->actingAs($this->admin)->post("/admin/process-runs/{$run->id}/steps/{$step->id}/run")
@@ -71,7 +71,7 @@ it('shows the required file state for the selected date', function () {
             ->component('Admin/Processes/Index')
             ->where('selectedDate', '2022-02-04')
             ->where('allFilesAvailable', false)
-            ->has('requiredFiles', 3)
+            ->has('requiredFiles', 4)
             ->where('requiredFiles.0.key', 'bhavcopy')
             ->where('requiredFiles.0.available', true)
             ->where('requiredFiles.1.key', 'corporate_actions')
@@ -103,7 +103,7 @@ it('creates the fixed daily checklist once for a date', function () {
 
     expect($run->process_date->format('Y-m-d'))->toBe('2022-02-04')
         ->and($run->status)->toBe(AdminProcessRunStatusEnum::Pending)
-        ->and($run->steps)->toHaveCount(20)
+        ->and($run->steps)->toHaveCount(23)
         ->and($run->steps[0]->position)->toBe(1)
         ->and($run->steps[0]->command_line)
         ->toBe('php artisan backtest:import-instruments --omit-create --date=2022-02-04')
@@ -115,25 +115,27 @@ it('creates the fixed daily checklist once for a date', function () {
             'php artisan backtest:import-corporate-actions --series=SM --date=2022-02-04',
             'php artisan backtest:import-corporate-actions --series=ST --date=2022-02-04',
             'php artisan backtest:import-corporate-actions --series=BZ --date=2022-02-04',
+            'php artisan backtest:import-corporate-actions --series=RR --date=2022-02-04',
+            'php artisan backtest:import-corporate-actions --series=IV --date=2022-02-04',
         ])
-        ->and($run->steps[7]->command_line)
-        ->toBe('php artisan backtest:calculate-dividend-adjustment-factor --date=2022-02-04 --dry-run')
-        ->and($run->steps[8]->key)->toBe('apply-dividend-adjustment-factor')
-        ->and($run->steps[8]->command_line)
-        ->toBe('php artisan backtest:calculate-dividend-adjustment-factor --date=2022-02-04')
         ->and($run->steps[9]->command_line)
-        ->toBe('php artisan backtest:adjust-dividends --date=2022-02-04 --dry-run')
-        ->and($run->steps[10]->key)->toBe('apply-dividends')
+        ->toBe('php artisan backtest:calculate-dividend-adjustment-factor --date=2022-02-04 --dry-run')
+        ->and($run->steps[10]->key)->toBe('apply-dividend-adjustment-factor')
         ->and($run->steps[10]->command_line)
-        ->toBe('php artisan backtest:adjust-dividends --date=2022-02-04')
+        ->toBe('php artisan backtest:calculate-dividend-adjustment-factor --date=2022-02-04')
         ->and($run->steps[11]->command_line)
-        ->toBe('php artisan backtest:adjust-corporate-action --date=2022-02-04 --dry-run')
-        ->and($run->steps[12]->key)->toBe('apply-corporate-action')
+        ->toBe('php artisan backtest:adjust-dividends --date=2022-02-04 --dry-run')
+        ->and($run->steps[12]->key)->toBe('apply-dividends')
         ->and($run->steps[12]->command_line)
+        ->toBe('php artisan backtest:adjust-dividends --date=2022-02-04')
+        ->and($run->steps[13]->command_line)
+        ->toBe('php artisan backtest:adjust-corporate-action --date=2022-02-04 --dry-run')
+        ->and($run->steps[14]->key)->toBe('apply-corporate-action')
+        ->and($run->steps[14]->command_line)
         ->toBe('php artisan backtest:adjust-corporate-action --date=2022-02-04')
-        ->and($run->steps[16]->command_line)
+        ->and($run->steps[19]->command_line)
         ->toBe('php artisan backtest:process-daily-data --date=2022-02-04')
-        ->and($run->steps[18]->command_line)
+        ->and($run->steps[21]->command_line)
         ->toBe('php artisan backtest:copy-instruments --date=2022-02-04');
 
     $this->actingAs($this->admin)
@@ -142,7 +144,7 @@ it('creates the fixed daily checklist once for a date', function () {
         ->assertRedirect("/admin/process-runs/{$run->id}");
 
     expect(AdminProcessRun::count())->toBe(1)
-        ->and($run->steps()->count())->toBe(20);
+        ->and($run->steps()->count())->toBe(23);
 });
 
 it('enables only the first incomplete step', function () {
@@ -153,16 +155,16 @@ it('enables only the first incomplete step', function () {
         ->assertInertia(fn (Assert $page) => $page
             ->component('Admin/Processes/Show')
             ->where('processRun.process_date', '2022-02-04')
-            ->has('processRun.steps', 20)
+            ->has('processRun.steps', 23)
             ->where('processRun.steps.0.can_run', true)
             ->where('processRun.steps.0.can_manage_symbol_changes', false)
             ->where('processRun.steps.1.can_run', false)
             ->where('processRun.steps.5.command_line', 'php artisan backtest:import-corporate-actions --series=ST --date=2022-02-04')
             ->where('processRun.steps.6.command_line', 'php artisan backtest:import-corporate-actions --series=BZ --date=2022-02-04')
-            ->where('processRun.steps.7.is_preview', true)
-            ->where('processRun.steps.7.is_apply', false)
-            ->where('processRun.steps.8.is_preview', false)
-            ->where('processRun.steps.8.is_apply', true)
+            ->where('processRun.steps.9.is_preview', true)
+            ->where('processRun.steps.9.is_apply', false)
+            ->where('processRun.steps.10.is_preview', false)
+            ->where('processRun.steps.10.is_apply', true)
         );
 });
 
@@ -260,6 +262,7 @@ it('adds apply steps to an unfinished legacy run without losing its progress or 
         'status' => AdminProcessRunStatusEnum::InProgress,
     ]);
     $legacySteps = collect(app(BuildDailyProcessStepsAction::class)->execute('2022-02-06'))
+        ->reject(fn (array $step): bool => in_array($step['key'], ['import-corporate-actions-rr', 'import-corporate-actions-iv', 'import-fno-constituents'], true))
         ->reject(fn (array $step): bool => str_starts_with($step['key'], 'apply-'))
         ->reject(fn (array $step): bool => in_array($step['key'], ['import-corporate-actions-st', 'import-corporate-actions-bz', 'update-assumed-delistings'], true))
         ->values()
@@ -301,6 +304,7 @@ it('adds ST and BZ only to unfinished runs and preserves existing steps', functi
         'status' => $status,
     ]);
     $legacySteps = collect(app(BuildDailyProcessStepsAction::class)->execute('2023-10-06'))
+        ->reject(fn (array $step): bool => in_array($step['key'], ['import-corporate-actions-rr', 'import-corporate-actions-iv', 'import-fno-constituents'], true))
         ->reject(fn (array $step): bool => in_array($step['key'], ['import-corporate-actions-st', 'import-corporate-actions-bz', 'update-assumed-delistings'], true))
         ->values()
         ->map(fn (array $step, int $index): array => [
@@ -624,22 +628,22 @@ it('requires valuation uploads and adds their steps from March 2024', function (
 
     expect($run->steps[1]->key)->toBe('import-instruments')
         ->and($run->steps[2]->key)->toBe('import-corporate-actions-be')
-        ->and($run->steps[12]->key)->toBe('apply-corporate-action')
-        ->and($run->steps[13]->key)->toBe('import-marketcap')
-        ->and($run->steps[14]->key)->toBe('import-price-to-earnings')
-        ->and($run->steps[15]->key)->toBe('mark-etfs');
+        ->and($run->steps[14]->key)->toBe('apply-corporate-action')
+        ->and($run->steps[15]->key)->toBe('import-marketcap')
+        ->and($run->steps[16]->key)->toBe('import-price-to-earnings')
+        ->and($run->steps[17]->key)->toBe('mark-etfs');
 
     $this->actingAs($this->admin)->get("/admin/process-runs/{$run->id}")
         ->assertInertia(fn (Assert $page) => $page
-            ->has('processRun.steps', 22)
-            ->where('processRun.steps.13.command_line', "php artisan backtest:import-marketcap --date={$date}")
-            ->where('processRun.steps.14.command_line', "php artisan backtest:import-price-to-earnings --date={$date}")
-            ->where('processRun.steps.13.can_run', false));
+            ->has('processRun.steps', 25)
+            ->where('processRun.steps.15.command_line', "php artisan backtest:import-marketcap --date={$date}")
+            ->where('processRun.steps.16.command_line', "php artisan backtest:import-price-to-earnings --date={$date}")
+            ->where('processRun.steps.15.can_run', false));
 })->with([
-    ['2024-02-28', 3, 20],
-    ['2024-02-29', 3, 20],
-    ['2024-03-01', 5, 22],
-    ['2024-03-04', 5, 22],
+    ['2024-02-28', 4, 23],
+    ['2024-02-29', 4, 23],
+    ['2024-03-01', 6, 25],
+    ['2024-03-04', 6, 25],
 ]);
 
 it('prevents new runs when either valuation file is missing', function (string $missingFile) {
@@ -680,6 +684,7 @@ it('adds valuation steps only to eligible unfinished runs and preserves their hi
         'user_id' => $this->admin->id, 'process_date' => $date, 'status' => $status,
     ]);
     $legacySteps = collect(app(BuildDailyProcessStepsAction::class)->execute($date))
+        ->reject(fn (array $step): bool => in_array($step['key'], ['import-corporate-actions-rr', 'import-corporate-actions-iv', 'import-fno-constituents'], true))
         ->reject(fn (array $step): bool => in_array($step['key'], ['import-marketcap', 'import-price-to-earnings', 'update-assumed-delistings'], true))
         ->values()->map(fn (array $step, int $index): array => [
             ...$step, 'position' => $index + 1, 'status' => AdminProcessStepStatusEnum::Pending,
@@ -724,6 +729,7 @@ it('moves saved valuation steps before ETFs and keeps their execution history', 
         'user_id' => $this->admin->id, 'process_date' => '2024-03-01', 'status' => $status,
     ]);
     $steps = collect(app(BuildDailyProcessStepsAction::class)->execute('2024-03-01'))
+        ->reject(fn (array $step): bool => in_array($step['key'], ['import-corporate-actions-rr', 'import-corporate-actions-iv', 'import-fno-constituents'], true))
         ->reject(fn (array $step): bool => $step['key'] === 'update-assumed-delistings')->keyBy('key');
     $legacyKeys = $steps->keys()->reject(fn (string $key): bool => in_array($key, ['import-marketcap', 'import-price-to-earnings'], true))
         ->values()->all();
@@ -785,30 +791,30 @@ it('requires indices and places their import immediately before market cap from 
 
     $this->get("/admin/process-runs/{$run->id}")
         ->assertInertia(fn (Assert $page) => $page
-            ->has('processRun.steps', 23)
-            ->where('processRun.steps.12.key', 'apply-corporate-action')
-            ->where('processRun.steps.13.key', 'import-indices')
-            ->where('processRun.steps.13.command_line', "php artisan nse:import-indices --date={$date}")
-            ->where('processRun.steps.13.can_run', false)
-            ->where('processRun.steps.14.key', 'import-marketcap')
-            ->where('processRun.steps.15.key', 'import-price-to-earnings')
-            ->where('processRun.steps.22.key', 'update-assumed-delistings'));
+            ->has('processRun.steps', 26)
+            ->where('processRun.steps.14.key', 'apply-corporate-action')
+            ->where('processRun.steps.15.key', 'import-indices')
+            ->where('processRun.steps.15.command_line', "php artisan nse:import-indices --date={$date}")
+            ->where('processRun.steps.15.can_run', false)
+            ->where('processRun.steps.16.key', 'import-marketcap')
+            ->where('processRun.steps.17.key', 'import-price-to-earnings')
+            ->where('processRun.steps.25.key', 'update-assumed-delistings'));
 })->with([
-    ['2026-02-16', 5, 22],
-    ['2026-02-17', 6, 23],
-    ['2026-02-18', 6, 23],
+    ['2026-02-16', 6, 25],
+    ['2026-02-17', 7, 26],
+    ['2026-02-18', 7, 26],
 ]);
 
 it('prevents new runs from February 17 when the index upload is missing', function () {
-    foreach (['bhavcopy', 'corporate_actions', 'etf', 'marketcap', 'price_to_earnings'] as $file) {
+    foreach (['bhavcopy', 'corporate_actions', 'etf', 'fno', 'marketcap', 'price_to_earnings'] as $file) {
         Storage::put("uploads/2026-02-17/{$file}.csv", 'data');
     }
 
     $this->actingAs($this->admin)->get('/admin/processes?date=2026-02-17')
         ->assertInertia(fn (Assert $page) => $page
             ->where('allFilesAvailable', false)
-            ->where('requiredFiles.3.key', 'index')
-            ->where('requiredFiles.3.available', false));
+            ->where('requiredFiles.4.key', 'index')
+            ->where('requiredFiles.4.available', false));
 
     $this->post('/admin/process-runs', ['date' => '2026-02-17'])->assertSessionHasErrors('files');
 
@@ -843,6 +849,7 @@ it('adds index imports only to eligible unfinished runs and keeps their saved re
         'user_id' => $this->admin->id, 'process_date' => $date, 'status' => $status,
     ]);
     $legacySteps = collect(app(BuildDailyProcessStepsAction::class)->execute($date))
+        ->reject(fn (array $step): bool => in_array($step['key'], ['import-corporate-actions-rr', 'import-corporate-actions-iv', 'import-fno-constituents'], true))
         ->reject(fn (array $step): bool => $step['key'] === 'import-indices')
         ->values()->map(fn (array $step, int $index): array => [
             ...$step, 'position' => $index + 1, 'status' => AdminProcessStepStatusEnum::Pending,
@@ -886,9 +893,37 @@ it('adds index imports only to eligible unfinished runs and keeps their saved re
     expect($run->refresh()->load('steps.outputChunks')->steps->toArray())->toBe($savedSteps);
 })->with(['2026-02-16', '2026-02-17', '2026-02-18'])->with(AdminProcessRunStatusEnum::cases());
 
+it('adds trust cash steps only to unfinished runs and retains saved output', function (AdminProcessRunStatusEnum $status) {
+    $run = app(CreateAdminProcessRunAction::class)->execute($this->admin, '2026-02-17');
+    $run->update(['status' => $status]);
+    $run->steps()->whereIn('key', ['import-corporate-actions-rr', 'import-corporate-actions-iv'])->delete();
+    foreach ($run->steps()->get() as $index => $step) {
+        $step->update(['position' => $index + 1]);
+    }
+    $first = $run->steps()->firstOrFail();
+    $first->update(['status' => AdminProcessStepStatusEnum::Completed, 'attempts' => 1]);
+    $chunk = AdminProcessOutputChunk::factory()->create(['admin_process_step_id' => $first->id]);
+    $original = $run->steps()->get()->keyBy('key');
+    $migration = require database_path('migrations/2026_11_15_073733_add_trust_corporate_action_steps_to_unfinished_admin_process_runs.php');
+    $migration->up();
+    $migration->up();
+    $run->refresh()->load('steps');
+    expect($run->steps)->toHaveCount($status === AdminProcessRunStatusEnum::Completed ? 24 : 26)
+        ->and($first->outputChunks()->sole()->id)->toBe($chunk->id);
+    foreach ($original as $key => $step) {
+        expect(collect($run->steps->firstWhere('key', $key)->getAttributes())->except('position')->all())
+            ->toBe(collect($step->getAttributes())->except('position')->all());
+    }
+    if ($status !== AdminProcessRunStatusEnum::Completed) {
+        expect($run->steps[7]->key)->toBe('import-corporate-actions-rr')
+            ->and($run->steps[8]->key)->toBe('import-corporate-actions-iv')
+            ->and($run->steps[9]->key)->toBe('calculate-dividend-adjustment-factor');
+    }
+})->with(AdminProcessRunStatusEnum::cases());
+
 function storeAdminProcessRequiredFiles(string $date): void
 {
-    foreach (['bhavcopy', 'corporate_actions', 'etf'] as $filename) {
+    foreach (['bhavcopy', 'corporate_actions', 'etf', 'fno'] as $filename) {
         Storage::disk('local')->put("uploads/{$date}/{$filename}.csv", 'data');
     }
 }

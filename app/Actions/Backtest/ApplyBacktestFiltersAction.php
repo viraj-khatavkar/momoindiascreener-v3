@@ -3,6 +3,7 @@
 namespace App\Actions\Backtest;
 
 use App\Enums\ApplyFiltersOnOptionEnum;
+use App\Enums\NseIndexEnum;
 use App\Models\Backtest;
 use App\Models\BacktestNseInstrumentPrice;
 use Illuminate\Database\Eloquent\Builder;
@@ -94,6 +95,8 @@ class ApplyBacktestFiltersAction
 
     protected function fetchTopDecileIds(Backtest $backtest, $date): array
     {
+        $constituentCount = $backtest->index->numberOfConstituents()
+            ?? BacktestNseInstrumentPrice::query()->where('date', $date)->where('is_nifty_fno', true)->count();
         $query = BacktestNseInstrumentPrice::query()
             ->where('date', $date)
             ->whereNotNull($backtest->sort_by)
@@ -103,11 +106,11 @@ class ApplyBacktestFiltersAction
             ->select('id')
             ->limit(
                 match ($backtest->apply_filters_on) {
-                    ApplyFiltersOnOptionEnum::TOP_DECILE => 0.1 * $backtest->index->numberOfConstituents(),
-                    ApplyFiltersOnOptionEnum::TOP_TWO_DECILE => 0.2 * $backtest->index->numberOfConstituents(),
-                    ApplyFiltersOnOptionEnum::TOP_THREE_DECILE => 0.3 * $backtest->index->numberOfConstituents(),
-                    ApplyFiltersOnOptionEnum::TOP_FOUR_DECILE => 0.4 * $backtest->index->numberOfConstituents(),
-                    ApplyFiltersOnOptionEnum::TOP_FIVE_DECILE => 0.5 * $backtest->index->numberOfConstituents(),
+                    ApplyFiltersOnOptionEnum::TOP_DECILE => 0.1 * $constituentCount,
+                    ApplyFiltersOnOptionEnum::TOP_TWO_DECILE => 0.2 * $constituentCount,
+                    ApplyFiltersOnOptionEnum::TOP_THREE_DECILE => 0.3 * $constituentCount,
+                    ApplyFiltersOnOptionEnum::TOP_FOUR_DECILE => 0.4 * $constituentCount,
+                    ApplyFiltersOnOptionEnum::TOP_FIVE_DECILE => 0.5 * $constituentCount,
                     ApplyFiltersOnOptionEnum::TOP_50 => 50,
                     ApplyFiltersOnOptionEnum::TOP_100 => 100,
                 }
@@ -135,7 +138,7 @@ class ApplyBacktestFiltersAction
 
         $query->where('median_volume_one_year', '>=', $backtest->median_volume_one_year);
 
-        if (! empty($ids)) {
+        if (! empty($ids) || ($backtest->index === NseIndexEnum::NIFTY_FNO && $backtest->apply_filters_on !== ApplyFiltersOnOptionEnum::ALL)) {
             $query = $query->whereIn('id', $ids);
         }
 

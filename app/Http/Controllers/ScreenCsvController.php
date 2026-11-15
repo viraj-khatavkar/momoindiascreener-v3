@@ -76,6 +76,7 @@ class ScreenCsvController extends Controller
         'is_nifty_largemidcap_250' => 'is_nifty_largemidcap_250',
         'is_nifty_midsmallcap_400' => 'is_nifty_midsmallcap_400',
         'is_nifty_allcap' => 'is_nifty_allcap',
+        'is_nifty_fno' => 'is_nifty_fno',
         'is_etf' => 'is_etf',
     ];
 

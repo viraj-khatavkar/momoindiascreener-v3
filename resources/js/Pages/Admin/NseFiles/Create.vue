@@ -22,6 +22,11 @@
                     :error="form.errors.date"
                 />
                 <div class="mt-6">
+                    <p v-if="form.filename === 'fno'" class="mb-3 text-sm text-gray-600">
+                        Download F&O – UDiFF Common Bhavcopy Final for the selected date from
+                        <a href="https://www.nseindia.in/all-reports-derivatives" target="_blank" rel="noopener noreferrer" class="text-purple-700 underline">NSE Equity Derivatives reports</a>.
+                        Extract the ZIP and upload the CSV. Only the UDiFF format is accepted.
+                    </p>
                     <label for="file" class="block text-sm/6 font-medium text-gray-900">
                         File
                     </label>
@@ -30,6 +35,7 @@
                             type="file"
                             id="file"
                             name="file"
+                            accept=".csv"
                             class="block w-full rounded-md bg-white px-3 py-1.5 text-base text-gray-900 outline-1 -outline-offset-1 outline-gray-300 focus:outline-2 focus:-outline-offset-2 focus:outline-purple-600 sm:text-sm/6"
                             @change="onFileChange"
                         />

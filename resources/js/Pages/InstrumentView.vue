@@ -91,9 +91,15 @@
             </dl>
             <div v-if="instrument.indices.length" class="mt-5 flex flex-wrap items-center gap-2">
                 <span class="mr-1 text-xs text-gray-500">Member of</span>
-                <span v-for="index in instrument.indices" :key="index" class="rounded-md bg-gray-100 px-2 py-1 text-xs text-gray-600">{{
-                    index
-                }}</span>
+                <Link
+                    v-for="index in instrument.indices"
+                    :key="index.slug"
+                    :href="index.url"
+                    :aria-label="`View ${index.name} constituents`"
+                    class="inline-flex min-h-9 items-center rounded-md bg-purple-50 px-2.5 py-1.5 text-xs font-medium text-purple-700 hover:bg-purple-100 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-purple-600"
+                >
+                    {{ index.name }}
+                </Link>
             </div>
         </header>
 
@@ -476,7 +482,7 @@ import {
     InformationCircleIcon,
     ScaleIcon,
 } from '@heroicons/vue/24/outline';
-import { Deferred, Head } from '@inertiajs/vue3';
+import { Deferred, Head, Link } from '@inertiajs/vue3';
 import { computed, onMounted, onUnmounted, ref } from 'vue';
 
 interface CorporateAction {

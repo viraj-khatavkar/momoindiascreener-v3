@@ -2,14 +2,17 @@
 
 namespace App\Console\Commands\Backtest;
 
+use App\Actions\ParseTrustCashAction;
 use App\Actions\ReadCsvAction;
 use App\Enums\CorporateActionTypeEnum;
 use App\Models\BacktestNseCorporateAction;
 use App\Models\BacktestNseInstrumentPrice;
 use Carbon\Carbon;
 use Illuminate\Console\Command;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
+use InvalidArgumentException;
 
 class ImportNseCorporateActionsCommand extends Command
 {
@@ -30,7 +33,7 @@ class ImportNseCorporateActionsCommand extends Command
     /**
      * Execute the console command.
      */
-    public function handle(): int
+    public function handle(ParseTrustCashAction $parseCash): int
     {
         $this->info('Importing corporate actions for NSE...');
         $date = $this->option('date');
@@ -50,6 +53,10 @@ class ImportNseCorporateActionsCommand extends Command
         }
 
         $date = (new Carbon($date))->format('Y-m-d');
+
+        if (in_array($series, ['RR', 'IV'], true)) {
+            return $this->importTrustCash($date, $series, (bool) $omitCreate, $parseCash);
+        }
         $corporateActions = collect($this->fetchCorporateActionsFromWebsiteFile($date, $series));
         $previousFileDate = $this->findPreviousCorporateActionsFileDate($date);
 
@@ -113,6 +120,76 @@ class ImportNseCorporateActionsCommand extends Command
 
         foreach ($corporateActionsForToday as $corporateAction) {
             $this->components->info($corporateAction->symbol.' '.$corporateAction->dividend);
+        }
+
+        return Command::SUCCESS;
+    }
+
+    private function importTrustCash(string $date, string $series, bool $preview, ParseTrustCashAction $parseCash): int
+    {
+        try {
+            $bySymbol = [];
+            $previousDate = $this->findPreviousCorporateActionsFileDate($date);
+
+            foreach (array_filter([$date, $previousDate]) as $fileDate) {
+                $fileRows = app(ReadCsvAction::class)->execute(Storage::path("uploads/{$fileDate}/corporate_actions.csv"))->toCollection()
+                    ->filter(fn (array $row): bool => isset($row[9]) && trim($row[0]) === $series && trim($row[6]) === $date)
+                    ->groupBy(fn (array $row): string => trim($row[1]));
+
+                foreach ($fileRows as $symbol => $rows) {
+                    if (isset($bySymbol[$symbol])) {
+                        continue;
+                    }
+
+                    $cashRows = [];
+                    foreach ($rows->unique(fn (array $row): string => Str::upper(Str::squish($row[9]))) as $row) {
+                        $cash = $parseCash->execute($row[9]);
+                        if ($cash !== null) {
+                            $cashRows[] = [...$cash, 'description' => trim($row[9])];
+                        }
+                    }
+
+                    if ($cashRows === []) {
+                        continue;
+                    }
+                    if (count($cashRows) > 1 && collect($cashRows)->contains('type', CorporateActionTypeEnum::DISTRIBUTION)) {
+                        throw new InvalidArgumentException("Check multiple distribution entries for {$symbol} on {$date} before import.");
+                    }
+
+                    $amount = $parseCash->sum(array_column($cashRows, 'amount'));
+                    $description = implode(' / ', array_column($cashRows, 'description'));
+                    if (Str::length($description) > 255) {
+                        throw new InvalidArgumentException("Cash description exceeds 255 characters for {$symbol}.");
+                    }
+                    $bySymbol[$symbol] = [
+                        'type' => count($cashRows) === 1 ? $cashRows[0]['type'] : CorporateActionTypeEnum::DISTRIBUTION,
+                        'dividend' => $amount, 'ratio' => $amount, 'description' => $description,
+                    ];
+                }
+            }
+
+            foreach ($bySymbol as $symbol => $values) {
+                $existing = BacktestNseCorporateAction::query()->where('symbol', $symbol)->whereDate('date', $date)->whereNotNull('dividend')->get();
+                if ($existing->count() > 1 || ($existing->isNotEmpty() && (float) $existing->first()->dividend !== (float) $values['dividend'])) {
+                    throw new InvalidArgumentException("Existing cash amount conflicts for {$symbol} on {$date}; rebuild its history first.");
+                }
+                $this->info("{$symbol} {$date}: cash ".$values['dividend']);
+            }
+
+            if (! $preview) {
+                DB::transaction(function () use ($bySymbol, $date, $series): void {
+                    foreach ($bySymbol as $symbol => $values) {
+                        $action = BacktestNseCorporateAction::query()->where('symbol', $symbol)->whereDate('date', $date)->whereNotNull('dividend')->first();
+                        if ($action === null) {
+                            BacktestNseCorporateAction::create(['symbol' => $symbol, 'date' => $date, 'series' => $series, ...$values]);
+                        }
+                    }
+                });
+            }
+        } catch (InvalidArgumentException $exception) {
+            $this->error($exception->getMessage());
+
+            return Command::FAILURE;
         }
 
         return Command::SUCCESS;

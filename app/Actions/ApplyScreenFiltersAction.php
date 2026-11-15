@@ -35,6 +35,13 @@ class ApplyScreenFiltersAction
                 ->date;
         }
 
+        if ($screen->index === NseIndexEnum::NIFTY_FNO && ! BacktestNseInstrumentPrice::query()->where('date', $date)->where('is_nifty_fno', true)->exists()) {
+            $dateLabel = $date instanceof CarbonInterface ? $date->toDateString() : $date;
+            $this->valuationFilterWarnings[] = "F&O membership is not available for {$dateLabel}. Import the dated F&O file first.";
+
+            return collect();
+        }
+
         $query = BacktestNseInstrumentPrice::query()
             ->where('date', $date)
             ->where($screen->index->isIndexFieldName(), true)
@@ -218,6 +225,8 @@ class ApplyScreenFiltersAction
 
     protected function fetchTopDecileIds(Screen $screen, $date): array
     {
+        $constituentCount = $screen->index->numberOfConstituents()
+            ?? BacktestNseInstrumentPrice::query()->where('date', $date)->where('is_nifty_fno', true)->count();
         $query = BacktestNseInstrumentPrice::query()
             ->where('date', $date)
             ->whereNotNull($screen->sort_by)
@@ -227,11 +236,11 @@ class ApplyScreenFiltersAction
             ->select('id')
             ->limit(
                 match ($screen->apply_filters_on) {
-                    ApplyFiltersOnOptionEnum::TOP_DECILE => 0.1 * $screen->index->numberOfConstituents(),
-                    ApplyFiltersOnOptionEnum::TOP_TWO_DECILE => 0.2 * $screen->index->numberOfConstituents(),
-                    ApplyFiltersOnOptionEnum::TOP_THREE_DECILE => 0.3 * $screen->index->numberOfConstituents(),
-                    ApplyFiltersOnOptionEnum::TOP_FOUR_DECILE => 0.4 * $screen->index->numberOfConstituents(),
-                    ApplyFiltersOnOptionEnum::TOP_FIVE_DECILE => 0.5 * $screen->index->numberOfConstituents(),
+                    ApplyFiltersOnOptionEnum::TOP_DECILE => 0.1 * $constituentCount,
+                    ApplyFiltersOnOptionEnum::TOP_TWO_DECILE => 0.2 * $constituentCount,
+                    ApplyFiltersOnOptionEnum::TOP_THREE_DECILE => 0.3 * $constituentCount,
+                    ApplyFiltersOnOptionEnum::TOP_FOUR_DECILE => 0.4 * $constituentCount,
+                    ApplyFiltersOnOptionEnum::TOP_FIVE_DECILE => 0.5 * $constituentCount,
                     ApplyFiltersOnOptionEnum::TOP_50 => 50,
                     ApplyFiltersOnOptionEnum::TOP_100 => 100,
                 }
@@ -258,7 +267,7 @@ class ApplyScreenFiltersAction
 
         $query->where('median_volume_one_year', '>=', $screen->median_volume_one_year);
 
-        if (! empty($ids)) {
+        if (! empty($ids) || ($screen->index === NseIndexEnum::NIFTY_FNO && $screen->apply_filters_on !== ApplyFiltersOnOptionEnum::ALL)) {
             $query = $query->whereIn('id', $ids);
         }
 

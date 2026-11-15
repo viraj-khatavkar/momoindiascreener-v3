@@ -446,3 +446,71 @@ it('ignores legacy ex-dates in both the current and previous files', function ()
 
     expect(BacktestNseCorporateAction::query()->sole()->symbol)->toBe('TATAMOTORS');
 });
+
+it('imports a trust distribution once and retains its applied state on repeat', function () {
+    putCorporateActionsCsv('2025-08-05', [
+        ['RR', 'EMBASSY', '2025-08-05', 'Distribution Rs 5.80 Per Unit Interest Rs 0.18/Dividend Rs 2.01/Repayment Rs 3.61'],
+        ['IV', 'INDIGRID', '2025-08-05', 'Interest Rs 2 Per Unit'],
+    ]);
+    $arguments = ['--date' => '2025-08-05', '--series' => 'RR'];
+    $this->artisan('backtest:import-corporate-actions', $arguments)->assertSuccessful();
+    $action = BacktestNseCorporateAction::sole();
+    expect($action->type)->toBe(CorporateActionTypeEnum::DISTRIBUTION)->and($action->dividend)->toBe('5.8');
+    $action->update(['dividend_adjustment_factor' => '0.98', 'dividend_adjustment_applied_at' => now()]);
+    $this->artisan('backtest:import-corporate-actions', $arguments)->assertSuccessful();
+    expect(BacktestNseCorporateAction::count())->toBe(1)->and($action->fresh()->dividend_adjustment_factor)->toBe('0.98');
+});
+
+it('imports all three October distributions including NSE abbreviations without duplicates', function () {
+    $date = '2026-10-30';
+    $rows = [
+        ['IV', 'CUBEINVIT', $date, 'DISTRIBUTION - RS 3.79'],
+        ['RR', 'EMBASSY', $date, 'DISTRIBUTN- RS 7.07'],
+        ['RT', 'EMBASSY', $date, 'DISTRIBUTN- RS 7.07'],
+        ['IV', 'SEITINVIT', $date, 'DISTRIBUTN - RS 3.13984'],
+    ];
+    createBacktestPriceRow('OTHER', '2026-10-29');
+    putCorporateActionsCsv('2026-10-29', $rows);
+    putCorporateActionsCsv($date, $rows);
+
+    $this->artisan('backtest:import-corporate-actions', ['--date' => $date, '--series' => 'RR', '--omit-create' => true])
+        ->expectsOutputToContain('EMBASSY 2026-10-30: cash 7.07')
+        ->assertSuccessful();
+    $this->artisan('backtest:import-corporate-actions', ['--date' => $date, '--series' => 'IV', '--omit-create' => true])
+        ->expectsOutputToContain('CUBEINVIT 2026-10-30: cash 3.79')
+        ->expectsOutputToContain('SEITINVIT 2026-10-30: cash 3.13984')
+        ->assertSuccessful();
+    expect(BacktestNseCorporateAction::count())->toBe(0);
+
+    foreach (['RR', 'IV', 'RR', 'IV'] as $series) {
+        $this->artisan('backtest:import-corporate-actions', ['--date' => $date, '--series' => $series])->assertSuccessful();
+    }
+
+    $actions = BacktestNseCorporateAction::query()->orderBy('symbol')->get();
+    expect($actions->pluck('dividend', 'symbol')->all())->toBe([
+        'CUBEINVIT' => '3.79', 'EMBASSY' => '7.07', 'SEITINVIT' => '3.13984',
+    ])
+        ->and($actions->pluck('series')->all())->toBe(['IV', 'RR', 'IV'])
+        ->and($actions->pluck('type')->unique()->values()->all())->toBe([CorporateActionTypeEnum::DISTRIBUTION])
+        ->and($actions->pluck('date')->map->toDateString()->unique()->values()->all())->toBe([$date]);
+});
+
+it('rejects unresolved trust cash before saving any actions', function () {
+    putCorporateActionsCsv('2025-08-05', [
+        ['RR', 'EMBASSY', '2025-08-05', 'Interest Rs 1 Per Unit'],
+        ['RR', 'BIRET', '2025-08-05', 'Distribution'],
+    ]);
+    $this->artisan('backtest:import-corporate-actions', ['--date' => '2025-08-05', '--series' => 'RR'])->assertFailed();
+    expect(BacktestNseCorporateAction::count())->toBe(0);
+});
+
+it('uses the current trust cash file over its previous day copy and ignores debt repayment', function () {
+    createBacktestPriceRow('OTHER', '2025-08-04');
+    putCorporateActionsCsv('2025-08-04', [['IV', 'INDIGRID', '2025-08-05', 'Distribution Rs 3 Per Unit']]);
+    putCorporateActionsCsv('2025-08-05', [
+        ['IV', 'INDIGRID', '2025-08-05', 'Distribution Rs 4 Per Unit'],
+        ['IV', 'IRBINVIT', '2025-08-05', 'Repayment of debt Rs 3 Per Unit'],
+    ]);
+    $this->artisan('backtest:import-corporate-actions', ['--date' => '2025-08-05', '--series' => 'IV'])->assertSuccessful();
+    expect(BacktestNseCorporateAction::sole()->dividend)->toBe('4');
+});

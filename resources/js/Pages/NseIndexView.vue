@@ -32,6 +32,12 @@
                             <time :datetime="asOfDate">As of {{ formatIndexDate(asOfDate) }}</time>
                         </p>
                         <h1 class="max-w-3xl font-[Georgia,serif] text-[32px] leading-tight tracking-tight sm:text-[42px]">{{ index.symbol }}</h1>
+                        <Link
+                            v-if="constituentsUrl"
+                            :href="constituentsUrl"
+                            class="mt-3 inline-flex min-h-10 items-center rounded text-sm font-semibold text-purple-700 hover:underline focus-visible:outline-2 focus-visible:outline-purple-600"
+                            >View constituents</Link
+                        >
                     </div>
                     <div class="md:min-w-56 md:border-l md:border-[#e5e2ea] md:pl-8">
                         <p class="text-[10px] font-semibold tracking-[0.14em] text-[#706b7d] uppercase">Closing index level</p>
@@ -232,6 +238,7 @@ interface YearRow {
 const props = defineProps<{
     index: NseIndex;
     slug: string;
+    constituentsUrl: string | null;
     availableIndices: { slug: string; symbol: string }[];
     priceHistory?: DataPoint[];
     metricHistory?: MetricHistory;

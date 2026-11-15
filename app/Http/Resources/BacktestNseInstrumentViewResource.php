@@ -2,6 +2,7 @@
 
 namespace App\Http\Resources;
 
+use App\Enums\NseIndexEnum;
 use App\Models\BacktestNseInstrumentPrice;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
@@ -75,21 +76,14 @@ class BacktestNseInstrumentViewResource extends JsonResource
             'series' => $this->series ?? '-',
             'beta' => round($this->beta, 2),
             'median_volume_one_year' => round($this->median_volume_one_year / 10000000, 2),
-            'indices' => array_values(array_filter([
-                $this->is_nifty_50 ? 'Nifty 50' : null,
-                $this->is_nifty_next_50 ? 'Nifty Next 50' : null,
-                $this->is_nifty_100 ? 'Nifty 100' : null,
-                $this->is_nifty_200 ? 'Nifty 200' : null,
-                $this->is_nifty_midcap_100 ? 'Nifty Midcap 100' : null,
-                $this->is_nifty_midcap_150 ? 'Nifty Midcap 150' : null,
-                $this->is_nifty_500 ? 'Nifty 500' : null,
-                $this->is_nifty_total_market ? 'Nifty Total Market' : null,
-                $this->is_nifty_smallcap_250 ? 'Nifty Smallcap 250' : null,
-                $this->is_nifty_microcap_250 ? 'Nifty Microcap 250' : null,
-                $this->is_nifty_largemidcap_250 ? 'Nifty LargeMidcap 250' : null,
-                $this->is_nifty_midsmallcap_400 ? 'Nifty MidSmallcap 400' : null,
-                $this->is_nifty_allcap ? 'Nifty Allcap' : null,
-            ])),
+            'indices' => collect(NseIndexEnum::cases())
+                ->reject(fn (NseIndexEnum $index): bool => $index === NseIndexEnum::NIFTY_ETF)
+                ->filter(fn (NseIndexEnum $index): bool => (bool) $this->{$index->isIndexFieldName()})
+                ->map(fn (NseIndexEnum $index): array => [
+                    'name' => $index->label(),
+                    'slug' => $index->slug(),
+                    'url' => route('nse-index.constituents.index', ['slug' => $index->slug(), 'date' => $this->date->toDateString()], false),
+                ])->values()->all(),
         ];
     }
 }

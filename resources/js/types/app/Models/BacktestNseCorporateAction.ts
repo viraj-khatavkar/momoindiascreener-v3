@@ -3,7 +3,7 @@ export interface BacktestNseCorporateAction {
     date: string;
     symbol: string;
     series: string | null;
-    type: 'bonus' | 'split' | 'dividend' | 'rights' | 'demerger' | null;
+    type: 'bonus' | 'split' | 'dividend' | 'distribution' | 'interest' | 'rights' | 'demerger' | null;
     description: string | null;
     ratio: string | null;
     dividend: string | null;

@@ -12,6 +12,8 @@ enum CorporateActionTypeEnum: string implements ResolveDisplayableValueListForEn
     case BONUS = 'bonus';
     case SPLIT = 'split';
     case DIVIDEND = 'dividend';
+    case DISTRIBUTION = 'distribution';
+    case INTEREST = 'interest';
     case RIGHTS = 'rights';
     case DEMERGER = 'demerger';
 }
