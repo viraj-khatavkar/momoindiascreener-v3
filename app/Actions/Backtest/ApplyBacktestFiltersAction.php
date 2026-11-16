@@ -2,21 +2,26 @@
 
 namespace App\Actions\Backtest;
 
+use App\Actions\RankInstrumentsAction;
 use App\Enums\ApplyFiltersOnOptionEnum;
 use App\Enums\NseIndexEnum;
 use App\Models\Backtest;
 use App\Models\BacktestNseInstrumentPrice;
 use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Support\Collection;
 
 class ApplyBacktestFiltersAction
 {
+    public function __construct(private RankInstrumentsAction $rankInstruments) {}
+
     public function execute(Backtest $backtest, $date)
     {
         $query = BacktestNseInstrumentPrice::query()
             ->where('date', $date)
             ->where($backtest->index->isIndexFieldName(), true)
             ->whereNotNull($backtest->sort_by)
-            ->orderBy($backtest->sort_by, $backtest->sort_direction);
+            ->orderBy($backtest->sort_by, $backtest->sort_direction)
+            ->orderBy('symbol');
 
         if ($backtest->apply_filters_on == ApplyFiltersOnOptionEnum::ALL) {
             $query = $this->applyFilters($query, $backtest);
@@ -39,7 +44,7 @@ class ApplyBacktestFiltersAction
         });
     }
 
-    protected function applyCombinedRanking(Builder $query, Backtest $backtest)
+    protected function applyCombinedRanking(Builder $query, Backtest $backtest): Collection
     {
         if ($backtest->apply_factor_two) {
             $query->whereNotNull($backtest->factor_two_sort_by);
@@ -49,48 +54,7 @@ class ApplyBacktestFiltersAction
             $query->whereNotNull($backtest->factor_three_sort_by);
         }
 
-        $instruments = $query->get();
-
-        $rank = 0;
-        $instruments = $instruments->when($backtest->sort_direction == 'asc', function ($query) use ($backtest) {
-            return $query->sortBy($backtest->sort_by);
-        })->when($backtest->sort_direction == 'desc', function ($query) use ($backtest) {
-            return $query->sortByDesc($backtest->sort_by);
-        })->map(function ($instrument) use (&$rank) {
-            $instrument->factor_one_rank = $rank = $rank + 1;
-
-            return $instrument;
-        });
-
-        $rank = 0;
-        if ($backtest->apply_factor_two) {
-            $instruments = $instruments->when($backtest->factor_two_sort_direction == 'asc', function ($query) use ($backtest) {
-                return $query->sortBy($backtest->factor_two_sort_by);
-            })->when($backtest->factor_two_sort_direction == 'desc', function ($query) use ($backtest) {
-                return $query->sortByDesc($backtest->factor_two_sort_by);
-            })->map(function ($instrument) use (&$rank) {
-                $instrument->factor_two_rank = $rank = $rank + 1;
-
-                return $instrument;
-            });
-        }
-
-        $rank = 0;
-        if ($backtest->apply_factor_three) {
-            $instruments = $instruments->when($backtest->factor_three_sort_direction == 'asc', function ($query) use ($backtest) {
-                return $query->sortBy($backtest->factor_three_sort_by);
-            })->when($backtest->factor_three_sort_direction == 'desc', function ($query) use ($backtest) {
-                return $query->sortByDesc($backtest->factor_three_sort_by);
-            })->map(function ($instrument) use (&$rank) {
-                $instrument->factor_three_rank = $rank = $rank + 1;
-
-                return $instrument;
-            });
-        }
-
-        return $instruments->sortBy(function ($instrument) {
-            return $instrument->factor_one_rank + $instrument->factor_two_rank + $instrument->factor_three_rank;
-        });
+        return $this->rankInstruments->execute($query->get(), $backtest);
     }
 
     protected function fetchTopDecileIds(Backtest $backtest, $date): array
@@ -103,6 +67,7 @@ class ApplyBacktestFiltersAction
             ->where($backtest->index->isIndexFieldName(), true);
 
         return $query->orderBy($backtest->sort_by, $backtest->sort_direction)
+            ->orderBy('symbol')
             ->select('id')
             ->limit(
                 match ($backtest->apply_filters_on) {

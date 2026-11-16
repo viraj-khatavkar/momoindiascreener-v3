@@ -9,6 +9,7 @@
         <p class="mt-2 text-2xl font-bold" :class="valueClasses">
             {{ value }}
         </p>
+        <slot />
     </div>
 </template>
 

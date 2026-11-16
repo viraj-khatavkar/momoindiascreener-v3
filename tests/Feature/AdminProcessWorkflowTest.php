@@ -844,6 +844,98 @@ it('runs the index import through the queue and blocks market cap until it compl
     $this->post("/admin/process-runs/{$run->id}/steps/{$marketcapStep->id}/run")->assertSessionHasNoErrors();
 });
 
+it('repeats a completed index import without changing other steps or losing output', function (bool $completedRun) {
+    Queue::fake();
+    Process::fake();
+    $run = app(CreateAdminProcessRunAction::class)->execute($this->admin, '2026-02-17');
+    $indexStep = $run->steps->firstWhere('key', 'import-indices');
+    $run->steps()
+        ->when(! $completedRun, fn ($query) => $query->where('position', '<=', $indexStep->position))
+        ->update(['status' => AdminProcessStepStatusEnum::Completed, 'attempts' => 1, 'exit_code' => 0, 'completed_at' => now()]);
+    $runStatus = $completedRun ? AdminProcessRunStatusEnum::Completed : AdminProcessRunStatusEnum::InProgress;
+    $run->update(['status' => $runStatus, 'completed_at' => $completedRun ? now() : null]);
+    $originalOutput = AdminProcessOutputChunk::factory()->create([
+        'admin_process_step_id' => $indexStep->id,
+        'output' => "Original index import.\n",
+    ]);
+    $otherSteps = $run->steps()->whereKeyNot($indexStep->id)->get()->toArray();
+    $this->actingAs($this->admin);
+
+    foreach ([2, 3] as $attempt) {
+        $this->get("/admin/process-runs/{$run->id}")
+            ->assertInertia(fn (Assert $page) => $page
+                ->where('processRun.steps.15.can_run', true)
+                ->where('processRun.steps.16.can_run', ! $completedRun));
+
+        $this->post("/admin/process-runs/{$run->id}/steps/{$indexStep->id}/run")
+            ->assertSessionHasNoErrors();
+        expect($indexStep->fresh()->status)->toBe(AdminProcessStepStatusEnum::Queued);
+
+        $this->post("/admin/process-runs/{$run->id}/steps/{$indexStep->id}/run")
+            ->assertSessionHasErrors('step');
+        $this->getJson("/admin/process-runs/{$run->id}/updates")
+            ->assertJsonPath('run.steps.15.can_run', false)
+            ->assertJsonPath('run.steps.16.can_run', false);
+
+        (new RunAdminProcessStepJob($indexStep->fresh()))->handle(app(BuildDailyProcessStepsAction::class));
+
+        expect($indexStep->fresh()->status)->toBe(AdminProcessStepStatusEnum::Completed)
+            ->and($indexStep->fresh()->attempts)->toBe($attempt)
+            ->and($run->fresh()->status)->toBe($runStatus)
+            ->and($run->steps()->whereKeyNot($indexStep->id)->get()->toArray())->toBe($otherSteps)
+            ->and($originalOutput->fresh()->output)->toBe("Original index import.\n");
+    }
+
+    Queue::assertPushed(RunAdminProcessStepJob::class, 2);
+    Process::assertRanTimes(fn (PendingProcess $process): bool => $process->command === [
+        PHP_BINARY, base_path('artisan'), 'nse:import-indices', '--date=2026-02-17', '--no-interaction', '--no-ansi',
+    ], 2);
+})->with(['completed run' => [true], 'unfinished run' => [false]]);
+
+it('keeps every other completed command locked', function () {
+    Queue::fake();
+    $run = app(CreateAdminProcessRunAction::class)->execute($this->admin, '2026-02-17');
+    $run->steps()->update(['status' => AdminProcessStepStatusEnum::Completed]);
+    $this->actingAs($this->admin);
+
+    $response = $this->getJson("/admin/process-runs/{$run->id}/updates");
+
+    foreach ($run->steps as $position => $step) {
+        if ($step->key === 'import-indices') {
+            continue;
+        }
+
+        $response->assertJsonPath("run.steps.{$position}.can_run", false);
+        $this->post("/admin/process-runs/{$run->id}/steps/{$step->id}/run")
+            ->assertSessionHasErrors('step');
+        expect($step->fresh()->status)->toBe(AdminProcessStepStatusEnum::Completed);
+    }
+
+    Queue::assertNothingPushed();
+});
+
+it('blocks index reimports while another step is active or a prior step is incomplete', function (string $blockerKey, AdminProcessStepStatusEnum $status) {
+    Queue::fake();
+    $run = app(CreateAdminProcessRunAction::class)->execute($this->admin, '2026-02-17');
+    $run->steps()->update(['status' => AdminProcessStepStatusEnum::Completed]);
+    $indexStep = $run->steps->firstWhere('key', 'import-indices');
+    $run->steps->firstWhere('key', $blockerKey)->fresh()->update(['status' => $status]);
+
+    $this->actingAs($this->admin)
+        ->getJson("/admin/process-runs/{$run->id}/updates")
+        ->assertJsonPath('run.steps.15.can_run', false);
+    $this->post("/admin/process-runs/{$run->id}/steps/{$indexStep->id}/run")
+        ->assertSessionHasErrors('step');
+
+    expect($indexStep->fresh()->status)->toBe(AdminProcessStepStatusEnum::Completed);
+    Queue::assertNothingPushed();
+})->with([
+    'later step queued' => ['import-marketcap', AdminProcessStepStatusEnum::Queued],
+    'later step running' => ['import-marketcap', AdminProcessStepStatusEnum::Running],
+    'prior step pending' => ['apply-corporate-action', AdminProcessStepStatusEnum::Pending],
+    'prior step failed' => ['apply-corporate-action', AdminProcessStepStatusEnum::Failed],
+]);
+
 it('adds index imports only to eligible unfinished runs and keeps their saved results', function (string $date, AdminProcessRunStatusEnum $status) {
     $run = AdminProcessRun::factory()->create([
         'user_id' => $this->admin->id, 'process_date' => $date, 'status' => $status,

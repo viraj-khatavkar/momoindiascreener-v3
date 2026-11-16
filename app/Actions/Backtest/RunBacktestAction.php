@@ -18,7 +18,7 @@ use Illuminate\Validation\ValidationException;
 
 class RunBacktestAction
 {
-    private const DEFAULT_START_DATE = '2011-01-05';
+    private const DEFAULT_START_DATE = BacktestSortDateAction::DEFAULT_START_DATE;
 
     /** Buy-side cost fraction derived from the backtest's configured rates. */
     private float $buyCostRate = 0;
@@ -77,10 +77,12 @@ class RunBacktestAction
         private BacktestNavSourceAction $navSource,
         private LoadBacktestIndexDataAction $indexDataLoader,
         private BacktestTradingCalendarAction $tradingCalendar,
+        private BacktestSortDateAction $sortDates,
     ) {}
 
     public function execute(Backtest $backtest, ?string $throughDate = null): void
     {
+        $this->sortDates->validate($backtest);
         $this->validateFnoMembership($backtest, $throughDate);
         $this->initialCapital = (float) $backtest->initial_capital;
         $this->cash = $this->initialCapital;
@@ -220,6 +222,7 @@ class RunBacktestAction
 
     public function validateDataAvailability(Backtest $backtest, ?string $throughDate = null, bool $validateSourceNav = true): void
     {
+        $this->sortDates->validate($backtest);
         $this->validateFnoMembership($backtest, $throughDate);
         $dates = $this->tradingCalendar->latestDates(
             $backtest->index,

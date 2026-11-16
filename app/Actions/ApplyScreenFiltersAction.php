@@ -18,6 +18,8 @@ class ApplyScreenFiltersAction
     /** @var list<string> */
     private array $valuationFilterWarnings = [];
 
+    public function __construct(private RankInstrumentsAction $rankInstruments) {}
+
     /**
      * @return Collection<int, BacktestNseInstrumentPrice>
      */
@@ -35,6 +37,23 @@ class ApplyScreenFiltersAction
                 ->date;
         }
 
+        return $this->filterOnDate($screen, $date, $all);
+    }
+
+    /** @return Collection<int, BacktestNseInstrumentPrice> */
+    public function executeOnDate(Screen $screen, CarbonInterface|string $date, bool $all = false): Collection
+    {
+        $datedScreen = clone $screen;
+        $datedScreen->apply_historical_date = true;
+
+        return $this->filterOnDate($datedScreen, $date, $all);
+    }
+
+    /** @return Collection<int, BacktestNseInstrumentPrice> */
+    protected function filterOnDate(Screen $screen, CarbonInterface|string $date, bool $all): Collection
+    {
+        $this->valuationFilterWarnings = [];
+
         if ($screen->index === NseIndexEnum::NIFTY_FNO && ! BacktestNseInstrumentPrice::query()->where('date', $date)->where('is_nifty_fno', true)->exists()) {
             $dateLabel = $date instanceof CarbonInterface ? $date->toDateString() : $date;
             $this->valuationFilterWarnings[] = "F&O membership is not available for {$dateLabel}. Import the dated F&O file first.";
@@ -46,7 +65,8 @@ class ApplyScreenFiltersAction
             ->where('date', $date)
             ->where($screen->index->isIndexFieldName(), true)
             ->whereNotNull($screen->sort_by)
-            ->orderBy($screen->sort_by, $screen->sort_direction);
+            ->orderBy($screen->sort_by, $screen->sort_direction)
+            ->orderBy('symbol');
 
         $query = $this->valuationFilters($query, $screen, $date);
 
@@ -169,7 +189,7 @@ class ApplyScreenFiltersAction
         return $query;
     }
 
-    protected function applyCombinedRanking(Builder $query, Screen $screen)
+    protected function applyCombinedRanking(Builder $query, Screen $screen): Collection
     {
         if ($screen->apply_factor_two) {
             $query->whereNotNull($screen->factor_two_sort_by);
@@ -181,46 +201,7 @@ class ApplyScreenFiltersAction
 
         $instruments = $this->uniqueEtfsPerIndex($query->get(), $screen);
 
-        $rank = 0;
-        $instruments = $instruments->when($screen->sort_direction == 'asc', function ($query) use ($screen) {
-            return $query->sortBy($screen->sort_by);
-        })->when($screen->sort_direction == 'desc', function ($query) use ($screen) {
-            return $query->sortByDesc($screen->sort_by);
-        })->map(function ($instrument) use (&$rank) {
-            $instrument->factor_one_rank = $rank = $rank + 1;
-
-            return $instrument;
-        });
-
-        $rank = 0;
-        if ($screen->apply_factor_two) {
-            $instruments = $instruments->when($screen->factor_two_sort_direction == 'asc', function ($query) use ($screen) {
-                return $query->sortBy($screen->factor_two_sort_by);
-            })->when($screen->factor_two_sort_direction == 'desc', function ($query) use ($screen) {
-                return $query->sortByDesc($screen->factor_two_sort_by);
-            })->map(function ($instrument) use (&$rank) {
-                $instrument->factor_two_rank = $rank = $rank + 1;
-
-                return $instrument;
-            });
-        }
-
-        $rank = 0;
-        if ($screen->apply_factor_three) {
-            $instruments = $instruments->when($screen->factor_three_sort_direction == 'asc', function ($query) use ($screen) {
-                return $query->sortBy($screen->factor_three_sort_by);
-            })->when($screen->factor_three_sort_direction == 'desc', function ($query) use ($screen) {
-                return $query->sortByDesc($screen->factor_three_sort_by);
-            })->map(function ($instrument) use (&$rank) {
-                $instrument->factor_three_rank = $rank = $rank + 1;
-
-                return $instrument;
-            });
-        }
-
-        return $instruments->sortBy(function ($instrument) {
-            return $instrument->factor_one_rank + $instrument->factor_two_rank + $instrument->factor_three_rank;
-        });
+        return $this->rankInstruments->execute($instruments, $screen);
     }
 
     protected function fetchTopDecileIds(Screen $screen, $date): array
@@ -233,6 +214,7 @@ class ApplyScreenFiltersAction
             ->where($screen->index->isIndexFieldName(), true);
 
         return $query->orderBy($screen->sort_by, $screen->sort_direction)
+            ->orderBy('symbol')
             ->select('id')
             ->limit(
                 match ($screen->apply_filters_on) {

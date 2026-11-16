@@ -495,6 +495,44 @@ it('imports all three October distributions including NSE abbreviations without 
         ->and($actions->pluck('date')->map->toDateString()->unique()->values()->all())->toBe([$date]);
 });
 
+it('imports the November IRBIT distribution once from its abbreviated purpose', function () {
+    $date = '2026-11-06';
+    $rows = [
+        ['IV', 'INDUSINVIT', $date, 'DISTRIBUTION - RS. 3.55'],
+        ['IV', 'IRBIT', $date, 'DISTRBUTN - RS 1.97 PU'],
+        ['IV', 'NDRINVIT', $date, 'DISTRIBUTN - RS 2 PU'],
+        ['IV', 'SHREMINVIT', $date, 'DISTRIBUTION - RS 3 PER UNIT'],
+        ['IV', 'INTERISE', '2026-11-09', 'DISTRIBUTION - RS 2.05'],
+    ];
+    createBacktestPriceRow('OTHER', '2026-11-05');
+    putCorporateActionsCsv('2026-11-05', $rows);
+    putCorporateActionsCsv($date, $rows);
+    $arguments = ['--date' => $date, '--series' => 'IV'];
+
+    $this->artisan('backtest:import-corporate-actions', [...$arguments, '--omit-create' => true])
+        ->expectsOutputToContain('IRBIT 2026-11-06: cash 1.97')
+        ->assertSuccessful();
+    expect(BacktestNseCorporateAction::count())->toBe(0);
+
+    $this->artisan('backtest:import-corporate-actions', $arguments)->assertSuccessful();
+
+    $action = BacktestNseCorporateAction::query()->where('symbol', 'IRBIT')->sole();
+    expect($action->date->toDateString())->toBe($date)
+        ->and($action->series)->toBe('IV')
+        ->and($action->type)->toBe(CorporateActionTypeEnum::DISTRIBUTION)
+        ->and($action->dividend)->toBe('1.97')
+        ->and($action->description)->toBe('DISTRBUTN - RS 1.97 PU');
+
+    $action->update(['dividend_adjustment_factor' => '0.9803', 'dividend_adjustment_applied_at' => now()]);
+    $this->artisan('backtest:import-corporate-actions', $arguments)->assertSuccessful();
+
+    expect(BacktestNseCorporateAction::query()->orderBy('symbol')->pluck('dividend', 'symbol')->all())->toBe([
+        'INDUSINVIT' => '3.55', 'IRBIT' => '1.97', 'NDRINVIT' => '2', 'SHREMINVIT' => '3',
+    ])
+        ->and($action->fresh()->dividend_adjustment_factor)->toBe('0.9803')
+        ->and($action->fresh()->dividend_adjustment_applied_at->equalTo($action->dividend_adjustment_applied_at))->toBeTrue();
+});
+
 it('rejects unresolved trust cash before saving any actions', function () {
     putCorporateActionsCsv('2025-08-05', [
         ['RR', 'EMBASSY', '2025-08-05', 'Interest Rs 1 Per Unit'],

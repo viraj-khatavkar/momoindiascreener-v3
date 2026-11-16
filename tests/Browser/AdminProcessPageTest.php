@@ -1,10 +1,58 @@
 <?php
 
+use App\Actions\AdminProcess\BuildDailyProcessStepsAction;
 use App\Actions\AdminProcess\CreateAdminProcessRunAction;
 use App\Enums\AdminProcessRunStatusEnum;
 use App\Enums\AdminProcessStepStatusEnum;
+use App\Jobs\RunAdminProcessStepJob;
 use App\Models\AdminProcessOutputChunk;
 use App\Models\User;
+use Illuminate\Support\Facades\Process;
+use Illuminate\Support\Facades\Queue;
+
+it('repeats the index import from its command block and resumes live output', function () {
+    Queue::fake();
+    Process::fake();
+    $admin = User::factory()->create(['is_admin' => true]);
+    $run = app(CreateAdminProcessRunAction::class)->execute($admin, '2026-02-17');
+    $indexStep = $run->steps->firstWhere('key', 'import-indices');
+    $run->steps()->update([
+        'status' => AdminProcessStepStatusEnum::Completed,
+        'attempts' => 1,
+        'started_at' => now()->subSecond(),
+        'completed_at' => now(),
+    ]);
+    $run->update(['status' => AdminProcessRunStatusEnum::Completed, 'completed_at' => now()]);
+    AdminProcessOutputChunk::factory()->create([
+        'admin_process_step_id' => $indexStep->id,
+        'output' => "Original index import.\n",
+    ]);
+    $this->actingAs($admin);
+
+    $page = visit("/admin/process-runs/{$run->id}")
+        ->assertSee('Daily processing is complete.')
+        ->assertSeeIn("#step-{$indexStep->id}", 'Import indices again')
+        ->assertDontSee('Go to next step')
+        ->click("#step-{$indexStep->id} button:has-text('Show terminal output')")
+        ->assertSeeIn("#process-output-{$indexStep->id}", 'Original index import.');
+
+    foreach ([2, 3] as $attempt) {
+        $page->click('Import indices again')
+            ->assertSeeIn("#step-{$indexStep->id}", 'Waiting for a queue worker')
+            ->assertDontSee('Import indices again');
+
+        (new RunAdminProcessStepJob($indexStep->fresh()))->handle(app(BuildDailyProcessStepsAction::class));
+
+        $page->assertSeeIn("#process-output-{$indexStep->id}", "--- Retry {$attempt} ---")
+            ->assertSeeIn("#process-output-{$indexStep->id}", 'Original index import.')
+            ->assertSee('Daily processing is complete.')
+            ->assertSeeIn("#step-{$indexStep->id}", 'Import indices again')
+            ->assertDontSee('Go to next step')
+            ->assertNoJavaScriptErrors();
+    }
+
+    Queue::assertPushed(RunAdminProcessStepJob::class, 2);
+});
 
 it('shows market cap and adjusted PE imports before marking ETFs', function () {
     $admin = User::factory()->create(['is_admin' => true]);

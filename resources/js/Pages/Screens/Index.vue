@@ -8,12 +8,21 @@
                     <h1 class="text-3xl font-bold text-gray-900">Screens</h1>
                     <p class="mt-2 text-sm text-gray-600">Create and manage your stock screens</p>
                 </div>
-                <Link
-                    href="/screens/create"
-                    class="inline-flex items-center rounded-lg bg-purple-600 px-5 py-2.5 text-sm font-semibold text-white shadow-xs transition-all duration-200 hover:bg-purple-500 hover:shadow-md"
-                >
-                    Create New Screen
-                </Link>
+                <div class="flex flex-wrap gap-3">
+                    <Link
+                        v-if="exportUrl"
+                        :href="exportUrl"
+                        class="inline-flex items-center rounded-lg border border-purple-200 px-5 py-2.5 text-sm font-semibold text-purple-700 hover:bg-purple-50"
+                    >
+                        Historical ZIP Downloads
+                    </Link>
+                    <Link
+                        href="/screens/create"
+                        class="inline-flex items-center rounded-lg bg-purple-600 px-5 py-2.5 text-sm font-semibold text-white shadow-xs transition-all duration-200 hover:bg-purple-500 hover:shadow-md"
+                    >
+                        Create New Screen
+                    </Link>
+                </div>
             </div>
 
             <div v-if="publicScreens.length > 0" class="mb-16">
@@ -63,5 +72,6 @@ import type { Screen } from '@/types/app/Models/Screen';
 defineProps<{
     screens: Screen[];
     publicScreens: Screen[];
+    exportUrl: string | null;
 }>();
 </script>

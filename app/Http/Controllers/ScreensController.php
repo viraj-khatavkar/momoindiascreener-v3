@@ -21,6 +21,7 @@ class ScreensController extends Controller
     public function index(Request $request)
     {
         return inertia('Screens/Index', [
+            'exportUrl' => $request->user()?->is_paid ? route('screen-exports.index') : null,
             'publicScreens' => Screen::whereIn('id', Screen::PUBLIC_SCREENS)->get(),
             'screens' => $request->user() ? $request->user()->screens : [],
         ]);
@@ -63,7 +64,9 @@ class ScreensController extends Controller
         })->sortBy('sort_order')->values()->all();
 
         return inertia('Screens/Show', [
+            'exportUrl' => $request->user()?->is_paid ? route('screen-exports.index', ['screen' => $screen->id]) : null,
             'screen' => $screen,
+            'duplicateUrl' => $request->user()?->can('duplicate', $screen) ? route('screens.duplicate', $screen) : null,
             'indices' => array_values(NseIndexEnum::getOptionsForFilters()),
             'sortByOptions' => array_values(ScreenSortByOptionEnum::getOptionsForFilters()),
             'applyFiltersOnOptions' => array_values(ApplyFiltersOnOptionEnum::getOptionsForFilters()),
@@ -96,7 +99,9 @@ class ScreensController extends Controller
         })->sortBy('sort_order')->values()->all();
 
         return inertia('Screens/Edit', [
+            'exportUrl' => $request->user()->is_paid ? route('screen-exports.index', ['screen' => $screen->id]) : null,
             'screen' => $screen,
+            'duplicateUrl' => $request->user()->can('duplicate', $screen) ? route('screens.duplicate', $screen) : null,
             'indices' => array_values(NseIndexEnum::getOptionsForFilters()),
             'sortByOptions' => array_values(ScreenSortByOptionEnum::getOptionsForFilters()),
             'applyFiltersOnOptions' => array_values(ApplyFiltersOnOptionEnum::getOptionsForFilters()),

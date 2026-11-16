@@ -1,6 +1,7 @@
 <?php
 
 use App\Models\NseIndex;
+use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\Storage;
 
 beforeEach(function () {
@@ -17,6 +18,12 @@ it('imports the uploaded index format and keeps turnover in crores', function ()
 
     $this->artisan('nse:import-indices', ['--date' => '2026-02-17'])
         ->expectsOutputToContain('4 indices imported for 2026-02-17.')
+        ->expectsOutputToContain('Added: 4. Updated: 0. Unchanged: 0.')
+        ->expectsOutputToContain('New index imported: Nifty 50')
+        ->expectsOutputToContain('New index imported: India VIX')
+        ->expectsOutputToContain('New index imported: Nifty50 Dividend Points')
+        ->expectsOutputToContain('New index imported: Nifty Total Market')
+        ->expectsOutputToContain('Import historical data for these indices.')
         ->assertSuccessful();
 
     $nifty = NseIndex::query()->where('slug', 'nifty-50')->sole();
@@ -100,24 +107,91 @@ it('can repeat and complete an import without duplicates or changes to other dat
     $previous = NseIndex::query()->sole()->getAttributes();
 
     Storage::put('uploads/2026-02-17/index.csv', $this->indexCsvHeader."\nNifty 50,17-02-2026,100,110,90,105,5,5,10,20,21,3,1\n");
-    $this->artisan('nse:import-indices', ['--date' => '2026-02-17'])->assertSuccessful();
+    $this->artisan('nse:import-indices', ['--date' => '2026-02-17'])
+        ->expectsOutputToContain('Added: 1. Updated: 0. Unchanged: 0.')
+        ->assertSuccessful();
     $indexId = NseIndex::query()->where('date', '2026-02-17')->sole()->id;
 
     Storage::put('uploads/2026-02-17/index.csv', $this->indexCsvHeader."\n"
-        ."NIFTY 50,17-02-2026,100,120,90,115,15,15,20,40,22,4,2\n"
+        ."NIFTY 50,17-02-2026,101,120,91,115,15,15,20,40,22,4,2\n"
         ."India VIX,17-02-2026,13.33,13.4775,11.625,12.67,-0.66,-4.93,-,-,-,-,-\n");
 
     for ($attempt = 0; $attempt < 2; $attempt++) {
-        $this->artisan('nse:import-indices', ['--date' => '2026-02-17'])->assertSuccessful();
+        $this->artisan('nse:import-indices', ['--date' => '2026-02-17'])
+            ->expectsOutputToContain($attempt === 0
+                ? 'Added: 1. Updated: 1. Unchanged: 0.'
+                : 'Added: 0. Updated: 0. Unchanged: 2.')
+            ->assertSuccessful();
         $index = NseIndex::query()->findOrFail($indexId);
 
         expect(NseIndex::query()->count())->toBe(3)
-            ->and($index->close)->toBe('115.00')
-            ->and($index->symbol)->toBe('NIFTY 50')
-            ->and($index->price_to_earnings)->toBe('22.00')
+            ->and($index->only([
+                'symbol', 'open', 'high', 'low', 'close', 'points_change', 'percentage_change',
+                'volume', 'turnover', 'price_to_earnings', 'price_to_book', 'dividend_yield',
+            ]))->toBe([
+                'symbol' => 'NIFTY 50', 'open' => '101.00', 'high' => '120.00', 'low' => '91.00',
+                'close' => '115.00', 'points_change' => '15.00', 'percentage_change' => '15.00',
+                'volume' => 20, 'turnover' => '40.00', 'price_to_earnings' => '22.00',
+                'price_to_book' => '4.00', 'dividend_yield' => '2.00',
+            ])
             ->and(NseIndex::query()->where('date', '2026-02-16')->sole()->getAttributes())->toBe($previous);
     }
 });
+
+it('keeps stored indices omitted from a later partial file and does not rewrite matching values', function () {
+    Storage::put('uploads/2026-02-17/index.csv', $this->indexCsvHeader."\n"
+        ."Nifty 50,17-02-2026,100,110,90,105,5,5,10,20,21,3,1\n"
+        ."Nifty Auto,17-02-2026,200,220,190,210,10,5,20,40,22,4,2\n");
+    $this->artisan('nse:import-indices', ['--date' => '2026-02-17'])->assertSuccessful();
+    $nifty = NseIndex::query()->where('slug', 'nifty-50')->sole()->getAttributes();
+    $auto = NseIndex::query()->where('slug', 'nifty-auto')->sole()->getAttributes();
+
+    Storage::put('uploads/2026-02-17/index.csv', $this->indexCsvHeader."\n"
+        ."Nifty Auto,17-02-2026,200.0,220.00,190.000,210.00,10.00,5.00,20,40.00,22.00,4.00,2.00\n"
+        ."India VIX,17-02-2026,13.33,13.4775,11.625,12.67,-0.66,-4.93,-,-,-,-,-\n");
+
+    Event::fake(['eloquent.updated: '.NseIndex::class]);
+
+    $this->artisan('nse:import-indices', ['--date' => '2026-02-17'])
+        ->expectsOutputToContain('Added: 1. Updated: 0. Unchanged: 1.')
+        ->expectsOutputToContain('New index imported: India VIX')
+        ->assertSuccessful();
+
+    $this->artisan('nse:import-indices', ['--date' => '2026-02-17'])
+        ->expectsOutputToContain('Added: 0. Updated: 0. Unchanged: 2.')
+        ->doesntExpectOutputToContain('New index imported:')
+        ->assertSuccessful();
+
+    Event::assertNotDispatched('eloquent.updated: '.NseIndex::class);
+
+    expect(NseIndex::query()->count())->toBe(3)
+        ->and(NseIndex::query()->where('slug', 'nifty-50')->sole()->getAttributes())->toBe($nifty)
+        ->and(NseIndex::query()->where('slug', 'nifty-auto')->sole()->getAttributes())->toBe($auto);
+});
+
+it('updates valuations when the closing value has not changed', function (int $column, string $field, string $value, ?string $expected) {
+    $row = ['Nifty 50', '17-02-2026', '100', '110', '90', '105', '5', '5', '10', '20', '-', '3', '1'];
+    Storage::put('uploads/2026-02-17/index.csv', $this->indexCsvHeader."\n".implode(',', $row)."\n");
+    $this->artisan('nse:import-indices', ['--date' => '2026-02-17'])->assertSuccessful();
+    $index = NseIndex::query()->sole();
+    $before = $index->getAttributes();
+
+    $row[$column] = $value;
+    Storage::put('uploads/2026-02-17/index.csv', $this->indexCsvHeader."\n".implode(',', $row)."\n");
+
+    $this->artisan('nse:import-indices', ['--date' => '2026-02-17'])
+        ->expectsOutputToContain('Added: 0. Updated: 1. Unchanged: 0.')
+        ->doesntExpectOutputToContain('New index imported:')
+        ->assertSuccessful();
+
+    expect(NseIndex::query()->count())->toBe(1)
+        ->and($index->fresh()->getAttributes())->toBe([...$before, $field => $expected]);
+})->with([
+    'late P/E' => [10, 'price_to_earnings', '22', '22.00'],
+    'corrected P/B' => [11, 'price_to_book', '4', '4.00'],
+    'zero dividend yield' => [12, 'dividend_yield', '0', '0.00'],
+    'unavailable P/B' => [11, 'price_to_book', '-', null],
+]);
 
 it('checks an import without inserting or updating records', function () {
     Storage::put('uploads/2026-02-17/index.csv', $this->indexCsvHeader."\nNifty 50,17-02-2026,100,110,90,105,5,5,10,20,21,3,1\n");
@@ -130,10 +204,42 @@ it('checks an import without inserting or updating records', function () {
 
     $this->artisan('nse:import-indices', ['--date' => '2026-02-17', '--omit-create' => true])
         ->expectsOutputToContain('2 indices checked. No records saved.')
+        ->doesntExpectOutputToContain('New index imported:')
         ->assertSuccessful();
 
     expect(NseIndex::query()->sole()->getAttributes())->toBe($before);
 });
+
+it('reports only indices with no stored history and does not repeat the message', function (string $knownDate, string $knownFileDate) {
+    Storage::put("uploads/{$knownDate}/index.csv", $this->indexCsvHeader."\n"
+        ."Nifty 50,{$knownFileDate},100,110,90,105,5,5,10,20,21,3,1\n");
+    $this->artisan('nse:import-indices', ['--date' => $knownDate])->assertSuccessful();
+
+    Storage::put('uploads/2026-02-17/index.csv', $this->indexCsvHeader."\n"
+        ."NIFTY 50,17-02-2026,100,110,90,105,5,5,10,20,21,3,1\n"
+        ."Nifty 1000,17-02-2026,-,-,-,1000,5,0.5,-,-,21,3,1\n"
+        ."Nifty1000 Equal Weight,17-02-2026,-,-,-,1100,10,1,-,-,22,4,1\n");
+
+    $this->artisan('nse:import-indices', ['--date' => '2026-02-17'])
+        ->expectsOutputToContain('3 indices imported for 2026-02-17.')
+        ->expectsOutputToContain('New index imported: Nifty 1000')
+        ->expectsOutputToContain('New index imported: Nifty1000 Equal Weight')
+        ->doesntExpectOutputToContain('New index imported: NIFTY 50')
+        ->expectsOutputToContain('Import historical data for these indices.')
+        ->assertSuccessful();
+
+    $this->artisan('nse:import-indices', ['--date' => '2026-02-17'])
+        ->doesntExpectOutputToContain('New index imported:')
+        ->doesntExpectOutputToContain('Import historical data for these indices.')
+        ->assertSuccessful();
+
+    expect(NseIndex::query()->count())->toBe(4)
+        ->and(NseIndex::query()->where('slug', 'nifty-1000')->sole()->close)->toBe('1000.00')
+        ->and(NseIndex::query()->where('slug', 'nifty1000-equal-weight')->sole()->close)->toBe('1100.00');
+})->with([
+    'older history' => ['2026-02-16', '16-02-2026'],
+    'later history' => ['2026-02-18', '18-02-2026'],
+]);
 
 it('requires a valid index import date', function (?string $date) {
     $this->artisan('nse:import-indices', $date === null ? [] : ['--date' => $date])

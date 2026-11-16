@@ -12,6 +12,7 @@ it('extracts eligible trust cash without counting components twice', function (s
     ['DISTRIBUTN - RS 3.13984', '3.13984', CorporateActionTypeEnum::DISTRIBUTION],
     ['DISTRIBTN - RS 1.568', '1.568', CorporateActionTypeEnum::DISTRIBUTION],
     ['DISTRIBTIN - RS 2.39558', '2.39558', CorporateActionTypeEnum::DISTRIBUTION],
+    ['DISTRBUTN - RS 1.97 PU', '1.97', CorporateActionTypeEnum::DISTRIBUTION],
     ['Distribution - 3.04316 Consisting Of Interest Rs 3.04013 Per Unit / Other Income - Rs 0.00303', '3.04316', CorporateActionTypeEnum::DISTRIBUTION],
     ['Interest -Rs 2.14/Return On Capital -Rs 3.33/Dividend -Re 0.36 Per Unit', '2.5', CorporateActionTypeEnum::DISTRIBUTION],
     ['Dividend - Rs 0.45 Per Unit/Interest Amount - Rs 4.57 Per Unit/Return On Capital - Rs 0.98 Per Unit/ Interest On Fixed Deposits - Rs 0.003', '5.023', CorporateActionTypeEnum::DISTRIBUTION],
@@ -25,4 +26,4 @@ it('ignores entries outside the permitted cash types', function (string $purpose
 
 it('rejects missing or ambiguous cash amounts', function (string $purpose) {
     expect(fn () => (new ParseTrustCashAction)->execute($purpose))->toThrow(InvalidArgumentException::class);
-})->with(['Distribution', 'DISTRIBUTN', 'DISTRIBTN - RS', 'DISTRIBTIN - RS', 'Dividend 10%', 'Interest Rs 1/Dividend to be confirmed', 'Interest Rs 0']);
+})->with(['Distribution', 'DISTRIBUTN', 'DISTRIBTN - RS', 'DISTRIBTIN - RS', 'DISTRBUTN - RS', 'Dividend 10%', 'Interest Rs 1/Dividend to be confirmed', 'Interest Rs 0']);

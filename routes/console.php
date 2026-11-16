@@ -9,3 +9,4 @@ Artisan::command('inspire', function () {
 })->purpose('Display an inspiring quote');
 
 Schedule::command('billing:mark-users-as-unpaid')->timezone('Asia/Kolkata')->dailyAt('23:30');
+Schedule::command('screens:prune-exports')->daily()->withoutOverlapping();

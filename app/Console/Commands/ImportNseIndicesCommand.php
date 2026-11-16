@@ -16,7 +16,7 @@ class ImportNseIndicesCommand extends Command
 {
     protected $signature = 'nse:import-indices {--date=} {--O|omit-create}';
 
-    protected $description = 'Import NSE index prices and valuations from the uploaded index.csv';
+    protected $description = 'Import or update NSE index prices and valuations from the uploaded index.csv';
 
     /**
      * Execute the console command.
@@ -45,16 +45,46 @@ class ImportNseIndicesCommand extends Command
             return self::SUCCESS;
         }
 
-        DB::transaction(function () use ($indices): void {
+        $result = DB::transaction(function () use ($indices): array {
+            $existingSlugs = NseIndex::query()
+                ->whereIn('slug', array_column($indices, 'slug'))
+                ->distinct()
+                ->pluck('slug')
+                ->flip();
+            $result = ['added' => 0, 'updated' => 0, 'unchanged' => 0, 'new_index_names' => []];
+
             foreach ($indices as $index) {
-                NseIndex::query()->updateOrCreate(
+                $record = NseIndex::query()->updateOrCreate(
                     ['slug' => $index['slug'], 'date' => $index['date']],
                     $index,
                 );
+
+                if ($record->wasRecentlyCreated) {
+                    $result['added']++;
+                } elseif ($record->wasChanged()) {
+                    $result['updated']++;
+                } else {
+                    $result['unchanged']++;
+                }
+
+                if (! $existingSlugs->has($index['slug'])) {
+                    $result['new_index_names'][] = $index['symbol'];
+                }
             }
+
+            return $result;
         });
 
         $this->info(count($indices)." indices imported for {$date}.");
+        $this->line("Added: {$result['added']}. Updated: {$result['updated']}. Unchanged: {$result['unchanged']}.");
+
+        foreach ($result['new_index_names'] as $name) {
+            $this->warn("New index imported: {$name}");
+        }
+
+        if ($result['new_index_names'] !== []) {
+            $this->line('Import historical data for these indices.');
+        }
 
         return self::SUCCESS;
     }

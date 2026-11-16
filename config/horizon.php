@@ -197,6 +197,18 @@ return [
     */
 
     'defaults' => [
+        'screen-exports' => [
+            'connection' => 'redis',
+            'queue' => ['screen-exports'],
+            'balance' => false,
+            'maxProcesses' => 1,
+            'maxTime' => 0,
+            'maxJobs' => 1,
+            'memory' => 128,
+            'tries' => 1,
+            'timeout' => 660,
+            'nice' => 5,
+        ],
         'supervisor-1' => [
             'connection' => 'redis',
             'queue' => ['default'],
@@ -214,6 +226,7 @@ return [
 
     'environments' => [
         'production' => [
+            'screen-exports' => [],
             'supervisor-1' => [
                 'maxProcesses' => 10,
                 'balanceMaxShift' => 1,
@@ -222,6 +235,7 @@ return [
         ],
 
         'local' => [
+            'screen-exports' => [],
             'supervisor-1' => [
                 'maxProcesses' => 15,
             ],

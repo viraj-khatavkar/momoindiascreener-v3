@@ -59,7 +59,21 @@
                     :label="valuation.summary.missingPrices ? 'Known Portfolio Value' : 'Total Portfolio Value'"
                     :value="amount(valuation.summary.value)"
                     variant="blue"
-                />
+                >
+                    <div class="mt-3 flex flex-wrap items-center gap-2">
+                        <button
+                            type="button"
+                            :aria-label="valuation.summary.missingPrices ? 'Copy known portfolio value' : 'Copy total portfolio value'"
+                            title="Copy number for Google Sheets"
+                            class="inline-flex cursor-pointer items-center gap-1 rounded-md bg-white/70 px-2 py-1 text-xs font-semibold text-blue-700 hover:bg-white focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-700"
+                            @click="copyPortfolioValue"
+                        >
+                            <ClipboardDocumentIcon class="size-4" aria-hidden="true" />
+                            Copy value
+                        </button>
+                        <p role="status" aria-live="polite" class="text-xs text-blue-900">{{ copyMessage }}</p>
+                    </div>
+                </StatCard>
                 <StatCard
                     label="Unrealised Profit / Loss"
                     :value="amount(valuation.summary.profitLoss)"
@@ -252,9 +266,9 @@ import TextInput from '@/Components/Form/TextInput.vue';
 import PageHeader from '@/Components/PageHeader.vue';
 import StatCard from '@/Components/StatCard.vue';
 import type { PortfolioHoldingValue, PortfolioValuation } from '@/types/app/Models/Portfolio';
-import { ArrowDownTrayIcon } from '@heroicons/vue/24/outline';
+import { ArrowDownTrayIcon, ClipboardDocumentIcon } from '@heroicons/vue/24/outline';
 import { Head, Link, useForm } from '@inertiajs/vue3';
-import { nextTick, ref } from 'vue';
+import { nextTick, ref, watch } from 'vue';
 import HoldingForm from './partials/HoldingForm.vue';
 
 const props = defineProps<{
@@ -280,7 +294,27 @@ const deleteForm = useForm({ date: props.valuation.date });
 const editingHolding = ref<PortfolioHoldingValue | null>(null);
 const holdingToRemove = ref<PortfolioHoldingValue | null>(null);
 const holdingFormKey = ref(0);
+const copyMessage = ref('');
 const currency = new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', minimumFractionDigits: 2, maximumFractionDigits: 2 });
+
+watch(
+    () => props.valuation.summary.value,
+    () => {
+        copyMessage.value = '';
+    },
+);
+
+async function copyPortfolioValue(): Promise<void> {
+    const value = props.valuation.summary.value.toFixed(2);
+    copyMessage.value = '';
+
+    try {
+        await navigator.clipboard.writeText(value);
+        copyMessage.value = 'Value copied.';
+    } catch {
+        copyMessage.value = 'Copy was not available. Select and copy this number: ' + value;
+    }
+}
 
 function amount(value: number | null): string {
     return value === null ? '—' : currency.format(value);

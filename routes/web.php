@@ -31,6 +31,9 @@ use App\Http\Controllers\RazorpayController;
 use App\Http\Controllers\RebalanceTrackerController;
 use App\Http\Controllers\ScreenColumnsController;
 use App\Http\Controllers\ScreenCsvController;
+use App\Http\Controllers\ScreenDuplicateController;
+use App\Http\Controllers\ScreenExportDownloadController;
+use App\Http\Controllers\ScreenExportsController;
 use App\Http\Controllers\ScreensController;
 use App\Http\Middleware\VerifyIsPaid;
 use Illuminate\Foundation\Auth\EmailVerificationRequest;
@@ -121,7 +124,7 @@ Route::middleware(['auth', 'verified'])->group(function () {
     Route::get('/invoices/{order}/download', InvoiceDownloadController::class);
 
     Route::post('/screens', [ScreensController::class, 'store']);
-    Route::get('/screens/{screen}/edit', [ScreensController::class, 'edit']);
+    Route::get('/screens/{screen}/edit', [ScreensController::class, 'edit'])->name('screens.edit');
     Route::put('/screens/{screen}', [ScreensController::class, 'update']);
     Route::get('/screens/{screen}/columns/edit', [ScreenColumnsController::class, 'edit']);
     Route::put('/screens/{screen}/columns', [ScreenColumnsController::class, 'update']);
@@ -130,6 +133,12 @@ Route::middleware(['auth', 'verified'])->group(function () {
 
     // Tools that require a paid subscription.
     Route::middleware(VerifyIsPaid::class)->group(function () {
+        Route::get('/screen-exports', [ScreenExportsController::class, 'index'])->name('screen-exports.index');
+        Route::post('/screen-exports', [ScreenExportsController::class, 'store'])->name('screen-exports.store');
+        Route::get('/screen-exports/{screenExport}/download', ScreenExportDownloadController::class)->name('screen-exports.download');
+
+        Route::post('/screens/{screen}/duplicate', ScreenDuplicateController::class)->name('screens.duplicate');
+
         Route::get('/rebalance-tracker', [RebalanceTrackerController::class, 'index'])->name('rebalance-tracker.index');
         Route::post('/rebalance-tracker/upload', [RebalanceTrackerController::class, 'upload'])->name('rebalance-tracker.upload');
         Route::post('/rebalance-tracker/analyze', [RebalanceTrackerController::class, 'analyze'])->name('rebalance-tracker.analyze');

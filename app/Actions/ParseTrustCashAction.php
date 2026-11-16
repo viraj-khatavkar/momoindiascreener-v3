@@ -22,6 +22,7 @@ class ParseTrustCashAction
             'DISTRIBUTN' => 'DISTRIBUTION',
             'DISTRIBTN' => 'DISTRIBUTION',
             'DISTRIBTIN' => 'DISTRIBUTION',
+            'DISTRBUTN' => 'DISTRIBUTION',
             'INTERST' => 'INTEREST',
             'INTERSET' => 'INTEREST',
             'DEPORSITS' => 'DEPOSITS',

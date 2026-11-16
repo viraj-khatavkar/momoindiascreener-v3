@@ -1,10 +1,20 @@
 <template>
     <div>
         <Head :title="screen.name" />
-        <div class="flex items-start justify-between">
+        <div class="mb-4 flex flex-wrap items-start justify-between gap-4">
             <PageHeader description="Example screen (read-only)">
                 {{ screen.name }}
             </PageHeader>
+            <div class="flex flex-wrap gap-3">
+                <Link
+                    v-if="exportUrl"
+                    :href="exportUrl"
+                    class="rounded-lg border border-gray-300 px-3 py-2 text-sm font-semibold text-gray-700 hover:bg-gray-50"
+                >
+                    Historical ZIP
+                </Link>
+                <DuplicateScreenButton v-if="duplicateUrl" :url="duplicateUrl" />
+            </div>
         </div>
 
         <!-- Core Settings (read-only) -->
@@ -38,8 +48,8 @@
         </div>
 
         <InfoAlert class="mt-4">
-            To create your own custom screens with editable filters, please create a new
-            screen from the Screens page.
+            <template v-if="duplicateUrl">Use Duplicate Screen to create a private copy with these settings. You can then edit the filters.</template>
+            <template v-else>Paid members can duplicate this example screen and edit their private copy.</template>
         </InfoAlert>
 
         <Results
@@ -53,11 +63,12 @@
 </template>
 
 <script setup lang="ts">
-import { Head } from '@inertiajs/vue3';
+import { Head, Link } from '@inertiajs/vue3';
 import PageHeader from '@/Components/PageHeader.vue';
 import SelectInput from '@/Components/Form/SelectInput.vue';
 import InfoAlert from '@/Components/Alerts/InfoAlert.vue';
 import Results from '@/Pages/Screens/partials/Results.vue';
+import DuplicateScreenButton from '@/Pages/Screens/partials/DuplicateScreenButton.vue';
 import type { Screen } from '@/types/app/Models/Screen';
 import type { BacktestNseInstrumentPriceResource } from '@/types/app/Resources/BacktestNseInstrumentPriceResource';
 import type { SelectOption } from '@/types/SelectOption';
@@ -65,6 +76,8 @@ import type { ScreenResultColumn } from '@/types/ScreenResultColumn';
 
 const props = defineProps<{
     screen: Screen;
+    duplicateUrl: string | null;
+    exportUrl: string | null;
     indices: SelectOption[];
     sortByOptions: SelectOption[];
     applyFiltersOnOptions: SelectOption[];

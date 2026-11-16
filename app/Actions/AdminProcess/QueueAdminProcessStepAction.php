@@ -21,7 +21,10 @@ class QueueAdminProcessStepAction
                 ->lockForUpdate()
                 ->findOrFail($step->id);
 
-            if (! in_array($lockedStep->status, [
+            $isIndexReimport = $lockedStep->key === 'import-indices'
+                && $lockedStep->status === AdminProcessStepStatusEnum::Completed;
+
+            if (! $isIndexReimport && ! in_array($lockedStep->status, [
                 AdminProcessStepStatusEnum::Pending,
                 AdminProcessStepStatusEnum::Failed,
             ], true)) {

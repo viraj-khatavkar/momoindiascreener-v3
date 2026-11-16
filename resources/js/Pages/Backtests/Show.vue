@@ -1043,6 +1043,7 @@
                     :initial-capital="backtest.initial_capital"
                     :indices="indices"
                     :sort-by-options="sortByOptions"
+                    :start-date-limits="startDateLimits"
                     :apply-filters-on-options="applyFiltersOnOptions"
                     :custom-filter-value-options="customFilterValueOptions"
                     :custom-filter-comparator-options="customFilterComparatorOptions"
@@ -1108,6 +1109,7 @@ const props = withDefaults(
         benchmarkOptions: SelectOption[];
         indices: SelectOption[];
         sortByOptions: SelectOption[];
+        startDateLimits: { default: string; sorts: Record<string, string> };
         applyFiltersOnOptions: SelectOption[];
         customFilterValueOptions: SelectOption[];
         customFilterComparatorOptions: SelectOption[];

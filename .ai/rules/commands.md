@@ -14,3 +14,12 @@ Compare OHLC, P/E, P/B and dividend yield with the current table before a full r
 
 ## Start IDs at one when reloading complete index history
 The user requires a full nse_indices history reload to assign IDs from 1 and set the next auto-increment value above the loaded maximum. DELETE alone does not reset the counter. Check for ID references before renumbering, preserve every non-ID value, and verify the replacement before switching tables.
+
+## Use daily files for index history scope and report first imports
+Build historical import lists from the union of indices in uploaded index.csv files over the last 30 days; also check the last 30 files before excluding a series. Do not exclude an index because one partial daily file omits it. Continue accepting new indices from daily files. After a successful import, report each index name whose slug had no stored history on any date before that import; repeated imports and validation-only runs must not report a first import.
+
+## Allow repeated imports of partial daily index files
+Daily processing can start with Nifty 50 and receive other indices later. For each uploaded row, match slug and date, add missing records, update changed prices and valuations, and leave matching values unchanged. Keep stored indices omitted from a later partial file and preserve other dates. Report added, updated and unchanged counts, plus first-import index names. Compare against the uploaded file; do not require the full daily index set.
+
+## Keep daily-file history while accepting new indices
+The user selected the 167 indices in uploads/2026-11-13/index.csv as the retained historical set and authorized a one-time removal of histories outside that list. This is not a permanent import allowlist: continue importing new indices found in later daily files and report each new name so the user can obtain its history manually or with AI. Do not remove stored history merely because a later partial daily file omits an index.

@@ -431,7 +431,7 @@ it('keeps moving average filters unchanged after a later corporate action', func
         'apply_'.$average => true,
         $direction.'_'.$column => true,
     ]);
-    $filters = new ApplyBacktestFiltersAction;
+    $filters = app(ApplyBacktestFiltersAction::class);
     $expectedSymbols = [strtoupper($direction)];
 
     expect($filters->execute($backtest, $date)->pluck('symbol')->all())->toBe($expectedSymbols);

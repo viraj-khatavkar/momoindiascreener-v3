@@ -10,6 +10,8 @@ paths:
   - 'app/Actions/*Trust*Action.php'
   - 'app/Actions/*Fno*Action.php'
   - app/Actions/QueryNseIndexConstituentsAction.php
+  - app/Actions/RankInstrumentsAction.php
+  - app/Actions/DuplicateScreenAction.php
 ---
 
 # Actions
@@ -79,3 +81,9 @@ User authorized cleanup after the REIT and InvIT import. Remove the one-time tru
 
 ## Keep constituent lists tied to a completed price date
 Instrument membership links carry the displayed quote date. Constituent pages and CSV exports use membership flags and basic metrics from the same date in backtest_nse_instrument_prices, including F&O. Resolve the latest price date on or before the requested date and exclude unfinished daily process dates. Do not substitute the current constituent master or an older membership set when the resolved date has no members. Export every matching row with the same search and sort, independently of pagination. Keep adjusted close labels and market cap units in crores.
+
+## Use shared average ranks and fixed tie ordering
+Screen and backtest factors give equal stored numeric values the average of their occupied ranks. Sum only enabled factor ranks. Resolve equal totals by symbol ascending; use the same symbol tie order for single-factor queries and primary-factor decile cutoffs. Keep fixed decile counts and eligibility filters. Final backtest ranks remain consecutive integers for entry limits, worst-rank checks and reciprocal weighting. Swapping factors preserves results only when the eligible pool stays the same; primary-factor decile selection still runs first.
+
+## Copy saved screens into a paid users private workspace
+Paid users with verified email may duplicate a screen they own or one of Screen::PUBLIC_SCREENS. Check access on the server and save the copy under the requesting user. Copy all saved filters, factor settings, historical settings and result columns, with fresh identity and timestamps and no loaded relations. Generate numbered Copy names within the new owner scope. The editor must require saved changes before duplication and open the new copy with fresh Inertia state.

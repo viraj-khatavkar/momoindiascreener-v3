@@ -1,8 +1,19 @@
 <template>
     <div>
         <Head :title="screen.name" />
-        <div class="flex items-start justify-between">
+        <div class="mb-4 flex flex-wrap items-start justify-between gap-4">
             <PageHeader description="Edit your screen">{{ screen.name }}</PageHeader>
+            <div v-if="duplicateUrl">
+                <Link
+                    v-if="exportUrl && !form.isDirty && !form.processing && !deleting"
+                    :href="exportUrl"
+                    class="mr-3 inline-flex rounded-lg border border-gray-300 px-3 py-2 text-sm font-semibold text-gray-700 hover:bg-gray-50"
+                >
+                    Historical ZIP
+                </Link>
+                <DuplicateScreenButton :url="duplicateUrl" :disabled="form.isDirty || form.processing || deleting" />
+                <p v-if="form.isDirty" class="mt-2 text-sm text-gray-500">Save changes before you duplicate this screen.</p>
+            </div>
         </div>
 
         <ErrorAlert v-if="Object.keys(form.errors).length > 0" class="mb-4"> There are some errors in your form. Please fix them. </ErrorAlert>
@@ -382,10 +393,12 @@
                                     Two)".
                                 </li>
                                 <li>If "Factor Three" is also enabled, the stocks are also ranked by the third factor.</li>
+                                <li>Equal values share the average rank. For example, two stocks tied at ranks 2 and 3 both receive rank 2.5.</li>
                                 <li>
                                     Finally, the combined rank is calculated as the sum of all factor ranks, and stocks are sorted by this combined
                                     rank (lowest combined rank = best).
                                 </li>
+                                <li>If the totals are equal, stock symbols set the order from A to Z. Final result ranks remain 1, 2, 3, and so on.</li>
                             </ul>
                         </PurpleAlert>
 
@@ -640,7 +653,7 @@
 </template>
 
 <script setup lang="ts">
-import { Head, router, useForm } from '@inertiajs/vue3';
+import { Head, Link, router, useForm } from '@inertiajs/vue3';
 import { Disclosure, DisclosureButton, DisclosurePanel } from '@headlessui/vue';
 import { ChevronDownIcon } from '@heroicons/vue/20/solid';
 import { ref, watch } from 'vue';
@@ -651,6 +664,7 @@ import Toggle from '@/Components/Form/Toggle.vue';
 import ErrorAlert from '@/Components/Alerts/ErrorAlert.vue';
 import PurpleAlert from '@/Components/Alerts/PurpleAlert.vue';
 import Results from '@/Pages/Screens/partials/Results.vue';
+import DuplicateScreenButton from '@/Pages/Screens/partials/DuplicateScreenButton.vue';
 import type { Screen } from '@/types/app/Models/Screen';
 import type { BacktestNseInstrumentPriceResource } from '@/types/app/Resources/BacktestNseInstrumentPriceResource';
 import type { SelectOption } from '@/types/SelectOption';
@@ -659,6 +673,8 @@ import type { ScreenResultColumn } from '@/types/ScreenResultColumn';
 
 const props = defineProps<{
     screen: Screen;
+    duplicateUrl: string | null;
+    exportUrl: string | null;
     indices: SelectOption[];
     sortByOptions: SelectOption[];
     applyFiltersOnOptions: SelectOption[];

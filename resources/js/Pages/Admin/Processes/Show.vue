@@ -385,7 +385,7 @@ const progressPercent = computed(() => {
     return Math.round((processRun.value.completed_steps / processRun.value.total_steps) * 100);
 });
 
-const nextRunnableStep = computed(() => processRun.value.steps.find((step) => step.can_run) ?? null);
+const nextRunnableStep = computed(() => processRun.value.steps.find((step) => step.can_run && step.status !== 'completed') ?? null);
 
 const dailyDataProgressByStepId = computed<Record<number, DailyDataProgress>>(() => {
     const progressByStepId: Record<number, DailyDataProgress> = {};
@@ -525,6 +525,15 @@ function runStep(step: AdminProcessStep): void {
         {},
         {
             preserveScroll: true,
+            onSuccess: () => {
+                if (pollTimer !== undefined) {
+                    window.clearTimeout(pollTimer);
+                    pollTimer = undefined;
+                }
+
+                pollController?.abort();
+                void pollUpdates();
+            },
             onError: (errors) => {
                 actionError.value = String(errors.step ?? 'The step could not be added to the queue.');
             },
@@ -599,6 +608,10 @@ function queueSymbolChanges(step: AdminProcessStep): void {
 function stepButtonLabel(step: AdminProcessStep): string {
     if (submittingStepId.value === step.id) {
         return 'Adding to queue...';
+    }
+
+    if (step.key === 'import-indices' && step.status === 'completed') {
+        return 'Import indices again';
     }
 
     if (step.status === 'failed') {

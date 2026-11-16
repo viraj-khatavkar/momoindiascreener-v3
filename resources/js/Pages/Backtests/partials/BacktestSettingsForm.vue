@@ -361,14 +361,17 @@
                             v-model="form.start_date"
                             type="date"
                             name="start_date"
-                            min="2011-01-05"
+                            :min="minimumStartDate"
                             class="block w-full rounded-md bg-white px-3 py-1.5 text-base text-gray-900 outline-1 -outline-offset-1 outline-gray-300 placeholder:text-gray-400 focus:outline-2 focus:-outline-offset-2 focus:outline-purple-600 sm:text-sm/6"
                             :class="{
                                 'text-red-900 outline-red-300 placeholder:text-red-400 focus:outline-red-600': form.errors.start_date,
                             }"
                         />
                     </div>
-                    <p class="mt-1 text-xs text-gray-500">Price data available from 5 Jan 2011</p>
+                    <p class="mt-1 text-xs text-gray-500" data-test="sort-start-date-notice">
+                        {{ minimumStartDate === startDateLimits.default ? 'Price data available from' : 'Market cap and P/E sorting available from' }}
+                        {{ formatDate(minimumStartDate) }}
+                    </p>
                     <p v-if="form.errors.start_date" class="mt-2 text-sm text-red-600" id="start_date-error">
                         {{ form.errors.start_date }}
                     </p>
@@ -810,7 +813,9 @@
                         <li>Then, the resultant stocks from step 1 are ranked according to the first factor selected in "Sort By".</li>
                         <li>Next, the resultant stocks from step 1 are also ranked according to the second factor selected in "Sort By (Factor Two)".</li>
                         <li>If "Factor Three" is also enabled, the stocks are also ranked by the third factor.</li>
+                        <li>Equal values share the average rank. For example, two stocks tied at ranks 2 and 3 both receive rank 2.5.</li>
                         <li>Finally, the combined rank is calculated as the sum of all factor ranks, and stocks are sorted by this combined rank (lowest combined rank = best).</li>
+                        <li>If the totals are equal, stock symbols set the order from A to Z. Final portfolio ranks remain 1, 2, 3, and so on.</li>
                     </ul>
                 </PurpleAlert>
 
@@ -969,7 +974,7 @@ import Toggle from '@/Components/Form/Toggle.vue';
 import ErrorAlert from '@/Components/Alerts/ErrorAlert.vue';
 import InfoAlert from '@/Components/Alerts/InfoAlert.vue';
 import PurpleAlert from '@/Components/Alerts/PurpleAlert.vue';
-import { formatCompactNumber, formatCurrency } from '@/utils/format';
+import { formatCompactNumber, formatCurrency, formatDate } from '@/utils/format';
 import type { SelectOption } from '@/types/SelectOption';
 
 const props = defineProps<{
@@ -979,6 +984,7 @@ const props = defineProps<{
     initialCapital: number | string;
     indices: SelectOption[];
     sortByOptions: SelectOption[];
+    startDateLimits: { default: string; sorts: Record<string, string> };
     applyFiltersOnOptions: SelectOption[];
     customFilterValueOptions: SelectOption[];
     customFilterComparatorOptions: SelectOption[];
@@ -1029,6 +1035,28 @@ const sortDirectionOptions = [
     { id: 'desc', name: 'Highest to Lowest' },
     { id: 'asc', name: 'Lowest to Highest' },
 ];
+
+const activeSorts = computed<(string | null)[]>(() => [
+    props.form.sort_by,
+    props.form.apply_factor_two ? props.form.factor_two_sort_by : null,
+    props.form.apply_factor_three ? props.form.factor_three_sort_by : null,
+]);
+
+const minimumStartDate = computed(() =>
+    activeSorts.value.reduce<string>((minimumDate, sort) => {
+        const availableFrom = (sort ? props.startDateLimits.sorts[sort] : null) ?? props.startDateLimits.default;
+        return availableFrom > minimumDate ? availableFrom : minimumDate;
+    }, props.startDateLimits.default),
+);
+
+watch(activeSorts, (sorts, previousSorts) => {
+    const hasNewLimitedSort = sorts.some((sort, index) =>
+        sort !== null && props.startDateLimits.sorts[sort] !== undefined && sort !== previousSorts?.[index],
+    );
+    if (hasNewLimitedSort && (previousSorts !== undefined || props.form.start_date < minimumStartDate.value)) {
+        props.form.start_date = minimumStartDate.value;
+    }
+}, { immediate: true });
 
 const medianVolumeOneYearOptions = [
     { id: '1000000', name: '10 Lakh' },

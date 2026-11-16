@@ -17,6 +17,11 @@ class ScreenPolicy
         return $user->is_paid;
     }
 
+    public function duplicate(User $user, Screen $screen): bool
+    {
+        return $user->is_paid && $this->view($user, $screen);
+    }
+
     public function update(User $user, Screen $screen): bool
     {
         return $screen->user_id === $user->id;

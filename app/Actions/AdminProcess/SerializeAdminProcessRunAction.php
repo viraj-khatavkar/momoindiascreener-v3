@@ -45,12 +45,16 @@ class SerializeAdminProcessRunAction
                 $hasActiveStep,
                 $hasStartedStepAfterInstrumentCheck,
             ): array {
+                $isIndexReimport = $step->key === 'import-indices'
+                    && $step->status === AdminProcessStepStatusEnum::Completed;
+                $priorStepsComplete = $firstIncompleteStep === null
+                    || $firstIncompleteStep->position >= $step->position;
                 $canRun = ! $hasActiveStep
-                    && $firstIncompleteStep?->is($step)
-                    && in_array($step->status, [
+                    && $priorStepsComplete
+                    && ($isIndexReimport || in_array($step->status, [
                         AdminProcessStepStatusEnum::Pending,
                         AdminProcessStepStatusEnum::Failed,
-                    ], true);
+                    ], true));
 
                 $durationEnd = $step->completed_at
                     ?? ($step->started_at ? now() : null);

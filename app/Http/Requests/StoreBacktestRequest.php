@@ -2,6 +2,7 @@
 
 namespace App\Http\Requests;
 
+use App\Actions\Backtest\BacktestSortDateAction;
 use App\Enums\ApplyFiltersOnOptionEnum;
 use App\Enums\BacktestCashCallEnum;
 use App\Enums\BacktestCashCallSourceEnum;
@@ -45,6 +46,7 @@ class StoreBacktestRequest extends FormRequest
         return [
             'cash_call_backtest_id.required_if' => 'Select a source backtest.',
             'cash_call_backtest_id.exists' => 'Select another backtest that you own with No cash call and no source backtest.',
+            'start_date.after_or_equal' => BacktestSortDateAction::VALIDATION_MESSAGE,
         ];
     }
 
@@ -53,6 +55,10 @@ class StoreBacktestRequest extends FormRequest
      */
     public function rules(): array
     {
+        $minimumStartDate = app(BacktestSortDateAction::class)->minimumDate($this->only([
+            'sort_by', 'apply_factor_two', 'factor_two_sort_by', 'apply_factor_three', 'factor_three_sort_by',
+        ]));
+
         return [
             // Backtest-specific
             'name' => ['required', 'string', 'max:250'],
@@ -85,7 +91,7 @@ class StoreBacktestRequest extends FormRequest
             'cash_call_index' => ['exclude_if:cash_call,no_cash_call,cash_call_if_not_enough_stocks', 'exclude_if:cash_call_source,backtest', 'required', 'string', Rule::in(['nifty-50', 'nifty-100', 'nifty-500', 'nifty200-momentum-30', 'nifty500-momentum-50'])],
             'cash_call_dma_period' => ['exclude_if:cash_call,no_cash_call,cash_call_if_not_enough_stocks', 'required', 'integer', 'in:20,50,100,200'],
             'cash_call_gold_dma_period' => ['exclude_unless:cash_call,only_exits_allocate_to_gold_above_dma_below_index_dma', 'required', 'integer', 'in:20,50,100,200'],
-            'start_date' => ['required', 'date', 'after_or_equal:2011-01-05'],
+            'start_date' => ['required', 'date', 'after_or_equal:'.$minimumStartDate],
             'cash_return_rate' => ['required', 'numeric', 'between:0,20'],
             'brokerage_rate' => ['required', 'numeric', 'between:0,5'],
             'stt_rate' => ['required', 'numeric', 'between:0,5'],

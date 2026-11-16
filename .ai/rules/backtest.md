@@ -137,3 +137,9 @@ The user explicitly excludes 2024-03-02 from F&O history because that special se
 
 ## Use price flags as the only F&O membership source
 User decision: use backtest_nse_instrument_prices.is_nifty_fno for dated membership, coverage checks and decile counts. Count all flagged rows before metric filters. Use the indexed trading calendar for coverage. The backtest_nse_fno_imports table is removed; do not add a second membership source. Reject a daily import before changing flags if any source symbol lacks a price match. NseIndexEnum::FNO_IGNORED_DATES keeps the approved 2024-03-02 exclusion. This replaces the earlier source-record and source-count rules.
+
+## Limit valuation-sort backtest start dates
+User-approved limit: marketcap and price_to_earnings ranking require start_date >= 2024-03-01, confirmed as the first stored valuation date. Apply it to the main factor and enabled second/third factors only. Share dates through BacktestSortDateAction, show the minimum in settings, and validate both the request and worker before clearing saved results, including source/dependent runs. Do not change the saved date automatically or scan price history during Save and Run.
+
+## Set the initial date when valuation sorting is selected
+User correction: selecting marketcap or price_to_earnings in the main factor, or enabling/selecting either in a second or third factor, sets the form date to 2024-03-01. The user may then choose any date on or after that day. Keep a valid later saved date when reopening the form, and keep server/worker validation. The earlier instruction against automatic date changes applies to stored records, not this requested editor behavior; save only through the normal settings action.
