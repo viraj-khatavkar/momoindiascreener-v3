@@ -163,5 +163,6 @@ it('links supported index overviews to their constituents', function (string $sl
     $this->get('/nse-index/'.$slug)->assertSuccessful()->assertInertia(fn (Assert $page) => $page->where('constituentsUrl', $expected));
 })->with([
     ['nifty-50', '/nse-index/nifty-50/constituents?date=2026-10-30'],
-    ['nifty-bank', null],
+    ['nifty-bank', '/nse-index/nifty-bank/constituents?date=2026-10-30'],
+    ['india-vix', null],
 ]);

@@ -30,6 +30,14 @@
                         >
                     </div>
                     <p v-if="instrument.name" class="mt-2 text-base text-gray-600">{{ instrument.name }}</p>
+                    <p v-if="industry" class="mt-2 flex flex-wrap items-center gap-x-2 text-sm">
+                        <span class="text-gray-500">Industry</span>
+                        <Link
+                            :href="industry.url"
+                            class="inline-flex min-h-9 items-center rounded font-medium text-purple-700 hover:underline focus-visible:outline-2 focus-visible:outline-purple-600"
+                            >{{ industry.name }}</Link
+                        >
+                    </p>
                     <a
                         :href="`https://www.nseindia.com/get-quotes/equity?symbol=${encodeURIComponent(instrument.symbol)}`"
                         target="_blank"
@@ -92,7 +100,7 @@
             <div v-if="instrument.indices.length" class="mt-5 flex flex-wrap items-center gap-2">
                 <span class="mr-1 text-xs text-gray-500">Member of</span>
                 <Link
-                    v-for="index in instrument.indices"
+                    v-for="index in visibleIndices"
                     :key="index.slug"
                     :href="index.url"
                     :aria-label="`View ${index.name} constituents`"
@@ -100,6 +108,17 @@
                 >
                     {{ index.name }}
                 </Link>
+                <button
+                    v-if="hiddenIndexCount > 0"
+                    type="button"
+                    :aria-expanded="showAllIndices"
+                    class="inline-flex min-h-9 cursor-pointer items-center gap-1.5 rounded-md border border-purple-200 px-2.5 py-1.5 text-xs font-medium text-purple-700 hover:bg-purple-50 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-purple-600"
+                    @click="showAllIndices = !showAllIndices"
+                >
+                    <MinusIcon v-if="showAllIndices" class="size-4" aria-hidden="true" />
+                    <PlusIcon v-else class="size-4" aria-hidden="true" />
+                    {{ showAllIndices ? 'Show less' : `Show more (${hiddenIndexCount})` }}
+                </button>
             </div>
         </header>
 
@@ -480,6 +499,8 @@ import {
     CheckCircleIcon,
     ClockIcon,
     InformationCircleIcon,
+    MinusIcon,
+    PlusIcon,
     ScaleIcon,
 } from '@heroicons/vue/24/outline';
 import { Deferred, Head, Link } from '@inertiajs/vue3';
@@ -498,12 +519,18 @@ type MetricValue = string | number | null | undefined;
 
 const props = defineProps<{
     instrument: BacktestNseInstrumentViewResource;
+    industry: { name: string; url: string } | null;
     priceHistory?: InstrumentHistoryRecord[];
     dividends?: DividendAction[];
     corporateActions?: CorporateAction[];
     pros: string[];
     cons: string[];
 }>();
+
+const defaultIndexCount = 6;
+const showAllIndices = ref(false);
+const visibleIndices = computed(() => (showAllIndices.value ? props.instrument.indices : props.instrument.indices.slice(0, defaultIndexCount)));
+const hiddenIndexCount = computed(() => Math.max(0, props.instrument.indices.length - defaultIndexCount));
 
 const companyEventTabs = computed(() => [
     { label: 'Dividends', count: props.dividends?.length ?? 0 },

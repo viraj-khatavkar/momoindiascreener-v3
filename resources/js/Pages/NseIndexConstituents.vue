@@ -85,98 +85,15 @@
         </div>
 
         <div :aria-busy="isLoading" :class="{ 'opacity-50': isLoading }">
-            <div v-if="constituents.data.length" class="hidden lg:block">
-                <table class="w-full border-collapse text-sm">
-                    <caption class="sr-only">
-                        {{
-                            indexName
-                        }}
-                        constituents and market data
-                    </caption>
-                    <thead class="border-y border-gray-200 bg-gray-50">
-                        <tr>
-                            <th
-                                v-for="column in columns"
-                                :key="column.key"
-                                scope="col"
-                                class="px-3 py-3 font-semibold"
-                                :class="column.text ? 'text-left' : 'text-right'"
-                                :aria-sort="filters.sort === column.key ? (filters.direction === 'asc' ? 'ascending' : 'descending') : 'none'"
-                            >
-                                <button
-                                    type="button"
-                                    :disabled="isLoading"
-                                    class="inline-flex min-h-9 cursor-pointer items-center gap-1 rounded hover:text-purple-700 focus-visible:outline-2 focus-visible:outline-purple-600"
-                                    @click="sortColumn(column.key)"
-                                >
-                                    {{ column.label }}
-                                    <ChevronUpIcon
-                                        v-if="filters.sort === column.key && filters.direction === 'asc'"
-                                        class="size-3.5 shrink-0"
-                                        aria-hidden="true"
-                                    />
-                                    <ChevronDownIcon v-else-if="filters.sort === column.key" class="size-3.5 shrink-0" aria-hidden="true" />
-                                    <ChevronUpDownIcon v-else class="size-3.5 shrink-0 text-gray-400" aria-hidden="true" />
-                                </button>
-                            </th>
-                        </tr>
-                    </thead>
-                    <tbody class="divide-y divide-gray-100">
-                        <tr v-for="stock in constituents.data" :key="stock.symbol" class="hover:bg-purple-50/30">
-                            <td class="px-3 py-4">
-                                <Link
-                                    :href="stock.url"
-                                    class="inline-flex min-h-9 items-center rounded font-semibold text-purple-700 hover:underline focus-visible:outline-2 focus-visible:outline-purple-600"
-                                    >{{ stock.symbol }}</Link
-                                >
-                            </td>
-                            <td class="max-w-64 px-3 py-4 break-words text-gray-600">{{ stock.name || '—' }}</td>
-                            <td class="px-3 py-4 text-right whitespace-nowrap tabular-nums">{{ formatNumber(stock.close_adjusted) }}</td>
-                            <td class="px-3 py-4 text-right whitespace-nowrap tabular-nums">{{ formatNumber(stock.marketcap, 0) }}</td>
-                            <td class="px-3 py-4 text-right whitespace-nowrap tabular-nums">{{ formatNumber(stock.price_to_earnings) }}</td>
-                            <td class="px-3 py-4 text-right whitespace-nowrap tabular-nums" :class="returnClass(stock.absolute_return_one_year)">
-                                {{ formatReturn(stock.absolute_return_one_year) }}
-                            </td>
-                            <td class="px-3 py-4 text-right whitespace-nowrap tabular-nums">{{ formatNumber(stock.beta) }}</td>
-                        </tr>
-                    </tbody>
-                </table>
-            </div>
-
-            <ul v-if="constituents.data.length" class="divide-y divide-gray-200 border-y border-gray-200 lg:hidden" aria-label="Constituents">
-                <li v-for="stock in constituents.data" :key="stock.symbol" class="py-5">
-                    <Link
-                        :href="stock.url"
-                        class="inline-flex min-h-9 items-center rounded text-base font-semibold text-purple-700 hover:underline focus-visible:outline-2 focus-visible:outline-purple-600"
-                        >{{ stock.symbol }}</Link
-                    >
-                    <p class="mt-1 text-sm break-words text-gray-600">{{ stock.name || '—' }}</p>
-                    <dl class="mt-4 grid grid-cols-2 gap-x-4 gap-y-4 text-sm">
-                        <div>
-                            <dt class="text-xs text-gray-500">Adjusted close (₹)</dt>
-                            <dd class="mt-1 font-medium tabular-nums">{{ formatNumber(stock.close_adjusted) }}</dd>
-                        </div>
-                        <div>
-                            <dt class="text-xs text-gray-500">Market cap (₹ crore)</dt>
-                            <dd class="mt-1 font-medium tabular-nums">{{ formatNumber(stock.marketcap, 0) }}</dd>
-                        </div>
-                        <div>
-                            <dt class="text-xs text-gray-500">P/E</dt>
-                            <dd class="mt-1 font-medium tabular-nums">{{ formatNumber(stock.price_to_earnings) }}</dd>
-                        </div>
-                        <div>
-                            <dt class="text-xs text-gray-500">1-year return</dt>
-                            <dd class="mt-1 font-medium tabular-nums" :class="returnClass(stock.absolute_return_one_year)">
-                                {{ formatReturn(stock.absolute_return_one_year) }}
-                            </dd>
-                        </div>
-                        <div>
-                            <dt class="text-xs text-gray-500">Beta</dt>
-                            <dd class="mt-1 font-medium tabular-nums">{{ formatNumber(stock.beta) }}</dd>
-                        </div>
-                    </dl>
-                </li>
-            </ul>
+            <StockList
+                v-if="constituents.data.length"
+                :stocks="constituents.data"
+                :title="indexName"
+                :sort="filters.sort"
+                :direction="filters.direction"
+                :loading="isLoading"
+                @sort="sortColumn"
+            />
 
             <p v-else class="rounded-lg border border-gray-200 bg-gray-50 px-5 py-10 text-center text-sm text-gray-600">
                 {{ filters.search ? 'No constituents match this search.' : 'Constituents are not available for this date.' }}
@@ -194,8 +111,9 @@
 
 <script setup lang="ts">
 import Pagination from '@/Components/Pagination.vue';
+import StockList from '@/Components/StockList.vue';
 import { formatDate } from '@/utils';
-import { ArrowDownTrayIcon, ArrowLeftIcon, ChevronDownIcon, ChevronUpDownIcon, ChevronUpIcon } from '@heroicons/vue/24/outline';
+import { ArrowDownTrayIcon, ArrowLeftIcon } from '@heroicons/vue/24/outline';
 import { Head, Link, router } from '@inertiajs/vue3';
 import { ref, watch } from 'vue';
 
@@ -282,24 +200,5 @@ function sortColumn(sort: SortKey) {
     const direction =
         props.filters.sort === sort ? (props.filters.direction === 'asc' ? 'desc' : 'asc') : sort === 'symbol' || sort === 'name' ? 'asc' : 'desc';
     applyFilters({ sort, direction });
-}
-function numberValue(value: NumericValue): number | null {
-    if (value === null || value === '') {
-        return null;
-    }
-    const number = Number(value);
-    return Number.isFinite(number) ? number : null;
-}
-function formatNumber(value: NumericValue, decimals = 2): string {
-    const number = numberValue(value);
-    return number === null ? '—' : number.toLocaleString('en-IN', { minimumFractionDigits: decimals, maximumFractionDigits: decimals });
-}
-function formatReturn(value: NumericValue): string {
-    const number = numberValue(value);
-    return number === null ? '—' : `${number > 0 ? '+' : ''}${formatNumber(number)}%`;
-}
-function returnClass(value: NumericValue): string {
-    const number = numberValue(value);
-    return number === null || number === 0 ? 'text-gray-600' : number > 0 ? 'text-emerald-700' : 'text-rose-700';
 }
 </script>

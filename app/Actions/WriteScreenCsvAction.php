@@ -67,6 +67,7 @@ class WriteScreenCsvAction
         'is_nifty_midcap_150' => 'is_nifty_midcap_150',
         'is_nifty_500' => 'is_nifty_500',
         'is_nifty_total_market' => 'is_nifty_total_market',
+        'is_nifty_1000' => 'is_nifty_1000',
         'is_nifty_smallcap_250' => 'is_nifty_smallcap_250',
         'is_nifty_microcap_250' => 'is_nifty_microcap_250',
         'is_nifty_largemidcap_250' => 'is_nifty_largemidcap_250',

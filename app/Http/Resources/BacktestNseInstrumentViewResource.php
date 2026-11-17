@@ -4,6 +4,7 @@ namespace App\Http\Resources;
 
 use App\Enums\NseIndexEnum;
 use App\Models\BacktestNseInstrumentPrice;
+use App\NseIndexMembership;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
 use Illuminate\Support\Number;
@@ -76,10 +77,10 @@ class BacktestNseInstrumentViewResource extends JsonResource
             'series' => $this->series ?? '-',
             'beta' => round($this->beta, 2),
             'median_volume_one_year' => round($this->median_volume_one_year / 10000000, 2),
-            'indices' => collect(NseIndexEnum::cases())
-                ->reject(fn (NseIndexEnum $index): bool => $index === NseIndexEnum::NIFTY_ETF)
-                ->filter(fn (NseIndexEnum $index): bool => (bool) $this->{$index->isIndexFieldName()})
-                ->map(fn (NseIndexEnum $index): array => [
+            'indices' => NseIndexMembership::all()
+                ->reject(fn (NseIndexMembership $index): bool => $index->value === NseIndexEnum::NIFTY_ETF->value)
+                ->filter(fn (NseIndexMembership $index): bool => (bool) $this->{$index->isIndexFieldName()})
+                ->map(fn (NseIndexMembership $index): array => [
                     'name' => $index->label(),
                     'slug' => $index->slug(),
                     'url' => route('nse-index.constituents.index', ['slug' => $index->slug(), 'date' => $this->date->toDateString()], false),

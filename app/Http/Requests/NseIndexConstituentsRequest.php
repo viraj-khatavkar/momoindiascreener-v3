@@ -3,7 +3,7 @@
 namespace App\Http\Requests;
 
 use App\Actions\QueryNseIndexConstituentsAction;
-use App\Enums\NseIndexEnum;
+use App\NseIndexMembership;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
 
@@ -33,10 +33,10 @@ class NseIndexConstituentsRequest extends FormRequest
         ];
     }
 
-    public function index(): NseIndexEnum
+    public function index(): NseIndexMembership
     {
         $slug = (string) $this->route('slug');
-        $index = NseIndexEnum::tryFrom(str_replace('-', '_', $slug));
+        $index = NseIndexMembership::fromSlug($slug);
         abort_unless($index !== null && $index->slug() === $slug, 404);
 
         return $index;

@@ -57,6 +57,7 @@ export interface BacktestNseInstrumentPriceResource {
     is_nifty_midcap_150: boolean;
     is_nifty_500: boolean;
     is_nifty_total_market: boolean;
+    is_nifty_1000: boolean;
     is_nifty_smallcap_250: boolean;
     is_nifty_microcap_250: boolean;
     is_nifty_largemidcap_250: boolean;

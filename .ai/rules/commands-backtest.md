@@ -58,3 +58,15 @@ User correction: NSE Files accepts only CSV uploads for F&O, matching other file
 
 ## Keep daily F&O CSV imports after history cleanup
 User requested removal of completed history tools and temporary data. Keep the daily UDiFF CSV import, symbol-change matching, date validation and atomic price-flag updates. Remove archive downloads, ZIP parsing, bulk history and saved-source replay options. The source-import table and model are removed. Historical flags remain in the price table. This replaces the earlier archive-retention and source-record rules.
+
+## Keep display memberships separate from filter choices
+User decision: extra index memberships shown as stock pills must not expand the screener or backtest options or add price flags. Keep the existing approved filter indices. The user removed backtest:refresh-nse-index-constituents as unused; do not restore its full-table rebuild from price flags. Keep backtest:import-constituents for the daily membership step.
+
+## Use false defaults for new membership flags
+User decision: any newly added index membership flags must match the existing Total Market convention: non-null booleans with default false. Record new memberships from the tracking start date; do not backfill earlier dates or introduce NULL flags. Keep the existing screener and backtest choices restricted.
+
+## Use the maintained constituent table for daily membership
+User decision: constituent downloads and table maintenance happen asynchronously outside the daily process. The daily membership command reads backtest_nse_index_constituents as its source of truth; it must not download files or depend on source URLs. Extra indices may use new non-null, false-default price flags from the tracking start date, superseding the earlier no-new-flags constraint. Audit existing stored membership flags without rewriting them during this expansion. Keep the existing screener and backtest choices.
+
+## Start expanded membership on 16 November 2026
+User approved marking the latest stored price date, 2026-11-16, for the new stock index memberships. NseIndexMembership and config/nse_index_memberships.php define display/daily indices separately from NseIndexEnum filter choices. Keep added flags false before each start_date. The initial load adds only new master keys and price flags; preserve existing memberships and all other fields. Daily imports use only the maintained master table, update one date atomically, and report members without a price. Stock pills and constituent pages/exports read dated price flags. No download or source-URL requirement belongs in the daily process.

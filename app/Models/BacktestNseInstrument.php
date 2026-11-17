@@ -20,4 +20,9 @@ class BacktestNseInstrument extends Model
     {
         return $this->belongsTo(MarketIndexAlias::class);
     }
+
+    public function industry(): BelongsTo
+    {
+        return $this->belongsTo(Industry::class);
+    }
 }

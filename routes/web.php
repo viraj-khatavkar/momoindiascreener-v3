@@ -16,6 +16,7 @@ use App\Http\Controllers\CorporateActionsController;
 use App\Http\Controllers\CorporateActionSymbolSearchController;
 use App\Http\Controllers\HomeController;
 use App\Http\Controllers\IndicesDashboardController;
+use App\Http\Controllers\IndustryViewController;
 use App\Http\Controllers\InstrumentSearchController;
 use App\Http\Controllers\InvoiceDownloadController;
 use App\Http\Controllers\InvoicesController;
@@ -90,6 +91,7 @@ Route::get('/nse-index/{slug}', NseIndexViewController::class)->name('nse-index.
 
 Route::get('/instruments/search', InstrumentSearchController::class);
 Route::get('/instruments/{symbol}', BacktestNseInstrumentViewController::class)->name('instruments.show');
+Route::get('/industries/{industry:slug}', IndustryViewController::class)->name('industries.show');
 
 Route::get('/market-health/{index?}', MarketHealthController::class);
 

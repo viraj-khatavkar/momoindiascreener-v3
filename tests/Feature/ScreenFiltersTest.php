@@ -1,9 +1,63 @@
 <?php
 
 use App\Actions\ApplyScreenFiltersAction;
+use App\Enums\ApplyFiltersOnOptionEnum;
 use App\Enums\NseIndexEnum;
 use App\Models\Screen;
 use Inertia\Testing\AssertableInertia as Assert;
+
+it('offers Nifty 1000 in screen filters and saves, filters and exports its dated members', function () {
+    $screen = Screen::factory()->create();
+    createScreenResultRow('MEMBER', 'Index member', '2026-11-16', ['is_nifty_1000' => true]);
+    createScreenResultRow('OUTSIDE', 'Outside the index', '2026-11-16');
+    createScreenResultRow('OLD', 'An earlier member', '2026-11-13', ['is_nifty_1000' => true]);
+
+    $this->actingAs($screen->user)
+        ->get('/screens/'.$screen->id.'/edit')
+        ->assertSuccessful()
+        ->assertInertia(fn (Assert $page) => $page
+            ->where('indices', fn ($indices): bool => collect($indices)->contains(fn ($index): bool => $index['id'] === 'nifty_1000' && $index['name'] === 'NIFTY 1000')));
+
+    $this->put('/screens/'.$screen->id, array_merge($screen->toArray(), ['index' => 'nifty_1000']))
+        ->assertSessionHasNoErrors()
+        ->assertRedirect('/screens/'.$screen->id.'/edit');
+
+    expect($screen->fresh()->index)->toBe(NseIndexEnum::NIFTY_1000);
+
+    $this->get('/screens/'.$screen->id.'/edit')->assertInertia(fn (Assert $page) => $page
+        ->where('screen.index', 'nifty_1000')
+        ->has('results', 1)
+        ->where('results.0.symbol', 'MEMBER'));
+
+    $response = $this->get('/screens/'.$screen->id.'/csv')->assertSuccessful();
+    $lines = preg_split('/\r\n|\n|\r/', trim($response->streamedContent()));
+    $header = str_getcsv(ltrim($lines[0], "\xEF\xBB\xBF"), escape: '');
+    $row = array_combine($header, str_getcsv($lines[1], escape: ''));
+
+    expect($lines)->toHaveCount(2)
+        ->and($row['symbol'])->toBe('MEMBER')
+        ->and($row['is_nifty_1000'])->toBe('1');
+});
+
+it('uses 100 members for the top Nifty 1000 decile', function () {
+    $screen = Screen::factory()->create([
+        'index' => NseIndexEnum::NIFTY_1000,
+        'apply_filters_on' => ApplyFiltersOnOptionEnum::TOP_DECILE,
+    ]);
+    foreach (range(1, 105) as $number) {
+        createScreenResultRow('MEMBER'.$number, 'Index member '.$number, '2026-11-16', [
+            'is_nifty_1000' => true,
+            'sharpe_return_one_year' => $number,
+        ]);
+    }
+    createScreenResultRow('OUTSIDE', 'Outside the index', '2026-11-16', ['sharpe_return_one_year' => 1000]);
+
+    $results = app(ApplyScreenFiltersAction::class)->execute($screen, '2026-11-16');
+
+    expect($results)->toHaveCount(100)
+        ->and($results->first()->symbol)->toBe('MEMBER105')
+        ->and($results->last()->symbol)->toBe('MEMBER6');
+});
 
 it('applies inclusive market cap and enabled PE limits to current results', function () {
     $screen = Screen::factory()->create([

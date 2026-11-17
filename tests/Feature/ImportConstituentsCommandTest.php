@@ -1,6 +1,7 @@
 <?php
 
 use App\Models\BacktestNseIndexConstituent;
+use App\Models\BacktestNseInstrumentPrice;
 use App\Models\MarketHeartbeat;
 
 it('fails when no date is provided', function () {
@@ -83,4 +84,28 @@ it('includes REITs and InvITs in allcap membership and heartbeat while excluding
     expect($heartbeat->index)->toBe('nifty-allcap')
         ->and($heartbeat->advances)->toBe(4)
         ->and((float) $heartbeat->percentage_above_ma_200)->toBe(100.0);
+});
+
+it('imports Nifty 1000 membership for only the requested date and can run again', function () {
+    BacktestNseIndexConstituent::insert([
+        ['symbol' => 'MEMBER', 'index' => 'nifty_1000'],
+        ['symbol' => 'OTHER', 'index' => 'nifty_50'],
+    ]);
+    $previous = createBacktestPriceRow('MEMBER', '2026-11-13', ['series' => 'EQ']);
+    $member = createBacktestPriceRow('MEMBER', '2026-11-16', ['series' => 'BE', 'close_adjusted' => 123]);
+    $other = createBacktestPriceRow('OTHER', '2026-11-16', ['series' => 'EQ', 'is_nifty_1000' => true]);
+
+    foreach (range(1, 2) as $attempt) {
+        $this->artisan('backtest:import-constituents', ['--date' => '2026-11-16'])
+            ->expectsOutputToContain('nifty 1000: 1')
+            ->assertSuccessful();
+    }
+
+    expect($member->fresh()->is_nifty_1000)->toBeTrue()
+        ->and((float) $member->fresh()->close_adjusted)->toBe(123.0)
+        ->and($other->fresh()->is_nifty_1000)->toBeFalse()
+        ->and($other->fresh()->is_nifty_50)->toBeTrue()
+        ->and($previous->fresh()->is_nifty_1000)->toBeFalse()
+        ->and(BacktestNseInstrumentPrice::count())->toBe(3)
+        ->and(BacktestNseIndexConstituent::where('index', 'nifty_1000')->count())->toBe(1);
 });

@@ -103,7 +103,7 @@ class ChangeSymbolCommand extends Command
     {
         $oldInstrument = BacktestNseInstrument::query()
             ->where('symbol', $oldSymbol)
-            ->first(['id', 'name', 'etf_index', 'market_index_alias_id', 'etf_index_source_date']);
+            ->first(['id', 'name', 'industry_id', 'etf_index', 'market_index_alias_id', 'etf_index_source_date']);
 
         if (! $oldInstrument) {
             return 0;
@@ -111,7 +111,7 @@ class ChangeSymbolCommand extends Command
 
         $newInstrument = BacktestNseInstrument::query()
             ->where('symbol', $newSymbol)
-            ->first(['id', 'name', 'etf_index', 'market_index_alias_id', 'etf_index_source_date']);
+            ->first(['id', 'name', 'industry_id', 'etf_index', 'market_index_alias_id', 'etf_index_source_date']);
 
         if (! $newInstrument) {
             return BacktestNseInstrument::query()
@@ -123,6 +123,10 @@ class ChangeSymbolCommand extends Command
 
         if (blank($newInstrument->name) && filled($oldInstrument->name)) {
             $updates['name'] = $oldInstrument->name;
+        }
+
+        if ($newInstrument->industry_id === null && $oldInstrument->industry_id !== null) {
+            $updates['industry_id'] = $oldInstrument->industry_id;
         }
 
         if ($oldInstrument->market_index_alias_id && (

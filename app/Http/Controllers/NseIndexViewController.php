@@ -2,8 +2,8 @@
 
 namespace App\Http\Controllers;
 
-use App\Enums\NseIndexEnum;
 use App\Models\NseIndex;
+use App\NseIndexMembership;
 use Inertia\Inertia;
 use Inertia\Response;
 
@@ -17,7 +17,7 @@ class NseIndexViewController extends Controller
             ->first();
 
         abort_if($index === null, 404);
-        $membershipIndex = NseIndexEnum::tryFrom(str_replace('-', '_', $slug));
+        $membershipIndex = NseIndexMembership::fromSlug($slug);
 
         return inertia('NseIndexView', [
             'index' => $index,

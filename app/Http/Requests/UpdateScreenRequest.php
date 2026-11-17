@@ -5,6 +5,7 @@ namespace App\Http\Requests;
 use App\Enums\ApplyFiltersOnOptionEnum;
 use App\Enums\CustomFilterComparatorOptionEnum;
 use App\Enums\CustomFilterValueOptionEnum;
+use App\Enums\NseIndexEnum;
 use App\Enums\ScreenSortByOptionEnum;
 use Illuminate\Contracts\Validation\ValidationRule;
 use Illuminate\Foundation\Http\FormRequest;
@@ -24,7 +25,7 @@ class UpdateScreenRequest extends FormRequest
     {
         return [
             'name' => ['required'],
-            'index' => ['required'],
+            'index' => ['required', Rule::enum(NseIndexEnum::class)],
             'unique_etf_per_index' => ['sometimes', 'boolean'],
             'sort_by' => ['required', Rule::enum(ScreenSortByOptionEnum::class)],
             'sort_direction' => ['required', Rule::in(['asc', 'desc'])],

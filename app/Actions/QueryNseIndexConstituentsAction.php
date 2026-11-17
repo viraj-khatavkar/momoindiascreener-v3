@@ -3,9 +3,9 @@
 namespace App\Actions;
 
 use App\Enums\AdminProcessRunStatusEnum;
-use App\Enums\NseIndexEnum;
 use App\Models\AdminProcessRun;
 use App\Models\BacktestNseInstrumentPrice;
+use App\NseIndexMembership;
 use Illuminate\Database\Eloquent\Builder;
 
 class QueryNseIndexConstituentsAction
@@ -16,7 +16,7 @@ class QueryNseIndexConstituentsAction
      * @param  array{date: ?string, search: string, sort: string, direction: string}  $filters
      * @return array{date: ?string, query: Builder<BacktestNseInstrumentPrice>}
      */
-    public function execute(NseIndexEnum $index, array $filters): array
+    public function execute(NseIndexMembership $index, array $filters): array
     {
         $unfinishedDates = AdminProcessRun::query()->select('process_date')
             ->where('status', '!=', AdminProcessRunStatusEnum::Completed->value);

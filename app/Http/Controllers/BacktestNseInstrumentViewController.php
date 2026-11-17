@@ -6,6 +6,7 @@ use App\Enums\AdminProcessRunStatusEnum;
 use App\Http\Resources\BacktestNseInstrumentViewResource;
 use App\Models\AdminProcessRun;
 use App\Models\BacktestNseCorporateAction;
+use App\Models\BacktestNseInstrument;
 use App\Models\BacktestNseInstrumentPrice;
 use Inertia\Inertia;
 use Inertia\Response;
@@ -24,8 +25,15 @@ class BacktestNseInstrumentViewController extends Controller
             ->latest('date')
             ->firstOrFail();
 
+        $industry = BacktestNseInstrument::query()->with('industry:id,name,slug')
+            ->where('symbol', $symbol)->first(['id', 'industry_id'])?->industry;
+
         return inertia('InstrumentView', [
             'instrument' => BacktestNseInstrumentViewResource::make($instrument),
+            'industry' => $industry === null ? null : [
+                'name' => $industry->name,
+                'url' => route('industries.show', ['industry' => $industry->slug], false),
+            ],
             'pros' => $this->generatePros($instrument),
             'cons' => $this->generateCons($instrument),
             'priceHistory' => Inertia::defer(fn () => BacktestNseInstrumentPrice::query()

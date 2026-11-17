@@ -5,6 +5,7 @@ paths:
   - resources/js/Pages/MarketHealth.vue
   - resources/js/Pages/IndicesDashboard.vue
   - resources/js/Pages/NseIndexView.vue
+  - resources/js/Pages/IndustryView.vue
 ---
 
 # Pages
@@ -32,3 +33,9 @@ User decision: show every available return year by default, with all 12 months a
 
 ## Do not classify indices with category pills
 User decision: remove the dashboard category pills and the related group labels from dashboard rows and index details. The name-based classification was not reliable. Keep search, sorting and pagination; discard legacy group values from remembered state and navigation URLs. This replaces the earlier grouped-comparison design.
+
+## Keep stock membership pills compact
+Show the first six index pills by default on the stock page. When more memberships exist, show an accessible Show more button with the remaining count, and Show less after expansion. Preserve each dated constituent link and the existing index order. Do not expand the screener or backtest choices.
+
+## Show current industry membership with completed-date prices
+Link the stock industry label to /industries/{industry:slug}. The industry page lists all instruments assigned to that industry, including members without a quote. Use prices from the latest completed date and show missing metrics as unavailable; never use current industry labels as historical classifications. Retain search, sorting, pagination, and a phone layout. Industry coverage currently comes from the imported Nifty 1000 source, not the full NSE market.

@@ -4,130 +4,69 @@ namespace App\Console\Commands\Backtest;
 
 use App\Models\BacktestNseIndexConstituent;
 use App\Models\BacktestNseInstrumentPrice;
+use App\NseIndexMembership;
 use Illuminate\Console\Command;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Validator;
+use Illuminate\Support\Str;
 
 class ImportConstituentsCommand extends Command
 {
-    /**
-     * The name and signature of the console command.
-     *
-     * @var string
-     */
     protected $signature = 'backtest:import-constituents {--date=}';
 
-    /**
-     * The console command description.
-     *
-     * @var string
-     */
-    protected $description = 'Imports nse constituents from daily file for backtest tables';
+    protected $description = 'Mark dated index membership from the maintained constituent table';
 
-    /**
-     * Execute the console command.
-     */
     public function handle(): int
     {
-        $this->info('Importing constituents from NSE file...');
         $date = $this->option('date');
-
-        if (is_null($date)) {
+        if ($date === null) {
             $this->error('Please provide a date');
 
             return Command::FAILURE;
         }
+        if (Validator::make(['date' => $date], ['date' => ['required', 'date_format:Y-m-d']])->fails()) {
+            $this->error('Please provide a valid date in YYYY-MM-DD format');
 
-        $groupedInstruments = $this->fetchConstituents();
-
-        foreach ($groupedInstruments as $universe => $instruments) {
-            $this->info($universe.' - '.count($instruments).' instruments found in table');
-
-            BacktestNseInstrumentPrice::query()
-                ->where('date', $date)
-                ->update(['is_'.$universe => false]);
-
-            BacktestNseInstrumentPrice::query()
-                ->where('date', $date)
-                ->whereIn('symbol', collect($instruments)->pluck('symbol')->all())
-                ->update(['is_'.$universe => true]);
+            return Command::FAILURE;
         }
 
-        BacktestNseInstrumentPrice::query()
-            ->where('date', $date)
-            ->update(['is_nifty_allcap' => false]);
+        $prices = BacktestNseInstrumentPrice::query()->where('date', $date)->pluck('symbol');
+        if ($prices->isEmpty()) {
+            $this->error('No prices found for '.$date);
 
-        BacktestNseInstrumentPrice::query()
-            ->where('date', $date)
-            ->whereIn('series', ['EQ', 'BE', 'RR', 'IV'])
-            ->where('is_etf', false)
-            ->update(['is_nifty_allcap' => true]);
+            return Command::FAILURE;
+        }
 
-        $this->info(
-            'nifty allcap: '.BacktestNseInstrumentPrice::where('is_nifty_allcap', true)->where('date', $date)->count()
-        );
-        $this->info(
-            'nifty 50: '.BacktestNseInstrumentPrice::where('is_nifty_50', true)->where('date', $date)->count()
-        );
-        $this->info(
-            'nifty next 50: '.BacktestNseInstrumentPrice::where('is_nifty_next_50', true)->where('date', $date)
-                ->count()
-        );
-        $this->info(
-            'nifty 100: '.BacktestNseInstrumentPrice::where('is_nifty_100', true)->where('date', $date)->count()
-        );
-        $this->info(
-            'nifty 200: '.BacktestNseInstrumentPrice::where('is_nifty_200', true)->where('date', $date)->count()
-        );
-        $this->info(
-            'nifty midcap 100: '.BacktestNseInstrumentPrice::where('is_nifty_midcap_100', true)->where('date', $date)
-                ->count()
-        );
-        $this->info(
-            'nifty 500: '.BacktestNseInstrumentPrice::where('is_nifty_500', true)->where('date', $date)->count()
-        );
-        $this->info(
-            'nifty total market: '.BacktestNseInstrumentPrice::where('is_nifty_total_market', true)->where('date', $date)->count()
-        );
-        $this->info(
-            'nifty midcap 150: '.BacktestNseInstrumentPrice::where('is_nifty_midcap_150', true)->where('date', $date)
-                ->count()
-        );
-        $this->info(
-            'nifty smallcap 250: '.BacktestNseInstrumentPrice::where('is_nifty_smallcap_250', true)->where('date', $date)
-                ->count()
-        );
-        $this->info(
-            'nifty microcap 250: '.BacktestNseInstrumentPrice::where('is_nifty_microcap_250', true)->where('date', $date)
-                ->count()
-        );
-        $this->info(
-            'nifty largemidcap 250: '.BacktestNseInstrumentPrice::where('is_nifty_largemidcap_250', true)->where('date', $date)
-                ->count()
-        );
-        $this->info(
-            'nifty midsmallcap 400: '.BacktestNseInstrumentPrice::where('is_nifty_midsmallcap_400', true)->where('date', $date)
-                ->count()
-        );
+        $indices = NseIndexMembership::forDailyImport($date);
+        $memberships = BacktestNseIndexConstituent::query()
+            ->whereIn('index', $indices->pluck('value'))
+            ->get(['index', 'symbol'])->groupBy('index');
+        $this->info('Marking index membership from the constituent table for '.$date.'...');
+
+        DB::transaction(function () use ($indices, $memberships, $date, $prices): void {
+            foreach ($indices as $index) {
+                $symbols = $memberships->get($index->value, collect())->pluck('symbol')->unique()->values();
+                BacktestNseInstrumentPrice::query()->where('date', $date)
+                    ->update([$index->isIndexFieldName() => false]);
+                BacktestNseInstrumentPrice::query()->where('date', $date)->whereIn('symbol', $symbols)
+                    ->update([$index->isIndexFieldName() => true]);
+
+                $missing = $symbols->diff($prices);
+                $this->info(Str::lower($index->label()).': '.($symbols->count() - $missing->count()).' marked; '.$symbols->count().' in constituent table');
+                if ($missing->isNotEmpty()) {
+                    $this->warn($index->label().' — no price for: '.$missing->implode(', '));
+                }
+            }
+
+            BacktestNseInstrumentPrice::query()->where('date', $date)
+                ->update(['is_nifty_allcap' => false]);
+            BacktestNseInstrumentPrice::query()->where('date', $date)
+                ->whereIn('series', ['EQ', 'BE', 'RR', 'IV'])->where('is_etf', false)
+                ->update(['is_nifty_allcap' => true]);
+        });
+
+        $this->info('nifty allcap: '.BacktestNseInstrumentPrice::query()->where('date', $date)->where('is_nifty_allcap', true)->count());
 
         return Command::SUCCESS;
-    }
-
-    protected function fetchConstituents(): array
-    {
-        $backtestNseIndexConstituents = BacktestNseIndexConstituent::all();
-
-        return [
-            'nifty_50' => $backtestNseIndexConstituents->filter(fn ($backtestNseIndexConstituent) => $backtestNseIndexConstituent->index === 'nifty_50')->toArray(),
-            'nifty_next_50' => $backtestNseIndexConstituents->filter(fn ($backtestNseIndexConstituent) => $backtestNseIndexConstituent->index === 'nifty_next_50')->toArray(),
-            'nifty_100' => $backtestNseIndexConstituents->filter(fn ($backtestNseIndexConstituent) => $backtestNseIndexConstituent->index === 'nifty_100')->toArray(),
-            'nifty_200' => $backtestNseIndexConstituents->filter(fn ($backtestNseIndexConstituent) => $backtestNseIndexConstituent->index === 'nifty_200')->toArray(),
-            'nifty_midcap_100' => $backtestNseIndexConstituents->filter(fn ($backtestNseIndexConstituent) => $backtestNseIndexConstituent->index === 'nifty_midcap_100')->toArray(),
-            'nifty_midcap_150' => $backtestNseIndexConstituents->filter(fn ($backtestNseIndexConstituent) => $backtestNseIndexConstituent->index === 'nifty_midcap_150')->toArray(),
-            'nifty_500' => $backtestNseIndexConstituents->filter(fn ($backtestNseIndexConstituent) => $backtestNseIndexConstituent->index === 'nifty_500')->toArray(),
-            'nifty_total_market' => $backtestNseIndexConstituents->filter(fn ($backtestNseIndexConstituent) => $backtestNseIndexConstituent->index === 'nifty_total_market')->toArray(),
-            'nifty_smallcap_250' => $backtestNseIndexConstituents->filter(fn ($backtestNseIndexConstituent) => $backtestNseIndexConstituent->index === 'nifty_smallcap_250')->toArray(),
-            'nifty_microcap_250' => $backtestNseIndexConstituents->filter(fn ($backtestNseIndexConstituent) => $backtestNseIndexConstituent->index === 'nifty_microcap_250')->toArray(),
-            'nifty_largemidcap_250' => $backtestNseIndexConstituents->filter(fn ($backtestNseIndexConstituent) => $backtestNseIndexConstituent->index === 'nifty_largemidcap_250')->toArray(),
-            'nifty_midsmallcap_400' => $backtestNseIndexConstituents->filter(fn ($backtestNseIndexConstituent) => $backtestNseIndexConstituent->index === 'nifty_midsmallcap_400')->toArray(),
-        ];
     }
 }
