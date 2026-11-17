@@ -78,8 +78,8 @@
             </div>
 
             <p class="text-xs leading-relaxed text-gray-500">
-                Stock groups use index membership on each date. Stocks outside these two indices count as small caps. ETFs, including gold ETFs,
-                are shown separately. If a quote is missing, the last known price and group are used.
+                Stock groups use index membership on each date. Stocks outside these two indices count as small caps. ETFs, including gold ETFs, are
+                shown separately. If a quote is missing, the last known price and group are used.
                 <span v-if="hasUnclassified">Holdings without a known group are shown as Unclassified. Their value is included in the total.</span>
                 <span v-if="allocation.excluded_days > 0">{{ allocation.excluded_days }} dates without sufficient data are excluded.</span>
             </p>
@@ -139,7 +139,7 @@ function initChart(container: HTMLDivElement): void {
         grid: { vertLines: { visible: false }, horzLines: { color: '#e2e8f0' } },
         crosshair: { mode: CrosshairMode.Normal, horzLine: { visible: false, labelVisible: false } },
         rightPriceScale: { borderVisible: false, scaleMargins: { top: 0.03, bottom: 0 } },
-        timeScale: { borderColor: '#e2e8f0' },
+        timeScale: { minBarSpacing: 0.001, lockVisibleTimeRangeOnResize: true, borderColor: '#e2e8f0' },
         handleScale: { axisPressedMouseMove: { price: false, time: true } },
         localization: { priceFormatter: (value: number) => `${value.toFixed(0)}%` },
     });

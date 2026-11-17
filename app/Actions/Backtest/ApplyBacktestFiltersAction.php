@@ -17,6 +17,7 @@ class ApplyBacktestFiltersAction
     public function execute(Backtest $backtest, $date)
     {
         $query = BacktestNseInstrumentPrice::query()
+            ->select($this->requiredColumns($backtest))
             ->where('date', $date)
             ->where($backtest->index->isIndexFieldName(), true)
             ->whereNotNull($backtest->sort_by)
@@ -42,6 +43,30 @@ class ApplyBacktestFiltersAction
 
             return $instrument;
         });
+    }
+
+    /**
+     * Filters run in SQL; only ranking and execution values need to be hydrated.
+     *
+     * @return list<string>
+     */
+    private function requiredColumns(Backtest $backtest): array
+    {
+        $columns = [
+            'id', 'date', 'symbol', 'name', 'series',
+            'close_adjusted', 'close_raw', 'volatility_one_year',
+            $backtest->sort_by,
+        ];
+
+        if ($backtest->apply_factor_two) {
+            $columns[] = $backtest->factor_two_sort_by;
+        }
+
+        if ($backtest->apply_factor_three) {
+            $columns[] = $backtest->factor_three_sort_by;
+        }
+
+        return array_values(array_unique($columns));
     }
 
     protected function applyCombinedRanking(Builder $query, Backtest $backtest): Collection

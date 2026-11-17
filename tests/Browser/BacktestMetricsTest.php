@@ -23,13 +23,14 @@ it('includes initial costs in monthly returns and displays the saved Sortino aft
     loginAs($user->email);
 
     $page = visit('/backtests/'.$backtest->id)
+        ->click('More statistics')
         ->assertSeeIn('[data-test="sortino-ratio"]', $savedSortino)
-        ->press('Monthly')
-        ->assertSeeIn('#bt-monthly tbody tr:first-child td:nth-child(2)', '-1.0%')
+        ->press('Monthly returns')
+        ->assertSeeIn('#bt-monthly tbody tr:first-child td:first-of-type', '-1.0%')
         ->assertSeeIn('#bt-monthly tbody tr:first-child td:last-child', '-1.0%')
         ->assertNoJavaScriptErrors();
 
-    $page->press('Drawdown')
+    $page->press('Returns & risk')
         ->assertSeeIn('#bt-drawdown tbody tr:first-child td:first-child', '-2.0%')
         ->assertNoJavaScriptErrors();
 });

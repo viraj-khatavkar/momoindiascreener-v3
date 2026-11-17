@@ -1,13 +1,30 @@
 <template>
     <div :aria-busy="isFiltering || pendingFilters">
+        <div
+            v-if="positionScope"
+            class="mb-5 flex flex-wrap items-center justify-between gap-3 rounded-lg border border-purple-200 bg-purple-50 px-4 py-3 text-sm"
+            role="status"
+        >
+            <p>
+                <strong>{{ positionScope.symbol }}</strong> · {{ formatDate(positionScope.from) }} to {{ formatDate(positionScope.through)
+                }}<span class="mt-1 block text-purple-800">Transactions within this holding period</span>
+            </p>
+            <button
+                type="button"
+                class="rounded-md border border-purple-200 bg-white px-3 py-2 font-medium text-purple-700 hover:bg-purple-100"
+                @click="positionScope = null"
+            >
+                Clear position filter
+            </button>
+        </div>
         <!-- Filters -->
         <div class="mb-4 flex flex-wrap items-center gap-3">
-            <div class="inline-flex rounded-md border border-gray-300 bg-white">
+            <div class="inline-flex w-full rounded-md border border-gray-300 bg-white sm:w-auto">
                 <button
                     v-for="tab in tabs"
                     :key="tab.key"
                     type="button"
-                    class="cursor-pointer px-4 py-1.5 text-sm font-medium first:rounded-l-md last:rounded-r-md"
+                    class="min-w-0 flex-1 cursor-pointer px-2 py-2 text-xs font-medium first:rounded-l-md last:rounded-r-md sm:flex-none sm:px-4 sm:text-sm"
                     :class="activeTab === tab.key ? 'bg-purple-600 text-white' : 'text-gray-700 hover:bg-gray-50'"
                     :aria-pressed="activeTab === tab.key"
                     @click="activeTab = tab.key"
@@ -17,14 +34,14 @@
             </div>
 
             <div class="relative">
-                <MagnifyingGlassIcon class="pointer-events-none absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
+                <MagnifyingGlassIcon class="pointer-events-none absolute top-1/2 left-2.5 h-4 w-4 -translate-y-1/2 text-gray-400" />
                 <input
                     v-model="search"
                     type="text"
                     maxlength="100"
                     placeholder="Search symbol..."
                     aria-label="Search trades by symbol"
-                    class="w-44 rounded-md border border-gray-300 bg-white py-1.5 pl-8 pr-3 text-sm text-gray-900 placeholder:text-gray-400 focus:border-purple-500 focus:outline-none focus:ring-1 focus:ring-purple-500"
+                    class="w-44 rounded-md border border-gray-300 bg-white py-1.5 pr-3 pl-8 text-sm text-gray-900 placeholder:text-gray-400 focus:border-purple-500 focus:ring-1 focus:ring-purple-500 focus:outline-none"
                 />
             </div>
 
@@ -42,7 +59,7 @@
                 </button>
             </div>
 
-            <div class="ml-auto flex items-center gap-2 text-xs">
+            <div class="flex flex-wrap items-center gap-2 text-xs sm:ml-auto">
                 <button
                     type="button"
                     class="cursor-pointer font-medium text-purple-600 hover:underline"
@@ -52,21 +69,9 @@
                     {{ sortOrder === 'desc' ? 'Newest first' : 'Oldest first' }}
                 </button>
                 <span class="text-gray-300">·</span>
-                <button
-                    type="button"
-                    class="cursor-pointer font-medium text-purple-600 hover:underline"
-                    @click="expandAll"
-                >
-                    Expand loaded
-                </button>
+                <button type="button" class="cursor-pointer font-medium text-purple-600 hover:underline" @click="expandAll">Expand loaded</button>
                 <span class="text-gray-300">·</span>
-                <button
-                    type="button"
-                    class="cursor-pointer font-medium text-purple-600 hover:underline"
-                    @click="collapseAll"
-                >
-                    Collapse all
-                </button>
+                <button type="button" class="cursor-pointer font-medium text-purple-600 hover:underline" @click="collapseAll">Collapse all</button>
             </div>
         </div>
 
@@ -130,7 +135,10 @@
                         <svg
                             class="h-5 w-5 text-gray-400 transition-transform"
                             :class="isExpanded(group.date) ? 'rotate-180' : ''"
-                            fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"
+                            fill="none"
+                            viewBox="0 0 24 24"
+                            stroke-width="1.5"
+                            stroke="currentColor"
                         >
                             <path stroke-linecap="round" stroke-linejoin="round" d="m19.5 8.25-7.5 7.5-7.5-7.5" />
                         </svg>
@@ -138,11 +146,11 @@
                 </button>
 
                 <!-- Expanded trade rows -->
-                <div v-if="isExpanded(group.date)" :id="'tl-panel-' + group.date" class="overflow-x-auto border-t border-gray-200">
+                <div v-if="isExpanded(group.date)" :id="'tl-panel-' + group.date" class="relative overflow-x-auto border-t border-gray-200">
                     <table class="min-w-full text-sm">
                         <thead>
                             <tr class="bg-gray-50">
-                                <th class="px-3 py-2 text-left font-medium text-gray-500">Symbol</th>
+                                <th class="sticky left-0 z-10 bg-gray-50 px-3 py-2 text-left font-medium text-gray-500">Symbol</th>
                                 <th class="px-3 py-2 text-left font-medium text-gray-500">Type</th>
                                 <th class="px-3 py-2 text-left font-medium text-gray-500">Reason</th>
                                 <th class="px-3 py-2 text-right font-medium text-gray-500">Qty</th>
@@ -156,7 +164,7 @@
                         </thead>
                         <tbody class="divide-y divide-gray-100">
                             <tr v-for="trade in group.trades" :key="trade.id" class="hover:bg-gray-50">
-                                <td class="whitespace-nowrap px-3 py-2">
+                                <td class="sticky left-0 z-10 bg-white px-3 py-2 whitespace-nowrap">
                                     <a
                                         :href="`/instruments/${trade.symbol}`"
                                         target="_blank"
@@ -165,7 +173,7 @@
                                         {{ trade.symbol }}
                                     </a>
                                 </td>
-                                <td class="whitespace-nowrap px-3 py-2">
+                                <td class="px-3 py-2 whitespace-nowrap">
                                     <span
                                         :class="trade.trade_type === 'buy' ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'"
                                         class="rounded-full px-2 py-0.5 text-xs font-medium"
@@ -184,18 +192,24 @@
                                         <span class="min-w-0 truncate">{{ trade.reason }}</span>
                                     </div>
                                 </td>
-                                <td class="whitespace-nowrap px-3 py-2 text-right text-gray-900">{{ trade.quantity.toLocaleString('en-IN') }}</td>
-                                <td class="whitespace-nowrap px-3 py-2 text-right text-gray-900">{{ formatCurrency(trade.raw_price) }}</td>
-                                <td class="whitespace-nowrap px-3 py-2 text-right text-gray-500">{{ formatCurrency(trade.price) }}</td>
-                                <td class="whitespace-nowrap px-3 py-2 text-right text-gray-900">{{ formatCurrency(trade.gross_amount) }}</td>
-                                <td class="whitespace-nowrap px-3 py-2 text-right text-gray-500">{{ formatCurrency(trade.total_charges) }}</td>
-                                <td class="whitespace-nowrap px-3 py-2 text-right font-medium text-gray-900">{{ formatCurrency(trade.net_amount) }}</td>
-                                <td class="whitespace-nowrap px-3 py-2 text-right">
+                                <td class="px-3 py-2 text-right whitespace-nowrap text-gray-900">{{ trade.quantity.toLocaleString('en-IN') }}</td>
+                                <td class="px-3 py-2 text-right whitespace-nowrap text-gray-900">{{ formatCurrency(trade.raw_price) }}</td>
+                                <td class="px-3 py-2 text-right whitespace-nowrap text-gray-500">{{ formatCurrency(trade.price) }}</td>
+                                <td class="px-3 py-2 text-right whitespace-nowrap text-gray-900">{{ formatCurrency(trade.gross_amount) }}</td>
+                                <td class="px-3 py-2 text-right whitespace-nowrap text-gray-500">{{ formatCurrency(trade.total_charges) }}</td>
+                                <td class="px-3 py-2 text-right font-medium whitespace-nowrap text-gray-900">
+                                    {{ formatCurrency(trade.net_amount) }}
+                                </td>
+                                <td class="px-3 py-2 text-right whitespace-nowrap">
                                     <template v-if="trade.trade_type === 'sell' && trade.realized_pnl !== null">
                                         <div class="font-semibold tabular-nums" :class="pnlColorClass(trade.realized_pnl)">
                                             {{ formatSignedPnl(trade.realized_pnl) }}
                                         </div>
-                                        <div v-if="trade.realized_pnl_pct !== null" class="text-xs tabular-nums" :class="pnlColorClass(trade.realized_pnl)">
+                                        <div
+                                            v-if="trade.realized_pnl_pct !== null"
+                                            class="text-xs tabular-nums"
+                                            :class="pnlColorClass(trade.realized_pnl)"
+                                        >
                                             {{ formatSignedPnlPct(trade.realized_pnl_pct) }}
                                         </div>
                                     </template>
@@ -224,7 +238,11 @@
         </InfiniteScroll>
 
         <p v-if="filteredGroups.length === 0" class="py-8 text-center text-sm text-gray-500">
-            {{ summary.total === 0 ? 'This run produced no trades — your filters may exclude every stock in the universe.' : 'No trades match the selected filter.' }}
+            {{
+                summary.total === 0
+                    ? 'This run produced no trades — your filters may exclude every stock in the universe.'
+                    : 'No trades match the selected filter.'
+            }}
         </p>
     </div>
 </template>
@@ -235,13 +253,14 @@ import { InfiniteScroll, router } from '@inertiajs/vue3';
 import type { CancelToken } from '@inertiajs/core';
 import { MagnifyingGlassIcon } from '@heroicons/vue/20/solid';
 import type { BacktestTrade } from '@/types/app/Models/BacktestTrade';
-import type { PaginatedBacktestTrades, TradeLogFilters, TradeLogSummary } from '@/types/BacktestTradeLog';
+import type { PaginatedBacktestTrades, PositionTradeScope, TradeLogFilters, TradeLogSummary } from '@/types/BacktestTradeLog';
 import { formatCurrency, formatCurrencyShort, formatDate } from '@/utils/format';
 
 const props = defineProps<{
     trades: PaginatedBacktestTrades;
     summary: TradeLogSummary;
     filters: TradeLogFilters;
+    focusPosition?: PositionTradeScope | null;
 }>();
 
 type TabKey = 'all' | 'buy' | 'sell';
@@ -250,6 +269,11 @@ const search = ref(props.filters.search);
 const sortOrder = ref<'desc' | 'asc'>(props.filters.sort);
 const activeReasonCategory = ref<string | null>(props.filters.reason);
 const selectedYear = ref<number | null>(props.filters.year);
+const positionScope = ref<PositionTradeScope | null>(
+    props.filters.symbol && props.filters.from && props.filters.through
+        ? { symbol: props.filters.symbol, from: props.filters.from, through: props.filters.through }
+        : null,
+);
 const isFiltering = ref(false);
 const pendingFilters = ref(false);
 let isLoadingPage = false;
@@ -281,6 +305,9 @@ function loadFilters(): void {
         trade_reason: activeReasonCategory.value,
         trade_sort: sortOrder.value,
         trade_year: selectedYear.value,
+        trade_symbol: positionScope.value?.symbol ?? null,
+        trade_from: positionScope.value?.from ?? null,
+        trade_through: positionScope.value?.through ?? null,
     };
     url.searchParams.delete('trades_page');
     for (const [key, value] of Object.entries(parameters)) {
@@ -291,29 +318,52 @@ function loadFilters(): void {
         }
     }
 
-    router.get(url.pathname + url.search, {}, {
-        only: ['trades', 'tradeLogSummary', 'tradeFilters'],
-        reset: ['trades'],
-        preserveState: true,
-        preserveScroll: true,
-        replace: true,
-        onCancelToken: (token) => { filterCancelToken = token; },
-        onFinish: () => {
-            isFiltering.value = false;
-            filterCancelToken = undefined;
-            loadFilters();
+    router.get(
+        url.pathname + url.search,
+        {},
+        {
+            only: ['trades', 'tradeLogSummary', 'tradeFilters'],
+            reset: ['trades'],
+            preserveState: true,
+            preserveScroll: true,
+            replace: true,
+            onCancelToken: (token) => {
+                filterCancelToken = token;
+            },
+            onFinish: () => {
+                isFiltering.value = false;
+                filterCancelToken = undefined;
+                loadFilters();
+            },
         },
-    });
+    );
 }
 
-watch([search, activeTab, activeReasonCategory, sortOrder, selectedYear], (values, previous) => {
+watch([search, activeTab, activeReasonCategory, sortOrder, selectedYear, positionScope], (values, previous) => {
     pendingFilters.value = true;
     clearTimeout(filterTimer);
-    filterTimer = setTimeout(() => {
-        filterTimer = undefined;
-        loadFilters();
-    }, values[0] !== previous[0] ? 300 : 0);
+    filterTimer = setTimeout(
+        () => {
+            filterTimer = undefined;
+            loadFilters();
+        },
+        values[0] !== previous[0] ? 300 : 0,
+    );
 });
+
+watch(
+    () => props.focusPosition,
+    (position) => {
+        if (!position) return;
+        search.value = '';
+        activeTab.value = 'all';
+        activeReasonCategory.value = null;
+        selectedYear.value = null;
+        sortOrder.value = 'asc';
+        positionScope.value = { ...position };
+    },
+    { immediate: true },
+);
 
 /** Finish an active scroll request before resetting its filters, so its old rows cannot merge into the new result. */
 const removeStartListener = router.on('start', (event) => {
@@ -360,9 +410,12 @@ function categorizeReason(key: string): ReasonCategory {
     return reasonCategories.find((category) => category.key === key) ?? reasonCategories.find((category) => category.key === 'filter-exit')!;
 }
 
-const reasonCategoryCounts = computed((): Array<ReasonCategory & { count: number }> => reasonCategories
-    .filter((category) => (props.summary.reasons[category.key] ?? 0) > 0 || activeReasonCategory.value === category.key)
-    .map((category) => ({ ...category, count: props.summary.reasons[category.key] ?? 0 })));
+const reasonCategoryCounts = computed(
+    (): Array<ReasonCategory & { count: number }> =>
+        reasonCategories
+            .filter((category) => (props.summary.reasons[category.key] ?? 0) > 0 || activeReasonCategory.value === category.key)
+            .map((category) => ({ ...category, count: props.summary.reasons[category.key] ?? 0 })),
+);
 
 function toggleReasonCategory(key: string): void {
     activeReasonCategory.value = activeReasonCategory.value === key ? null : key;

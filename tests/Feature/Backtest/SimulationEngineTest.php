@@ -9,6 +9,16 @@ use App\Models\Backtest;
 use App\Models\BacktestNseInstrumentPrice;
 use App\Models\NseIndex;
 use App\Models\User;
+use Illuminate\Database\Eloquent\Model;
+
+beforeEach(function () {
+    $this->previousMissingAttributeCheck = Model::preventsAccessingMissingAttributes();
+    Model::preventAccessingMissingAttributes();
+});
+
+afterEach(function () {
+    Model::preventAccessingMissingAttributes($this->previousMissingAttributeCheck);
+});
 
 // ==========================================================================
 // HELPERS

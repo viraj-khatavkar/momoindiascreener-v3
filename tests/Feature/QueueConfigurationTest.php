@@ -4,16 +4,19 @@ use App\Jobs\RunBacktestJob;
 use App\Models\Backtest;
 use Illuminate\Support\Facades\Artisan;
 use Laravel\Horizon\ProvisioningPlan;
+use Symfony\Component\Process\Process;
 
-it('uses one Redis queue with multiple processes and safe timeouts', function () {
+it('keeps backtests on the default Redis queue with safe worker limits', function (string $environment) {
     $job = new RunBacktestJob(Backtest::factory()->make());
     $supervisor = ProvisioningPlan::get('test')
-        ->optionsFor('local', 'supervisor-1');
+        ->optionsFor($environment, 'supervisor-1');
     $redisConnection = config('queue.connections.redis');
 
     expect(config('queue.connections'))->not->toHaveKey('redis-backtests')
-        ->and(config('horizon.defaults'))->toHaveCount(1)
-        ->and(config('horizon.defaults'))->toHaveKey('supervisor-1')
+        ->and(config('horizon.defaults'))->toHaveKeys(['supervisor-1', 'screen-exports'])
+        ->and(config('queue.worker_memory_limit'))->toBe(512)
+        ->and($supervisor->memory)->toBe(512)
+        ->and(ProvisioningPlan::get('test')->optionsFor($environment, 'screen-exports')->memory)->toBe(512)
         ->and($job->connection)->toBeNull()
         ->and($job->queue)->toBeNull()
         ->and($job->tries)->toBe(1)
@@ -25,7 +28,30 @@ it('uses one Redis queue with multiple processes and safe timeouts', function ()
         ->and($supervisor->maxProcesses)->toBeGreaterThan(1)
         ->and($job->timeout)->toBeLessThan($supervisor->timeout)
         ->and($supervisor->timeout)->toBeLessThan($redisConnection['retry_after']);
-});
+})->with(['local', 'production']);
+
+it('raises a lower PHP worker limit and preserves higher or unlimited limits', function (string $command, string $initialLimit, string $expectedLimit) {
+    $code = <<<'PHP'
+    require 'vendor/autoload.php';
+    $app = require 'bootstrap/app.php';
+    $app->make(Illuminate\Contracts\Console\Kernel::class)->bootstrap();
+    config(['queue.worker_memory_limit' => 512]);
+    Illuminate\Support\Facades\Event::dispatch(new Illuminate\Console\Events\CommandStarting(
+        $argv[1], new Symfony\Component\Console\Input\ArrayInput([]), new Symfony\Component\Console\Output\NullOutput(),
+    ));
+    echo ini_get('memory_limit');
+    PHP;
+
+    $process = new Process([PHP_BINARY, '-d', 'memory_limit='.$initialLimit, '-r', $code, $command], base_path());
+    $process->mustRun();
+
+    expect($process->getOutput())->toBe($expectedLimit);
+})->with(['horizon:work', 'queue:work', 'queue:listen'])->with([
+    'lower limit' => ['128M', '512M'],
+    'equal limit' => ['512M', '512M'],
+    'higher limit' => ['1G', '1G'],
+    'unlimited' => ['-1', '-1'],
+]);
 
 it('uses Horizon as the local Composer queue worker', function () {
     $composer = json_decode(
@@ -54,6 +80,7 @@ it('uses Redis queues in the example environment', function () {
     $exampleEnvironment = file_get_contents(base_path('.env.example'));
 
     expect($exampleEnvironment)->toMatch('/^QUEUE_CONNECTION=redis$/m')
+        ->and($exampleEnvironment)->toMatch('/^QUEUE_WORKER_MEMORY_LIMIT=512$/m')
         ->and($exampleEnvironment)->toMatch('/^REDIS_QUEUE_RETRY_AFTER=3900$/m')
         ->and($exampleEnvironment)->not->toContain('REDIS_BACKTEST_');
 });

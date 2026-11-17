@@ -17,6 +17,19 @@ return [
 
     /*
     |--------------------------------------------------------------------------
+    | Queue Worker Memory Limit (MB)
+    |--------------------------------------------------------------------------
+    |
+    | Raise a lower PHP limit when a queue worker starts. Horizon uses the
+    | same setting to recycle workers between jobs. Higher PHP limits and
+    | unlimited PHP memory settings are preserved.
+    |
+    */
+
+    'worker_memory_limit' => (int) env('QUEUE_WORKER_MEMORY_LIMIT', 512),
+
+    /*
+    |--------------------------------------------------------------------------
     | Queue Connections
     |--------------------------------------------------------------------------
     |

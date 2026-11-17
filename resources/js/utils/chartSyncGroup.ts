@@ -1,4 +1,4 @@
-import type { IChartApi, ISeriesApi, LogicalRange, MouseEventParams, SeriesType } from 'lightweight-charts';
+import type { IChartApi, ISeriesApi, MouseEventParams, SeriesType, Time } from 'lightweight-charts';
 
 interface SyncEntry {
     chart: IChartApi;
@@ -19,23 +19,24 @@ export class ChartSyncGroup {
         const entry: SyncEntry = { chart, series };
         this.entries.push(entry);
 
-        const onRangeChange = (range: LogicalRange | null): void => {
+        const onRangeChange = (range: { from: Time; to: Time } | null): void => {
             if (this.syncingRange || !range) {
                 return;
             }
             this.syncingRange = true;
-            for (const other of this.entries) {
-                if (other.chart !== chart) {
-                    other.chart.timeScale().setVisibleLogicalRange(range);
+            try {
+                for (const other of this.entries) {
+                    if (other.chart !== chart && other.chart.timeScale().getVisibleRange() !== null) {
+                        other.chart.timeScale().setVisibleRange(range);
+                    }
                 }
+            } finally {
+                this.syncingRange = false;
             }
-            this.syncingRange = false;
         };
 
         const onCrosshairMove = (param: MouseEventParams): void => {
-            const point = param.time !== undefined
-                ? (param.seriesData.get(series) as { value?: number } | undefined)
-                : undefined;
+            const point = param.time !== undefined ? (param.seriesData.get(series) as { value?: number } | undefined) : undefined;
 
             for (const other of this.entries) {
                 if (other.chart === chart) {
@@ -57,11 +58,11 @@ export class ChartSyncGroup {
             }
         };
 
-        chart.timeScale().subscribeVisibleLogicalRangeChange(onRangeChange);
+        chart.timeScale().subscribeVisibleTimeRangeChange(onRangeChange);
         chart.subscribeCrosshairMove(onCrosshairMove);
 
         return () => {
-            chart.timeScale().unsubscribeVisibleLogicalRangeChange(onRangeChange);
+            chart.timeScale().unsubscribeVisibleTimeRangeChange(onRangeChange);
             chart.unsubscribeCrosshairMove(onCrosshairMove);
             this.entries = this.entries.filter((e) => e !== entry);
         };

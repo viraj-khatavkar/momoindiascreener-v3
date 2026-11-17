@@ -14,6 +14,15 @@ export interface TradeLogFilters {
     reason: string | null;
     sort: 'asc' | 'desc';
     year: number | null;
+    symbol?: string | null;
+    from?: string | null;
+    through?: string | null;
+}
+
+export interface PositionTradeScope {
+    symbol: string;
+    from: string;
+    through: string;
 }
 
 export interface TradeLogSummary {

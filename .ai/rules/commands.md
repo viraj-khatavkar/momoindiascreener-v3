@@ -2,6 +2,7 @@
 paths:
   - app/Console/Commands/ImportNseIndicesCommand.php
   - app/Console/Commands/ReloadNseIndexHistoryCommand.php
+  - 'app/Console/Commands/**'
 ---
 
 # Commands
@@ -23,3 +24,6 @@ Daily processing can start with Nifty 50 and receive other indices later. For ea
 
 ## Keep daily-file history while accepting new indices
 The user selected the 167 indices in uploads/2026-11-13/index.csv as the retained historical set and authorized a one-time removal of histories outside that list. This is not a permanent import allowlist: continue importing new indices found in later daily files and report each new name so the user can obtain its history manually or with AI. Do not remove stored history merely because a later partial daily file omits an index.
+
+## Remove completed index import tools and temporary sources
+The user requested cleanup after the index history and constituent imports. Remove the one-time full-history reload, index comparison and temporary flag commands, saved downloads, preparation scripts, audit files and obsolete import tables. This replaces the earlier requirement to preserve checked historical source files after the import is complete. Keep all active index history, price membership flags, the backtest_nse_index_constituents master, instrument and industry data, uploaded daily files, daily import commands, repeat index imports and the local industry CSV importer.

@@ -9,9 +9,9 @@
                     :key="range.key"
                     type="button"
                     class="cursor-pointer px-3 py-1.5 text-sm font-medium first:rounded-l-md last:rounded-r-md"
-                    :class="selectedRange === range.key ? 'bg-purple-600 text-white' : 'text-gray-700 hover:bg-gray-50'"
-                    :aria-pressed="selectedRange === range.key"
-                    @click="selectedRange = range.key"
+                    :class="activeRange === range.key ? 'bg-purple-600 text-white' : 'text-gray-700 hover:bg-gray-50'"
+                    :aria-pressed="activeRange === range.key"
+                    @click="selectRange(range.key)"
                 >
                     {{ range.label }}
                 </button>
@@ -129,7 +129,12 @@
             </div>
         </div>
 
-        <p class="mt-2 text-[11px] text-gray-400">Scroll to zoom · drag to pan · double-click to reset</p>
+        <div class="mt-3 flex flex-wrap justify-between gap-2 text-xs text-slate-500">
+            <p v-if="visiblePeriod" data-test="nav-visible-period">
+                Showing {{ formatDate(visiblePeriod.from) }} to {{ formatDate(visiblePeriod.to) }}
+            </p>
+            <p>Scroll to zoom · drag to pan · double-click to reset</p>
+        </div>
     </div>
 </template>
 
@@ -176,6 +181,19 @@ const timeRanges = [
 type TimeRangeKey = (typeof timeRanges)[number]['key'];
 
 const selectedRange = ref<TimeRangeKey>('max');
+const customPeriod = ref<{ from: string; to: string } | null>(null);
+const visiblePeriod = ref<{ from: string; to: string } | null>(null);
+const activeRange = computed(() => {
+    if (!visiblePeriod.value || !props.dailySnapshots.length) return null;
+    const end = props.dailySnapshots.at(-1)!.date.substring(0, 10);
+    if (visiblePeriod.value.to !== end) return null;
+    return (
+        visibleTimeRanges.value.find((range) => {
+            const start = props.dailySnapshots[Math.max(0, props.dailySnapshots.length - range.days)].date.substring(0, 10);
+            return start === visiblePeriod.value!.from;
+        })?.key ?? null
+    );
+});
 
 /** Presets whose window already spans the whole backtest are noise — only 'Max' survives. */
 const visibleTimeRanges = computed(() => timeRanges.filter((r) => r.key === 'max' || r.days < props.dailySnapshots.length));
@@ -297,6 +315,8 @@ function initChart(container: HTMLDivElement): void {
             borderColor: '#e2e8f0',
         },
         timeScale: {
+            minBarSpacing: 0.001,
+            lockVisibleTimeRangeOnResize: true,
             borderColor: '#e2e8f0',
         },
     });
@@ -348,6 +368,10 @@ function initChart(container: HTMLDivElement): void {
 
         legendDate.value = hoveredDateLabel(param.time);
         legendItems.value = items;
+    });
+
+    chart.timeScale().subscribeVisibleTimeRangeChange((range) => {
+        visiblePeriod.value = range ? { from: dateKey(range.from), to: dateKey(range.to) } : null;
     });
 
     setStrategyData();
@@ -496,6 +520,11 @@ function applyTimeRange(): void {
         return;
     }
 
+    if (customPeriod.value) {
+        chart.timeScale().setVisibleRange(customPeriod.value);
+        return;
+    }
+
     const range = timeRanges.find((r) => r.key === selectedRange.value);
 
     if (!range || range.days === Infinity) {
@@ -529,12 +558,27 @@ function applyScaleMode(): void {
 }
 
 function resetView(): void {
-    if (selectedRange.value === 'max') {
-        chart?.timeScale().fitContent();
-    } else {
-        selectedRange.value = 'max';
-    }
+    selectRange('max');
 }
+
+function selectRange(range: TimeRangeKey): void {
+    customPeriod.value = null;
+    selectedRange.value = range;
+    applyTimeRange();
+}
+
+function showPeriod(from: string, to: string): void {
+    customPeriod.value = { from: from.substring(0, 10), to: to.substring(0, 10) };
+    applyTimeRange();
+}
+
+function dateKey(time: Time): string {
+    if (typeof time === 'string') return time;
+    if (typeof time === 'number') return new Date(time * 1000).toISOString().substring(0, 10);
+    return `${time.year}-${String(time.month).padStart(2, '0')}-${String(time.day).padStart(2, '0')}`;
+}
+
+defineExpose({ showPeriod });
 
 function destroyChart(): void {
     if (chart) {

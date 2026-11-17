@@ -59,6 +59,8 @@ function initChart(container: HTMLDivElement): void {
             borderColor: '#e2e8f0',
         },
         timeScale: {
+            minBarSpacing: 0.001,
+            lockVisibleTimeRangeOnResize: true,
             borderColor: '#e2e8f0',
         },
     });

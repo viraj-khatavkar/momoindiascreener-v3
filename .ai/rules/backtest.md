@@ -143,3 +143,9 @@ User-approved limit: marketcap and price_to_earnings ranking require start_date 
 
 ## Set the initial date when valuation sorting is selected
 User correction: selecting marketcap or price_to_earnings in the main factor, or enabling/selecting either in a second or third factor, sets the form date to 2024-03-01. The user may then choose any date on or after that day. Keep a valid later saved date when reopening the form, and keep server/worker validation. The earlier instruction against automatic date changes applies to stored records, not this requested editor behavior; save only through the normal settings action.
+
+## Load only required ranking and execution columns
+Backtest candidate queries must select the stock identity, adjusted/raw prices, series, volatility and active ranking-factor columns rather than all price-table columns. Keep all eligibility filters in SQL and include each enabled factor before combined ranking. Execution-date price lookups need plain query-builder rows, not a second Eloquent model pool. A full read-only replay of backtest 28 reduced peak simulation memory from 192 MB to 86 MB with identical trades and NAV; keep the 128 MB worker limit and cover large candidate pools with a regression test.
+
+## Load only required ranking and execution columns
+Backtest candidate queries must select stock identity, adjusted/raw prices, series, volatility and active ranking-factor columns rather than all price-table columns. Keep eligibility filters in SQL and include each enabled factor before combined ranking. Execution-date quote lookups need plain query-builder rows, not a second Eloquent model pool. Keep bounded reads and regression tests even though the user has now raised worker memory to 512 MB; this supersedes the earlier 128 MB limit requirement.

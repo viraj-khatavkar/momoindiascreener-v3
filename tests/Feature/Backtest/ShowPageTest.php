@@ -144,6 +144,47 @@ it('treats wildcard search characters as literal text', function () {
     ])->assertSuccessful()->assertJsonCount(1, 'props.trades.data');
 });
 
+it('filters a position holding period without including another position or backtest', function () {
+    $user = User::factory()->create(['is_paid' => true]);
+    $backtest = Backtest::factory()->for($user)->create(['status' => BacktestStatusEnum::Completed]);
+    $expected = [];
+    foreach (['2013-01-01', '2014-01-01', '2014-06-01', '2015-01-01', '2017-01-01', '2021-01-01'] as $index => $date) {
+        $trade = $backtest->trades()->create(tradeLogAttributes($backtest, [
+            'symbol' => 'ITC', 'date' => $date, 'trade_type' => $index % 2 === 0 ? 'buy' : 'sell',
+        ]));
+        if ($index < 4) {
+            $expected[] = $trade->id;
+        }
+    }
+    $backtest->trades()->create(tradeLogAttributes($backtest, ['symbol' => 'ITCOTHER', 'date' => '2014-01-01']));
+    $other = Backtest::factory()->for($user)->create();
+    $other->trades()->create(tradeLogAttributes($other, ['symbol' => 'ITC', 'date' => '2014-01-01']));
+
+    $response = $this->actingAs($user)->get('/backtests/'.$backtest->id.'?'.http_build_query([
+        'trade_symbol' => 'ITC', 'trade_from' => '2013-01-01', 'trade_through' => '2015-01-01', 'trade_sort' => 'asc',
+    ]), [
+        'X-Inertia' => 'true', 'X-Inertia-Partial-Component' => 'Backtests/Show',
+        'X-Inertia-Partial-Data' => 'trades,tradeLogSummary,tradeFilters', 'X-Inertia-Reset' => 'trades',
+    ])->assertSuccessful()->assertJsonCount(4, 'props.trades.data')
+        ->assertJsonPath('props.tradeLogSummary.counts', ['all' => 4, 'buy' => 2, 'sell' => 2])
+        ->assertJsonPath('props.tradeFilters.symbol', 'ITC')
+        ->assertJsonPath('props.tradeFilters.from', '2013-01-01')
+        ->assertJsonPath('props.tradeFilters.through', '2015-01-01');
+    expect(array_column($response->json('props.trades.data'), 'id'))->toBe($expected);
+});
+
+it('rejects incomplete or reversed position filter dates', function (array $filters, array $errors) {
+    $user = User::factory()->create(['is_paid' => true]);
+    $backtest = Backtest::factory()->for($user)->create();
+    $this->actingAs($user)->getJson('/backtests/'.$backtest->id.'?'.http_build_query($filters))
+        ->assertUnprocessable()->assertJsonValidationErrors($errors);
+})->with([
+    [['trade_symbol' => 'ITC'], ['trade_from', 'trade_through']],
+    [['trade_from' => '2013-01-01'], ['trade_symbol', 'trade_through']],
+    [['trade_through' => '2015-01-01'], ['trade_symbol', 'trade_from']],
+    [['trade_symbol' => 'ITC', 'trade_from' => '2015-01-01', 'trade_through' => '2013-01-01'], ['trade_through']],
+]);
+
 it('validates trade log filters and hides other users deferred results', function () {
     $user = User::factory()->create(['is_paid' => true]);
     $backtest = Backtest::factory()->create(['user_id' => $user->id, 'status' => BacktestStatusEnum::Completed]);

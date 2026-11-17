@@ -32,7 +32,7 @@ class LoadBacktestTradeLogAction
         SQL;
 
     /**
-     * @param  array{search: string, type: string, reason: ?string, sort: string, year: ?int}  $filters
+     * @param  array{search: string, type: string, reason: ?string, sort: string, year: ?int, symbol?: ?string, from?: ?string, through?: ?string}  $filters
      * @return LengthAwarePaginator<int, BacktestTrade>
      */
     public function execute(Backtest $backtest, array $filters): LengthAwarePaginator
@@ -57,7 +57,7 @@ class LoadBacktestTradeLogAction
     }
 
     /**
-     * @param  array{search: string, type: string, reason: ?string, sort: string, year: ?int}  $filters
+     * @param  array{search: string, type: string, reason: ?string, sort: string, year: ?int, symbol?: ?string, from?: ?string, through?: ?string}  $filters
      * @return array{total: int, buys: int, sells: int, counts: array<string, int>, reasons: array<string, int>, years: list<int>}
      */
     public function summary(Backtest $backtest, array $filters): array
@@ -94,12 +94,20 @@ class LoadBacktestTradeLogAction
     }
 
     /**
-     * @param  array{search: string, type: string, reason: ?string, sort: string, year: ?int}  $filters
+     * @param  array{search: string, type: string, reason: ?string, sort: string, year: ?int, symbol?: ?string, from?: ?string, through?: ?string}  $filters
      * @return Builder<BacktestTrade>
      */
     private function query(Backtest $backtest, array $filters): Builder
     {
         $query = BacktestTrade::query()->where('backtest_id', $backtest->id);
+
+        if (($filters['symbol'] ?? null) !== null) {
+            $query->where('symbol', $filters['symbol']);
+        }
+
+        if (($filters['from'] ?? null) !== null && ($filters['through'] ?? null) !== null) {
+            $query->whereBetween('date', [$filters['from'], $filters['through']]);
+        }
 
         if ($filters['search'] !== '') {
             $search = '%'.str_replace(['!', '%', '_'], ['!!', '!%', '!_'], mb_strtolower($filters['search'])).'%';

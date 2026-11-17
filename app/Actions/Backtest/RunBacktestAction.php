@@ -422,6 +422,7 @@ class RunBacktestAction
             $executionPrices = BacktestNseInstrumentPrice::query()
                 ->where('date', $executionDate)
                 ->whereIn('symbol', $symbols)
+                ->toBase()
                 ->get(['symbol', 'close_adjusted', 'close_raw', 'series'])
                 ->keyBy('symbol');
 
