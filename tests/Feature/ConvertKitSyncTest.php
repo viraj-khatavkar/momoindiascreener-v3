@@ -1,5 +1,6 @@
 <?php
 
+use App\Enums\PlanEnum;
 use App\Jobs\SyncUserToConvertKitJob;
 use App\Models\Order;
 use App\Models\User;
@@ -111,11 +112,24 @@ it('does not queue changes from a rolled back user transaction', function () {
     Http::assertNothingSent();
 });
 
-it('queues the paid tag update after a successful payment', function () {
+it('queues the correct paid tag update after a purchase or renewal', function (?PlanEnum $previousPlan, PlanEnum $purchasedPlan, string $method) {
     config(['razorpay.secret' => 'test-payment-secret']);
-    $user = User::factory()->create(['is_paid' => false]);
-    $order = Order::factory()->for($user)->create();
+    $user = User::factory()->create([
+        'is_paid' => $previousPlan !== null,
+        'is_newsletter_paid' => $previousPlan !== null,
+        'plan_ends_at' => $previousPlan ? now()->addDays(3)->toDateString() : null,
+    ]);
+
+    if ($previousPlan) {
+        Order::factory()->for($user)->paid()->create(['plan' => $previousPlan]);
+    }
+
+    $order = Order::factory()->for($user)->create(['plan' => $purchasedPlan]);
     Queue::fake();
+    Http::fake([
+        'api.kit.com/v4/subscribers' => Http::response(['subscriber' => ['id' => 123]], 201),
+        'api.kit.com/v4/tags/6008806/subscribers/123' => Http::response(null, 204),
+    ]);
 
     $this->post('/razorpay/callback', [
         'razorpay_order_id' => $order->order_id,
@@ -125,8 +139,22 @@ it('queues the paid tag update after a successful payment', function () {
 
     expect($user->fresh()->is_paid)->toBeTrue();
     Queue::assertPushed(SyncUserToConvertKitJob::class, 1);
+    Queue::assertPushed(SyncUserToConvertKitJob::class, fn (SyncUserToConvertKitJob $job): bool => $job->userId === $user->id);
     Http::assertNothingSent();
-});
+
+    (new SyncUserToConvertKitJob($user->id))->handle();
+
+    Http::assertSent(fn (Request $request): bool => $request->url() === 'https://api.kit.com/v4/tags/6008806/subscribers/123'
+        && $request->method() === $method);
+})->with([
+    'new monthly plan' => [null, PlanEnum::Monthly, 'DELETE'],
+    'new yearly plan' => [null, PlanEnum::Yearly, 'POST'],
+    'new forever plan' => [null, PlanEnum::Forever, 'POST'],
+    'monthly to yearly' => [PlanEnum::Monthly, PlanEnum::Yearly, 'POST'],
+    'yearly to monthly' => [PlanEnum::Yearly, PlanEnum::Monthly, 'DELETE'],
+    'yearly to forever' => [PlanEnum::Yearly, PlanEnum::Forever, 'POST'],
+    'yearly renewal' => [PlanEnum::Yearly, PlanEnum::Yearly, 'POST'],
+]);
 
 it('does not queue a paid tag update for an invalid payment', function () {
     config(['razorpay.secret' => 'test-payment-secret']);
@@ -166,8 +194,19 @@ it('queues paid tag removal when the billing command expires a plan', function (
     Http::assertNothingSent();
 });
 
-it('syncs the subscriber and applies the current paid tag state', function (bool $isPaid, string $method) {
+it('syncs the subscriber and tags only paid yearly or forever plans', function (bool $isPaid, ?PlanEnum $plan, bool $orderIsPaid, string $method) {
     $user = User::factory()->create(['is_paid' => $isPaid]);
+
+    if ($plan) {
+        $factory = Order::factory()->for($user);
+
+        if ($orderIsPaid) {
+            $factory = $factory->paid();
+        }
+
+        $factory->create(['plan' => $plan]);
+    }
+
     Queue::fake();
     Http::fake([
         'api.kit.com/v4/subscribers' => Http::response(['subscriber' => ['id' => 123]], 201),
@@ -186,12 +225,43 @@ it('syncs the subscriber and applies the current paid tag state', function (bool
     expect($user->fresh()->convertkit_subscriber_id)->toBe(123);
     Queue::assertNothingPushed();
 })->with([
-    'paid' => [true, 'POST'],
-    'free' => [false, 'DELETE'],
+    'yearly' => [true, PlanEnum::Yearly, true, 'POST'],
+    'forever' => [true, PlanEnum::Forever, true, 'POST'],
+    'monthly' => [true, PlanEnum::Monthly, true, 'DELETE'],
+    'newsletter' => [true, PlanEnum::Newsletter, true, 'DELETE'],
+    'pending yearly order' => [true, PlanEnum::Yearly, false, 'DELETE'],
+    'pending forever order' => [true, PlanEnum::Forever, false, 'DELETE'],
+    'expired yearly access' => [false, PlanEnum::Yearly, true, 'DELETE'],
+    'removed forever access' => [false, PlanEnum::Forever, true, 'DELETE'],
+    'paid without an order' => [true, null, false, 'DELETE'],
+    'free' => [false, null, false, 'DELETE'],
+]);
+
+it('uses the latest paid website plan instead of an old or unrelated order', function (PlanEnum $previousPlan, PlanEnum $latestPlan, string $latestStatus, string $method) {
+    $user = User::factory()->create(['is_paid' => true]);
+    Order::factory()->for($user)->paid()->create(['plan' => $previousPlan]);
+    Order::factory()->for($user)->create(['plan' => $latestPlan, 'status' => $latestStatus]);
+    Order::factory()->paid()->create(['plan' => PlanEnum::Forever]);
+    Http::fake([
+        'api.kit.com/v4/subscribers' => Http::response(['subscriber' => ['id' => 123]], 201),
+        'api.kit.com/v4/tags/6008806/subscribers/123' => Http::response(null, 204),
+    ]);
+
+    (new SyncUserToConvertKitJob($user->id))->handle();
+
+    Http::assertSent(fn (Request $request): bool => $request->url() === 'https://api.kit.com/v4/tags/6008806/subscribers/123'
+        && $request->method() === $method);
+})->with([
+    'monthly after yearly' => [PlanEnum::Yearly, PlanEnum::Monthly, 'paid', 'DELETE'],
+    'yearly after monthly' => [PlanEnum::Monthly, PlanEnum::Yearly, 'paid', 'POST'],
+    'newsletter after yearly' => [PlanEnum::Yearly, PlanEnum::Newsletter, 'paid', 'POST'],
+    'pending monthly after yearly' => [PlanEnum::Yearly, PlanEnum::Monthly, 'pending', 'POST'],
+    'failed forever after monthly' => [PlanEnum::Monthly, PlanEnum::Forever, 'failed', 'DELETE'],
 ]);
 
 it('updates an existing subscriber after an email change without creating another subscriber', function () {
     $user = User::factory()->create(['convertkit_subscriber_id' => 123, 'is_paid' => true]);
+    Order::factory()->for($user)->paid()->create();
     $job = new SyncUserToConvertKitJob($user->id);
     $user->update(['email' => 'new-address@example.com', 'name' => 'New Name']);
     Http::fake([
@@ -221,8 +291,9 @@ it('creates the subscriber again if the stored ConvertKit ID no longer exists', 
     Http::assertSentCount(3);
 });
 
-it('uses the latest paid status when an earlier job is retried after a tag failure', function () {
+it('uses the latest plan and paid status when an earlier job is retried after a tag failure', function (bool $expires) {
     $user = User::factory()->create(['is_paid' => true]);
+    Order::factory()->for($user)->paid()->create();
     $job = new SyncUserToConvertKitJob($user->id);
     Http::fake([
         'api.kit.com/v4/*' => Http::sequence()
@@ -234,13 +305,18 @@ it('uses the latest paid status when an earlier job is retried after a tag failu
 
     expect(fn () => $job->handle())->toThrow(RequestException::class);
     expect($user->fresh()->convertkit_subscriber_id)->toBe(123);
-    $user->update(['is_paid' => false]);
+
+    if ($expires) {
+        $user->update(['is_paid' => false]);
+    } else {
+        Order::factory()->for($user)->paid()->create(['plan' => PlanEnum::Monthly]);
+    }
 
     $job->handle();
 
     expect(Http::recorded()->map(fn (array $request): string => $request[0]->method())->all())
         ->toBe(['POST', 'POST', 'PUT', 'DELETE']);
-});
+})->with([true, false]);
 
 it('throws on subscriber API failures so the queue can retry', function (int $status) {
     $user = User::factory()->create();
@@ -253,6 +329,7 @@ it('throws on subscriber API failures so the queue can retry', function (int $st
 
 it('throws on tag API failures instead of reporting a successful sync', function (bool $isPaid, int $status) {
     $user = User::factory()->create(['is_paid' => $isPaid]);
+    Order::factory()->for($user)->paid()->create();
     Http::fake([
         'api.kit.com/v4/subscribers' => Http::response(['subscriber' => ['id' => 123]], 201),
         'api.kit.com/v4/tags/6008806/subscribers/123' => Http::response(null, $status),

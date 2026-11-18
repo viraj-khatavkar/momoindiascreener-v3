@@ -2,6 +2,7 @@
 
 namespace App\Jobs;
 
+use App\Enums\PlanEnum;
 use App\Models\User;
 use DateTimeInterface;
 use Illuminate\Contracts\Queue\ShouldQueue;
@@ -66,7 +67,7 @@ class SyncUserToConvertKitJob implements ShouldQueue
         $subscriberId = $this->syncSubscriber($user);
         $tagPath = "/tags/{$paidTagId}/subscribers/{$subscriberId}";
 
-        if ($user->is_paid) {
+        if ($this->shouldHavePaidTag($user)) {
             $this->request()->post($tagPath)->throw();
         } else {
             $this->request()->delete($tagPath)->throw();
@@ -79,6 +80,21 @@ class SyncUserToConvertKitJob implements ShouldQueue
             'user_id' => $this->userId,
             'exception' => $exception,
         ]);
+    }
+
+    private function shouldHavePaidTag(User $user): bool
+    {
+        if (! $user->is_paid) {
+            return false;
+        }
+
+        $latestPlan = $user->orders()
+            ->paid()
+            ->whereIn('plan', [PlanEnum::Monthly, PlanEnum::Yearly, PlanEnum::Forever])
+            ->latest('id')
+            ->value('plan');
+
+        return in_array($latestPlan, [PlanEnum::Yearly, PlanEnum::Forever], true);
     }
 
     private function syncSubscriber(User $user): int

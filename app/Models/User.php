@@ -33,7 +33,7 @@ class User extends Authenticatable implements MustVerifyEmail
         static::saved(function (User $user): void {
             if (! $user->hasVerifiedEmail()
                 || blank(config('convertkit.key'))
-                || ! $user->isDirty(['name', 'email', 'email_verified_at', 'is_paid'])) {
+                || ! $user->isDirty(['name', 'email', 'email_verified_at', 'is_paid', 'plan_ends_at'])) {
                 return;
             }
 

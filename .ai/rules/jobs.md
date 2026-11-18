@@ -14,3 +14,6 @@ User decision: failed backtest jobs must not be retried from the queue. Keep Run
 
 ## Sync ConvertKit through the default queue
 User decision: use the default queue for ConvertKit updates. Keep the verified-email requirement from the old site. Queue changes after the database commit, and read the latest saved user state in the worker. Paid tag 6008806 follows users.is_paid, including expiry updates. Do not restore the nightly subscriber sync or use a separate queue.
+
+## Sync ConvertKit through the default queue
+User decision: use the default queue and keep the verified-email requirement from the old site. Queue changes after commit and read current user and order data in the worker. Paid tag 6008806 requires users.is_paid and a latest paid website-plan order of yearly or forever; monthly plans do not qualify. Ignore pending, failed and newsletter orders when selecting that website plan. This replaces the earlier rule based on is_paid alone. Plan expiry and renewal must queue a sync, including renewals that leave is_paid true. Do not restore the nightly subscriber sync or use a separate queue.
