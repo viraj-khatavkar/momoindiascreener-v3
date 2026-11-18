@@ -183,6 +183,7 @@
                                 <th scope="col" class="px-6 py-3 text-left text-xs font-semibold tracking-wide text-slate-500 uppercase">Access</th>
                                 <th scope="col" class="px-6 py-3 text-left text-xs font-semibold tracking-wide text-slate-500 uppercase">Plan end</th>
                                 <th scope="col" class="px-6 py-3 text-right text-xs font-semibold tracking-wide text-slate-500 uppercase">Joined</th>
+                                <th scope="col" class="px-6 py-3"><span class="sr-only">Actions</span></th>
                             </tr>
                         </thead>
                         <tbody class="divide-y divide-slate-100">
@@ -234,6 +235,18 @@
                                 <td class="px-6 py-4 text-right text-sm text-slate-500">
                                     {{ formatDate(user.created_at) }}
                                 </td>
+                                <td class="px-6 py-4 text-right">
+                                    <button
+                                        v-if="user.ghost_url"
+                                        type="button"
+                                        class="cursor-pointer rounded-md px-2 py-2 text-sm font-semibold whitespace-nowrap text-purple-700 hover:bg-purple-50 focus-visible:outline-2 focus-visible:outline-purple-600 disabled:opacity-50"
+                                        :aria-label="`Ghost user ${user.email}`"
+                                        :disabled="ghostForm.processing"
+                                        @click="startGhosting(user.ghost_url)"
+                                    >
+                                        Ghost user
+                                    </button>
+                                </td>
                             </tr>
                         </tbody>
                     </table>
@@ -283,6 +296,16 @@
                         >
                             Newsletter member
                         </span>
+                        <button
+                            v-if="user.ghost_url"
+                            type="button"
+                            class="mt-3 block min-h-11 w-full cursor-pointer rounded-lg border border-purple-200 px-3 text-sm font-semibold text-purple-700 hover:bg-purple-50 focus-visible:outline-2 focus-visible:outline-purple-600 disabled:opacity-50"
+                            :aria-label="`Ghost user ${user.email}`"
+                            :disabled="ghostForm.processing"
+                            @click="startGhosting(user.ghost_url)"
+                        >
+                            Ghost user
+                        </button>
                     </article>
                 </div>
             </div>
@@ -330,6 +353,7 @@ interface User {
     id: number;
     name: string;
     email: string;
+    ghost_url: string | null;
     is_paid: boolean;
     is_newsletter_paid: boolean;
     plan_ends_at: string | null;
@@ -376,6 +400,11 @@ const form = useForm({
 });
 
 const filtersOpen = ref(Boolean(form.from_date || form.to_date));
+const ghostForm = useForm({});
+
+function startGhosting(url: string): void {
+    ghostForm.post(url, { preserveState: false, replace: true });
+}
 
 const filterQueryString = computed(() => {
     const params = new URLSearchParams();

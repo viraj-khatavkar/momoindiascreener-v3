@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Actions\LogoutUserAction;
 use App\Mail\ForgotPassword;
 use App\Models\PasswordResetToken;
 use App\Models\User;
@@ -70,14 +71,11 @@ class AuthController extends Controller
         return redirect()->intended('/profile');
     }
 
-    public function logout(Request $request): RedirectResponse
+    public function logout(Request $request, LogoutUserAction $logoutUser): RedirectResponse
     {
-        Auth::logout();
+        $logoutUser->execute($request);
 
-        $request->session()->invalidate();
-        $request->session()->regenerateToken();
-
-        return redirect()->to('/login');
+        return to_route('login');
     }
 
     public function forgotPassword()

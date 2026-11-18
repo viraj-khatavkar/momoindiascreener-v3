@@ -3,6 +3,7 @@
 namespace App\Http\Middleware;
 
 use Illuminate\Http\Request;
+use Inertia\Inertia;
 use Inertia\Middleware;
 
 class HandleInertiaRequests extends Middleware
@@ -35,6 +36,11 @@ class HandleInertiaRequests extends Middleware
      */
     public function share(Request $request): array
     {
+        $isGhosting = $request->attributes->has(VerifyGhostingSession::ADMIN_ATTRIBUTE);
+        if ($isGhosting || $request->is('admin', 'admin/*')) {
+            Inertia::encryptHistory($request->isSecure() || in_array($request->getHost(), ['localhost', '127.0.0.1', '[::1]'], true));
+        }
+
         return array_merge(parent::share($request), [
             'flash' => [
                 'success' => fn () => $request->session()->get('success'),
@@ -42,6 +48,7 @@ class HandleInertiaRequests extends Middleware
                 'warning' => fn () => $request->session()->get('warning'),
             ],
             'auth' => [
+                'returnToAdminUrl' => $isGhosting ? route('ghosting.destroy') : null,
                 'user' => fn () => $request->user() ? [
                     'id' => $request->user()->id,
                     'name' => $request->user()->name,

@@ -3,6 +3,7 @@
 use App\Http\Controllers\Admin\BlogsController;
 use App\Http\Controllers\Admin\CorporateActionsController;
 use App\Http\Controllers\Admin\DashboardController;
+use App\Http\Controllers\Admin\GhostingController;
 use App\Http\Controllers\Admin\MarketIndexAliasesController;
 use App\Http\Controllers\Admin\NseFilesController;
 use App\Http\Controllers\Admin\OrdersController;
@@ -23,6 +24,7 @@ Route::get('/', DashboardController::class)->name('admin.dashboard');
 
 Route::get('/users', [UsersController::class, 'index'])->name('admin.users.index');
 Route::get('/users/download', [UsersController::class, 'download'])->name('admin.users.download');
+Route::post('/users/{user}/ghost', [GhostingController::class, 'store'])->name('admin.users.ghost');
 
 Route::get('/orders', [OrdersController::class, 'index'])->name('admin.orders.index');
 Route::get('/orders/download', [OrdersController::class, 'download'])->name('admin.orders.download');

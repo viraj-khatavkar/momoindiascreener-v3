@@ -90,3 +90,6 @@ Paid users with verified email may duplicate a screen they own or one of Screen:
 
 ## Apply screen EMA filters to adjusted closes
 Screens support opt-in above/below EMA 20, 50, 100 and 200 filters. Compare close_adjusted strictly against the stored EMA, require every selected condition, and ignore EMA flags when apply_ema is off. Default all EMA flags false, including in-memory models used for older export snapshots. Copy and save all flags; current/historical results, CSV, and queued ZIP exports must reuse the same filtering action.
+
+## Seek to the portfolio valuation date for each symbol
+Use the existing symbol and date index to find the last positive raw close for each distinct holding symbol. A correlated lookup can sort years of prices for each holding even when MySQL uses that index. Check the number of rows MySQL reads on a historical date as well as the number of queries.

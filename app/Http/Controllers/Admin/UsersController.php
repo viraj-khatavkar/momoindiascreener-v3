@@ -33,7 +33,10 @@ class UsersController extends Controller
         $now = now();
 
         return inertia('Admin/Users/Index', [
-            'users' => $usersQuery->paginate(50)->withQueryString(),
+            'users' => $usersQuery->paginate(50)->withQueryString()->through(fn (User $user): array => [
+                ...$user->toArray(),
+                'ghost_url' => $user->is_admin ? null : route('admin.users.ghost', $user),
+            ]),
             'filters' => $request->only(['search', 'is_paid', 'from_date', 'to_date']),
             'stats' => [
                 'total' => User::count(),

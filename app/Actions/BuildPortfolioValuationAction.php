@@ -5,6 +5,7 @@ namespace App\Actions;
 use App\Models\BacktestNseInstrumentPrice;
 use App\Models\Portfolio;
 use App\Models\PortfolioHolding;
+use Illuminate\Support\Collection;
 
 class BuildPortfolioValuationAction
 {
@@ -20,30 +21,12 @@ class BuildPortfolioValuationAction
             ->when($date, fn ($query) => $query->where('date', '<=', $date))
             ->max('date');
         $date ??= $marketDate ?? now()->toDateString();
-        $holdingTable = (new PortfolioHolding)->getTable();
 
-        $holdings = $portfolio->holdings()
-            ->select($holdingTable.'.*')
-            ->addSelect([
-                'quote_id' => BacktestNseInstrumentPrice::query()
-                    ->select('id')
-                    ->whereColumn('symbol', $holdingTable.'.symbol')
-                    ->where('date', '<=', $date)
-                    ->where('close_raw', '>', 0)
-                    ->orderByDesc('date')
-                    ->limit(1),
-            ])
-            ->orderBy('symbol')
-            ->orderBy('id')
-            ->get();
-
-        $quotes = BacktestNseInstrumentPrice::query()
-            ->whereIn('id', $holdings->pluck('quote_id')->filter()->unique())
-            ->get(['id', 'name', 'series', 'date', 'close_raw', 'open_raw', 'high_raw', 'low_raw', 'marketcap', 'volatility_one_year', 'beta'])
-            ->keyBy('id');
+        $holdings = $portfolio->holdings()->orderBy('symbol')->orderBy('id')->get();
+        $quotes = $this->latestQuotes($holdings->pluck('symbol')->uniqueStrict(), $date);
 
         $rows = $holdings->map(function (PortfolioHolding $holding) use ($quotes, $marketDate): array {
-            $quote = $quotes->get($holding->quote_id);
+            $quote = $quotes->get($holding->symbol);
             $cost = round($holding->quantity * (float) $holding->price, 2);
             $close = $quote ? (float) $quote->close_raw : null;
             $value = $close !== null ? round($holding->quantity * $close, 2) : null;
@@ -93,5 +76,37 @@ class BuildPortfolioValuationAction
                 'earlierPrices' => $rows->where('earlierPrice', true)->count(),
             ],
         ];
+    }
+
+    /**
+     * Binding each symbol lets MySQL seek to the selected date in the (symbol, date) index.
+     * Each lookup stops at the first positive raw close. All lookups share one database request.
+     *
+     * @param  Collection<int, string>  $symbols
+     * @return Collection<string, BacktestNseInstrumentPrice>
+     */
+    private function latestQuotes(Collection $symbols, string $date): Collection
+    {
+        $quotes = null;
+
+        foreach ($symbols as $symbol) {
+            $lookup = BacktestNseInstrumentPrice::query()
+                ->forceIndex('bnip_symbol_date_index')
+                ->select(['name', 'series', 'date', 'close_raw', 'open_raw', 'high_raw', 'low_raw', 'marketcap', 'volatility_one_year', 'beta'])
+                ->selectRaw('? as holding_symbol', [$symbol])
+                ->where('symbol', $symbol)
+                ->where('date', '<=', $date)
+                ->where('close_raw', '>', 0)
+                ->orderByDesc('date')
+                ->limit(1);
+
+            if ($quotes === null) {
+                $quotes = $lookup;
+            } else {
+                $quotes->unionAll($lookup);
+            }
+        }
+
+        return $quotes?->get()->keyBy('holding_symbol') ?? collect();
     }
 }

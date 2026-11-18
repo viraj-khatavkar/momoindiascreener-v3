@@ -1,6 +1,6 @@
 <template>
-    <Head title="About Viraj Khatavkar" />
     <div class="overflow-hidden bg-white">
+        <Head title="About Viraj Khatavkar - momoindiascreener.in" />
         <div class="relative mx-auto max-w-7xl px-6 py-16 lg:px-8">
             <div class="absolute bottom-0 left-3/4 top-0 hidden w-screen bg-gray-50 lg:block"></div>
             <div class="mt-8 lg:grid lg:grid-cols-2 lg:gap-8">

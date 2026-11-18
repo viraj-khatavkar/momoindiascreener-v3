@@ -1,6 +1,6 @@
 <template>
-    <Head title="momoindiascreener" />
     <div>
+        <Head title="momoindiascreener" />
         <!-- Mobile sidebar -->
         <TransitionRoot as="template" :show="sidebarOpen">
             <Dialog class="relative z-50" @close="sidebarOpen = false">
@@ -122,76 +122,96 @@
 
         <div class="flex h-screen flex-col justify-between">
             <div>
-                <!-- Sticky header -->
-                <div
-                    class="sticky top-0 z-40 flex min-h-16 shrink-0 flex-wrap items-center gap-x-4 border-b border-gray-200 bg-white px-4 py-2 shadow-xs sm:h-16 sm:flex-nowrap sm:gap-x-6 sm:px-6 sm:py-0"
-                >
-                    <button type="button" class="-m-2.5 cursor-pointer p-2.5 text-gray-700" @click="sidebarOpen = true">
-                        <span class="sr-only">Open sidebar</span>
-                        <Bars3Icon class="h-6 w-6" aria-hidden="true" />
-                    </button>
-
-                    <Link
-                        href="/"
-                        class="flex min-h-11 shrink-0 items-center rounded-sm focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-purple-700"
+                <header class="sticky top-0 z-40">
+                    <div
+                        v-if="page.props.auth.returnToAdminUrl && page.props.auth.user"
+                        class="flex flex-wrap items-center justify-between gap-x-4 gap-y-1 border-b border-amber-300 bg-amber-100 px-4 py-2 text-sm text-amber-950 sm:px-6"
                     >
-                        <BrandLogo class="w-56 sm:w-72" />
-                    </Link>
+                        <p class="min-w-0">
+                            Ghosting <strong class="break-all">{{ page.props.auth.user.email }}</strong>
+                        </p>
+                        <Link
+                            :href="page.props.auth.returnToAdminUrl"
+                            method="delete"
+                            as="button"
+                            type="button"
+                            replace
+                            :preserve-state="false"
+                            class="min-h-9 cursor-pointer rounded-md border border-amber-700 px-3 py-1 font-semibold hover:bg-amber-200 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-amber-800"
+                        >
+                            Return to admin
+                        </Link>
+                    </div>
+                    <div
+                        class="flex min-h-16 shrink-0 flex-wrap items-center gap-x-4 border-b border-gray-200 bg-white px-4 py-2 shadow-xs sm:h-16 sm:flex-nowrap sm:gap-x-6 sm:px-6 sm:py-0"
+                    >
+                        <button type="button" class="-m-2.5 cursor-pointer p-2.5 text-gray-700" @click="sidebarOpen = true">
+                            <span class="sr-only">Open sidebar</span>
+                            <Bars3Icon class="h-6 w-6" aria-hidden="true" />
+                        </button>
 
-                    <div class="flex h-11 min-w-0 flex-1 basis-full gap-x-4 self-stretch sm:h-auto sm:basis-auto">
-                        <InstrumentSearch />
-                        <div class="flex min-w-fit items-center gap-x-4">
-                            <!-- Separator -->
-                            <div class="hidden xl:block xl:h-6 xl:w-px xl:bg-gray-200" aria-hidden="true" />
+                        <Link
+                            href="/"
+                            class="flex min-h-11 shrink-0 items-center rounded-sm focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-purple-700"
+                        >
+                            <BrandLogo class="w-56 sm:w-72" />
+                        </Link>
 
-                            <!-- Profile dropdown -->
-                            <Menu as="div" class="relative">
-                                <MenuButton class="-m-1.5 flex items-center p-1.5">
-                                    <span class="sr-only">Open user menu</span>
-                                    <span class="hidden xl:flex xl:items-center">
-                                        <span class="ml-4 text-sm leading-6 font-semibold text-gray-900" aria-hidden="true">
-                                            {{ $page.props.auth.user ? $page.props.auth.user.name : 'Welcome, Guest' }}
+                        <div class="flex h-11 min-w-0 flex-1 basis-full gap-x-4 self-stretch sm:h-auto sm:basis-auto">
+                            <InstrumentSearch />
+                            <div class="flex min-w-fit items-center gap-x-4">
+                                <!-- Separator -->
+                                <div class="hidden xl:block xl:h-6 xl:w-px xl:bg-gray-200" aria-hidden="true" />
+
+                                <!-- Profile dropdown -->
+                                <Menu as="div" class="relative">
+                                    <MenuButton class="-m-1.5 flex items-center p-1.5">
+                                        <span class="sr-only">Open user menu</span>
+                                        <span class="hidden xl:flex xl:items-center">
+                                            <span class="ml-4 text-sm leading-6 font-semibold text-gray-900" aria-hidden="true">
+                                                {{ $page.props.auth.user ? $page.props.auth.user.name : 'Welcome, Guest' }}
+                                            </span>
+                                            <ChevronDownIcon class="ml-2 h-5 w-5 text-gray-400" aria-hidden="true" />
                                         </span>
-                                        <ChevronDownIcon class="ml-2 h-5 w-5 text-gray-400" aria-hidden="true" />
-                                    </span>
-                                </MenuButton>
-                                <transition
-                                    enter-active-class="transition ease-out duration-100"
-                                    enter-from-class="transform opacity-0 scale-95"
-                                    enter-to-class="transform opacity-100 scale-100"
-                                    leave-active-class="transition ease-in duration-75"
-                                    leave-from-class="transform opacity-100 scale-100"
-                                    leave-to-class="transform opacity-0 scale-95"
-                                >
-                                    <MenuItems
-                                        class="absolute right-0 z-10 mt-2.5 w-32 origin-top-right rounded-md bg-white py-2 shadow-lg ring-1 ring-gray-900/5 focus:outline-hidden"
+                                    </MenuButton>
+                                    <transition
+                                        enter-active-class="transition ease-out duration-100"
+                                        enter-from-class="transform opacity-0 scale-95"
+                                        enter-to-class="transform opacity-100 scale-100"
+                                        leave-active-class="transition ease-in duration-75"
+                                        leave-from-class="transform opacity-100 scale-100"
+                                        leave-to-class="transform opacity-0 scale-95"
                                     >
-                                        <template v-if="$page.props.auth.user">
-                                            <MenuItem v-for="item in authUserNavigation" :key="item.name" v-slot="{ active }">
-                                                <Link
-                                                    :href="item.href"
-                                                    :class="[active ? 'bg-gray-50' : '', 'block px-3 py-1 text-sm leading-6 text-gray-900']"
-                                                >
-                                                    {{ item.name }}
-                                                </Link>
-                                            </MenuItem>
-                                        </template>
-                                        <template v-else>
-                                            <MenuItem v-for="item in guestUserNavigation" :key="item.name" v-slot="{ active }">
-                                                <Link
-                                                    :href="item.href"
-                                                    :class="[active ? 'bg-gray-50' : '', 'block px-3 py-1 text-sm leading-6 text-gray-900']"
-                                                >
-                                                    {{ item.name }}
-                                                </Link>
-                                            </MenuItem>
-                                        </template>
-                                    </MenuItems>
-                                </transition>
-                            </Menu>
+                                        <MenuItems
+                                            class="absolute right-0 z-10 mt-2.5 w-32 origin-top-right rounded-md bg-white py-2 shadow-lg ring-1 ring-gray-900/5 focus:outline-hidden"
+                                        >
+                                            <template v-if="$page.props.auth.user">
+                                                <MenuItem v-for="item in authUserNavigation" :key="item.name" v-slot="{ active }">
+                                                    <Link
+                                                        :href="item.href"
+                                                        :class="[active ? 'bg-gray-50' : '', 'block px-3 py-1 text-sm leading-6 text-gray-900']"
+                                                    >
+                                                        {{ item.name }}
+                                                    </Link>
+                                                </MenuItem>
+                                            </template>
+                                            <template v-else>
+                                                <MenuItem v-for="item in guestUserNavigation" :key="item.name" v-slot="{ active }">
+                                                    <Link
+                                                        :href="item.href"
+                                                        :class="[active ? 'bg-gray-50' : '', 'block px-3 py-1 text-sm leading-6 text-gray-900']"
+                                                    >
+                                                        {{ item.name }}
+                                                    </Link>
+                                                </MenuItem>
+                                            </template>
+                                        </MenuItems>
+                                    </transition>
+                                </Menu>
+                            </div>
                         </div>
                     </div>
-                </div>
+                </header>
 
                 <main class="py-10">
                     <div class="px-4 sm:px-6 xl:px-8">

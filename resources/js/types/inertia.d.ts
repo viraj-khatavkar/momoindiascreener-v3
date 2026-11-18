@@ -10,6 +10,7 @@ declare module '@inertiajs/core' {
             };
             auth: {
                 user: User | null;
+                returnToAdminUrl: string | null;
             };
         };
     }

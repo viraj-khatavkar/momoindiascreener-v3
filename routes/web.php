@@ -1,5 +1,6 @@
 <?php
 
+use App\Http\Controllers\Admin\GhostingController;
 use App\Http\Controllers\AuthController;
 use App\Http\Controllers\BacktestBenchmarkController;
 use App\Http\Controllers\BacktestCsvController;
@@ -70,8 +71,12 @@ Route::post('/email/verification-notification', function (Request $request) {
 })->middleware(['auth', 'throttle:6,1'])->name('verification.send');
 
 Route::get('/logout', [AuthController::class, 'logout'])->middleware('auth')->name('auth.logout');
+Route::delete('/ghosting', [GhostingController::class, 'destroy'])->middleware('auth')->name('ghosting.destroy');
 
 Route::inertia('/about', 'About');
+Route::inertia('/privacy-policy', 'PrivacyPolicy');
+Route::inertia('/refund-policy', 'RefundPolicy');
+Route::inertia('/terms-conditions', 'TermsConditions');
 Route::inertia('/faq', 'Faqs');
 Route::inertia('/support', 'Support');
 Route::get('/inspire', function () {

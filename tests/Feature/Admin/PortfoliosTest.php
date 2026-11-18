@@ -5,6 +5,7 @@ use App\Models\BacktestNseInstrument;
 use App\Models\Portfolio;
 use App\Models\PortfolioHolding;
 use App\Models\User;
+use Carbon\CarbonImmutable;
 use Illuminate\Support\Facades\DB;
 use Inertia\Testing\AssertableInertia as Assert;
 
@@ -265,6 +266,31 @@ it('loads prices in a constant number of queries', function () {
     expect($valuation['holdings'])->toHaveCount(30)
         ->and($valuation['summary']['earlierPrices'])->toBe(30)
         ->and($queries)->toHaveCount(3);
+});
+
+it('seeks to historical quotes without reading the full price history for each holding', function () {
+    $firstDate = CarbonImmutable::parse('2025-01-01');
+    $selectedDay = 60;
+
+    foreach (['AAA' => 100, 'M&M' => 200] as $symbol => $basePrice) {
+        PortfolioHolding::factory()->for($this->portfolio)->create(['symbol' => $symbol]);
+        foreach (range(0, 120) as $day) {
+            createBacktestPriceRow($symbol, $firstDate->addDays($day)->toDateString(), [
+                'close_raw' => $day === $selectedDay ? 0 : $basePrice + $day,
+            ]);
+        }
+    }
+
+    $rowReads = static fn (): int => (int) collect(DB::select(
+        "SHOW SESSION STATUS WHERE Variable_name IN ('Handler_read_next', 'Handler_read_prev', 'Handler_read_rnd_next')"
+    ))->sum('Value');
+
+    $before = $rowReads();
+    $valuation = app(BuildPortfolioValuationAction::class)->execute($this->portfolio, $firstDate->addDays($selectedDay)->toDateString());
+    $reads = $rowReads() - $before;
+
+    expect(array_column($valuation['holdings'], 'close'))->toBe([159.0, 259.0])
+        ->and($reads)->toBeLessThan(30);
 });
 
 it('shows corporate actions only for held symbols and the selected date', function () {

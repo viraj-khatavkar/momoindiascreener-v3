@@ -78,6 +78,24 @@ it('shows the main admin pages without browser errors', function () {
         ->toBeTrue();
 });
 
+it('lets an admin ghost a user and return to the user list', function (bool $mobile): void {
+    $users = visit('/admin/users')->on();
+    $page = $mobile ? $users->iPhone15Pro() : $users->desktop();
+
+    $page->assertSee('User list')
+        ->assertNotPresent('button[aria-label="Ghost user '.$this->admin->email.'"]')
+        ->press('button[aria-label="Ghost user aarav@example.com"]:visible')
+        ->assertPathIs('/')
+        ->assertSee('Ghosting aarav@example.com')
+        ->navigate('/profile')
+        ->assertValue('email', 'aarav@example.com')
+        ->press('Return to admin')
+        ->assertPathIs('/admin/users')
+        ->assertSee('User list')
+        ->assertDontSee('Return to admin')
+        ->assertNoJavaScriptErrors();
+})->with(['desktop' => false, 'mobile' => true]);
+
 it('keeps the NSE file picker CSV only and explains the F&O format', function () {
     visit('/admin/nse-files/create')
         ->select('Filename', 'fno')
@@ -247,6 +265,7 @@ it('keeps corporate action checks in workflow order', function () {
 
     $widePage = visit('/admin/corporate-actions')
         ->resize(1280, 900)
+        ->assertSee('0.9922311995028')
         ->assertNoJavaScriptErrors()
         ->assertNoConsoleLogs();
 
