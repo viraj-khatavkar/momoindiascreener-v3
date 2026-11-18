@@ -3,7 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Actions\Backtest\BacktestNavSourceAction;
-use App\Actions\Backtest\BacktestSortDateAction;
+use App\Actions\Backtest\BacktestStartDateAction;
 use App\Actions\Backtest\LoadBacktestTradeLogAction;
 use App\Actions\Backtest\LoadBenchmarkSeriesAction;
 use App\Actions\Backtest\LoadMarketCapAllocationAction;
@@ -65,7 +65,7 @@ class BacktestsController extends Controller
         return redirect()->to('/backtests/'.$backtest->getKey().'?tab=settings');
     }
 
-    public function show(ShowBacktestRequest $request, Backtest $backtest, LoadBenchmarkSeriesAction $loadBenchmark, LoadMarketCapAllocationAction $marketCapAllocation, LoadBacktestTradeLogAction $tradeLog, BacktestNavSourceAction $navSource): Response
+    public function show(ShowBacktestRequest $request, Backtest $backtest, LoadBenchmarkSeriesAction $loadBenchmark, LoadMarketCapAllocationAction $marketCapAllocation, LoadBacktestTradeLogAction $tradeLog, BacktestNavSourceAction $navSource, BacktestStartDateAction $startDates): Response
     {
         $readOnly = $request->routeIs('public-backtests.show');
         $isCompleted = $backtest->status === BacktestStatusEnum::Completed;
@@ -99,10 +99,7 @@ class BacktestsController extends Controller
             'benchmarkOptions' => self::INDEX_SLUG_OPTIONS,
             'indices' => array_values(NseIndexEnum::getOptionsForFilters()),
             'sortByOptions' => array_values(ScreenSortByOptionEnum::getOptionsForFilters()),
-            'startDateLimits' => [
-                'default' => BacktestSortDateAction::DEFAULT_START_DATE,
-                'sorts' => BacktestSortDateAction::SORT_START_DATES,
-            ],
+            'startDateLimits' => $startDates->limits(),
             'applyFiltersOnOptions' => array_values(ApplyFiltersOnOptionEnum::getOptionsForFilters()),
             'customFilterValueOptions' => array_values(CustomFilterValueOptionEnum::getOptionsForFilters()),
             'customFilterComparatorOptions' => array_values(CustomFilterComparatorOptionEnum::resolveDisplayableValueList()),

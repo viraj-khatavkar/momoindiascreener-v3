@@ -308,3 +308,23 @@ it('removes private export files after the owner account is deleted', function (
     $this->artisan('screens:prune-exports')->assertSuccessful();
     expect(Storage::disk('local')->directoryExists($directory))->toBeFalse();
 });
+
+it('uses saved EMA rules in every dated CSV even after the screen is edited', function () {
+    $user = User::factory()->create(['is_paid' => true]);
+    $screen = Screen::factory()->for($user)->create(['apply_ema' => true, 'above_ema_20' => true]);
+    foreach (['2026-07-01', '2026-07-02'] as $date) {
+        createScreenResultRow('PASS', 'Pass', $date, ['ema_20' => 90]);
+        createScreenResultRow('FAIL', 'Fail', $date, ['ema_20' => 110]);
+    }
+    $export = app(QueueScreenExportAction::class)->execute($user, $screen, '2026-07-01', '2026-07-02');
+    $screen->update(['apply_ema' => false]);
+    (new GenerateScreenExportJob($export->id))->handle(app(GenerateScreenExportAction::class));
+    $export->refresh();
+    expect($export->status)->toBe(ScreenExportStatusEnum::Completed)->and($export->row_count)->toBe(2);
+    $zip = new ZipArchive;
+    expect($zip->open(Storage::disk('local')->path($export->path)))->toBeTrue();
+    foreach (['2026-07-01', '2026-07-02'] as $date) {
+        expect(array_column(readScreenExportCsv($zip, $date.'.csv'), 'symbol'))->toBe(['PASS']);
+    }
+    $zip->close();
+});

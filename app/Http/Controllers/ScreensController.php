@@ -23,7 +23,7 @@ class ScreensController extends Controller
         return inertia('Screens/Index', [
             'exportUrl' => $request->user()?->is_paid ? route('screen-exports.index') : null,
             'publicScreens' => Screen::whereIn('id', Screen::PUBLIC_SCREENS)->get(),
-            'screens' => $request->user() ? $request->user()->screens : [],
+            'screens' => $request->user()?->screens()->latest('updated_at')->latest('id')->get() ?? [],
         ]);
     }
 
@@ -40,7 +40,7 @@ class ScreensController extends Controller
 
         $screen = $createDefaultScreenAction->execute($request->name, $request->user());
 
-        return redirect()->to('/screens/'.$screen->getKey().'/edit');
+        return redirect()->route('screens.edit', ['screen' => $screen, 'tab' => 'rules']);
     }
 
     public function show(Request $request, Screen $screen, ApplyScreenFiltersAction $applyScreenFiltersAction)

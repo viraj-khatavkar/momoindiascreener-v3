@@ -2,6 +2,7 @@
 paths:
   - app/Models/BacktestNseInstrument.php
   - app/Models/NseIndex.php
+  - app/Models/Screen.php
 ---
 
 # Models
@@ -17,3 +18,6 @@ User now authorizes importing industry labels from official NSE/Nifty constituen
 
 ## Use an industry lookup with stable public slugs
 User now authorizes industry display and per-industry stock pages. This supersedes the earlier classification exclusion and string-storage choice. Store names and unique stable slugs in industries; instruments have nullable industry_id. Import current official CSV labels through backtest:import-industries and preserve links on daily copies and symbol changes. Keep slugs when display names change. Do not infer missing labels, add price-table industry fields, or expand screen/backtest filter choices.
+
+## Keep the production public screen list explicit
+The production public screen IDs are 1, 2, 3, 55, 377 and 1068. Public visibility is controlled by Screen::PUBLIC_SCREENS, not by a column in the SQL export. Use the same explicit list for home cards, screen lists, guest access, duplication and exports. Do not infer public status from the owner or publish other imported screens.

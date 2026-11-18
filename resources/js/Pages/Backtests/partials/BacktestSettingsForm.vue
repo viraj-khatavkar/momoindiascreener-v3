@@ -327,7 +327,7 @@
                     v-model="form.index"
                     label="Index Universe"
                     name="index"
-                    :options="indices"
+                    :options="universeOptions"
                     :error="form.errors.index"
                 />
                 <SelectInput
@@ -369,13 +369,33 @@
                         />
                     </div>
                     <p class="mt-1 text-xs text-gray-500" data-test="sort-start-date-notice">
-                        {{ minimumStartDate === startDateLimits.default ? 'Price data available from' : 'Market cap and P/E sorting available from' }}
+                        Earliest start for these settings:
                         {{ formatDate(minimumStartDate) }}
                     </p>
                     <p v-if="form.errors.start_date" class="mt-2 text-sm text-red-600" id="start_date-error">
                         {{ form.errors.start_date }}
                     </p>
                 </div>
+            </div>
+            <p class="mt-4 text-sm text-gray-600" data-test="universe-start-date-notice">
+                {{ selectedUniverseName }} membership data starts on {{ formatDate(universeMembershipStart) }}.
+                Backtests also require price indicators from {{ formatDate(startDateLimits.default) }} or later.
+                The first trade uses the first available trading date on or after the selected start date.
+            </p>
+            <p v-if="limitedRankingNames.length" class="mt-2 text-sm text-gray-600">
+                Ranking data limits: {{ limitedRankingNames.join(' · ') }}.
+            </p>
+            <p v-if="form.index === 'etf'" class="mt-2 text-sm text-gray-600">
+                Market cap and P/E are not available for ETFs. Use another ranking factor.
+            </p>
+            <div v-if="form.index === 'etf'" class="mt-5 rounded-lg border border-slate-200 bg-white p-4">
+                <Toggle v-model="form.unique_etf_per_index" label="One ETF per underlying index" />
+                <p class="mt-2 text-sm text-gray-600">
+                    After filters pass, keep the ETF with the highest one-year median daily trading volume for each index.
+                    A retained holding blocks another ETF for the same index. ETFs with no index mapping remain separate.
+                    Defensive gold purchases still follow the cash-call rule.
+                </p>
+                <p v-if="form.errors.unique_etf_per_index" class="mt-2 text-sm text-red-600">{{ form.errors.unique_etf_per_index }}</p>
             </div>
         </div>
 
@@ -675,7 +695,45 @@
             </DisclosurePanel>
         </Disclosure>
 
-        <!-- Marketcap and P/E filters hidden from UI but values still submitted with defaults -->
+        <Disclosure
+            v-slot="{ open }"
+            :key="`valuation-${sectionRemounts.valuation}`"
+            as="div"
+            id="backtest-section-valuation"
+            class="mt-4 rounded-md border border-gray-300 bg-white"
+            :default-open="sectionOpen.valuation"
+        >
+            <DisclosureButton class="flex w-full items-center justify-between bg-gray-50 px-4 py-3" @click="toggleSection('valuation')">
+                <span class="flex items-center gap-2">
+                    <span class="text-sm font-semibold text-gray-900">Market Cap and P/E Filters</span>
+                    <span :class="sectionBadges.valuation.active ? badgeActiveClass : badgeInactiveClass">{{ sectionBadges.valuation.text }}</span>
+                </span>
+                <ChevronDownIcon :class="[open ? 'rotate-180' : '', 'h-5 w-5 text-gray-500']" />
+            </DisclosureButton>
+            <DisclosurePanel class="space-y-5 p-4">
+                <p class="text-sm text-gray-600">
+                    Available from {{ formatDate(startDateLimits.filters.apply_marketcap) }} for stock universes.
+                    Bounds are inclusive. A stock with missing data for an active filter does not qualify.
+                </p>
+                <p v-if="form.index === 'etf'" class="text-sm text-amber-800">ETFs have no market cap or P/E data. Turn off these filters to use the ETF universe.</p>
+                <div>
+                    <Toggle v-model="form.apply_marketcap" label="Apply Market Cap Filter" />
+                    <p v-if="form.errors.apply_marketcap" class="mt-2 text-sm text-red-600">{{ form.errors.apply_marketcap }}</p>
+                    <div v-if="form.apply_marketcap" class="mt-4 grid gap-4 sm:grid-cols-2">
+                        <TextInput v-model="form.marketcap_from" type="number" label="Minimum Market Cap (₹ crore)" name="marketcap_from" :error="form.errors.marketcap_from" />
+                        <TextInput v-model="form.marketcap_to" type="number" label="Maximum Market Cap (₹ crore)" name="marketcap_to" :error="form.errors.marketcap_to" />
+                    </div>
+                </div>
+                <div>
+                    <Toggle v-model="form.apply_pe" label="Apply P/E Filter" />
+                    <p v-if="form.errors.apply_pe" class="mt-2 text-sm text-red-600">{{ form.errors.apply_pe }}</p>
+                    <div v-if="form.apply_pe" class="mt-4 grid gap-4 sm:grid-cols-2">
+                        <TextInput v-model="form.price_to_earnings_from" type="number" label="Minimum P/E" name="price_to_earnings_from" :error="form.errors.price_to_earnings_from" />
+                        <TextInput v-model="form.price_to_earnings_to" type="number" label="Maximum P/E" name="price_to_earnings_to" :error="form.errors.price_to_earnings_to" />
+                    </div>
+                </div>
+            </DisclosurePanel>
+        </Disclosure>
 
         <!-- Series -->
         <Disclosure
@@ -984,7 +1042,7 @@ const props = defineProps<{
     initialCapital: number | string;
     indices: SelectOption[];
     sortByOptions: SelectOption[];
-    startDateLimits: { default: string; sorts: Record<string, string> };
+    startDateLimits: { default: string; universes: Record<string, string>; sorts: Record<string, string>; filters: Record<string, string> };
     applyFiltersOnOptions: SelectOption[];
     customFilterValueOptions: SelectOption[];
     customFilterComparatorOptions: SelectOption[];
@@ -1042,18 +1100,36 @@ const activeSorts = computed<(string | null)[]>(() => [
     props.form.apply_factor_three ? props.form.factor_three_sort_by : null,
 ]);
 
-const minimumStartDate = computed(() =>
-    activeSorts.value.reduce<string>((minimumDate, sort) => {
-        const availableFrom = (sort ? props.startDateLimits.sorts[sort] : null) ?? props.startDateLimits.default;
-        return availableFrom > minimumDate ? availableFrom : minimumDate;
-    }, props.startDateLimits.default),
-);
+const universeMembershipStart = computed(() => props.startDateLimits.universes[props.form.index] ?? props.startDateLimits.default);
+const universeMinimumStart = computed(() => universeMembershipStart.value > props.startDateLimits.default
+    ? universeMembershipStart.value : props.startDateLimits.default);
+const selectedUniverseName = computed(() => props.indices.find((option) => option.id === props.form.index)?.name ?? 'Selected universe');
+const universeOptions = computed(() => props.indices.map((option) => {
+    const membershipStart = props.startDateLimits.universes[option.id] ?? props.startDateLimits.default;
+    const start = membershipStart > props.startDateLimits.default ? membershipStart : props.startDateLimits.default;
+    return { ...option, name: `${option.name} · from ${formatDate(start)}` };
+}));
+const limitedRankingNames = computed(() => [...new Set(activeSorts.value)].flatMap((sort) => {
+    const date = sort ? props.startDateLimits.sorts[sort] : null;
+    return date ? [`${props.sortByOptions.find((option) => option.id === sort)?.name ?? sort}: ${formatDate(date)}`] : [];
+}));
+const activeDateFilters = computed(() => Object.keys(props.startDateLimits.filters).filter((field) => props.form[field]));
+const minimumStartDate = computed(() => {
+    const dates = [universeMinimumStart.value,
+        ...activeSorts.value.flatMap((sort) => sort && props.startDateLimits.sorts[sort] ? [props.startDateLimits.sorts[sort]] : []),
+        ...activeDateFilters.value.map((field) => props.startDateLimits.filters[field]),
+    ];
+    return dates.sort().at(-1) ?? props.startDateLimits.default;
+});
 
-watch(activeSorts, (sorts, previousSorts) => {
+watch([() => props.form.index, activeSorts, activeDateFilters], ([universe, sorts, filters], previous) => {
+    const [previousUniverse, previousSorts, previousFilters] = previous ?? [];
+    const changedUniverse = previousUniverse !== undefined && universe !== previousUniverse;
     const hasNewLimitedSort = sorts.some((sort, index) =>
         sort !== null && props.startDateLimits.sorts[sort] !== undefined && sort !== previousSorts?.[index],
     );
-    if (hasNewLimitedSort && (previousSorts !== undefined || props.form.start_date < minimumStartDate.value)) {
+    const enabledDateFilter = filters.some((field) => !previousFilters?.includes(field));
+    if (changedUniverse || (previousUniverse !== undefined && (hasNewLimitedSort || enabledDateFilter)) || props.form.start_date < minimumStartDate.value) {
         props.form.start_date = minimumStartDate.value;
     }
 }, { immediate: true });
@@ -1305,6 +1381,7 @@ type SectionKey =
     | 'ema'
     | 'awayFromHigh'
     | 'positiveDays'
+    | 'valuation'
     | 'circuits'
     | 'series'
     | 'beta'
@@ -1318,6 +1395,7 @@ const sectionKeysList: SectionKey[] = [
     'ema',
     'awayFromHigh',
     'positiveDays',
+    'valuation',
     'circuits',
     'series',
     'beta',
@@ -1371,6 +1449,10 @@ const sectionBadges = computed<Record<SectionKey, { text: string; active: boolea
             text: positiveDaysCount > 0 ? `${positiveDaysCount} active` : 'Off',
             active: positiveDaysCount > 0,
         },
+        valuation: {
+            text: [props.form.apply_marketcap && 'Market cap', props.form.apply_pe && 'P/E'].filter(Boolean).join(' + ') || 'Off',
+            active: Boolean(props.form.apply_marketcap || props.form.apply_pe),
+        },
         circuits: {
             text: circuitsCount > 0 ? `${circuitsCount} active` : 'Off',
             active: circuitsCount > 0,
@@ -1422,6 +1504,7 @@ const sectionFields: Record<SectionKey, string[]> = {
     ema: ['apply_ema', ...emaToggleFields],
     awayFromHigh: ['away_from_high_all_time', 'away_from_high_one_year'],
     positiveDays: positiveDaysFields,
+    valuation: ['apply_marketcap', 'marketcap_from', 'marketcap_to', 'apply_pe', 'price_to_earnings_from', 'price_to_earnings_to'],
     circuits: circuitFields,
     series: ['series_eq', 'series_be'],
     beta: ['ignore_above_beta'],
@@ -1490,6 +1573,13 @@ const fieldLabels: Record<string, string> = {
     sebi_charges_rate: 'SEBI Charges (%)',
     gst_rate: 'GST (%)',
     stamp_charges_rate: 'Stamp Duty (%)',
+    apply_marketcap: 'Market Cap Filter',
+    apply_pe: 'P/E Filter',
+    marketcap_from: 'Minimum Market Cap',
+    marketcap_to: 'Maximum Market Cap',
+    price_to_earnings_from: 'Minimum P/E',
+    price_to_earnings_to: 'Maximum P/E',
+    unique_etf_per_index: 'One ETF per underlying index',
     start_date: 'Start Date',
     index: 'Index Universe',
     sort_by: 'Sort By (Factor)',

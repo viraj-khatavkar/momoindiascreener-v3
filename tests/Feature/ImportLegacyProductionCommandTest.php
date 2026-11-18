@@ -88,6 +88,7 @@ it('previews without writes and saves an audit without personal data', function 
     $json = Storage::disk('local')->get('audit.json');
     $report = json_decode($json, true, flags: JSON_THROW_ON_ERROR);
     expect($report['tables']['users']['rows'])->toBe(1)
+        ->and($report['tables']['users']['defaulted_columns'])->toBe(['convertkit_subscriber_id' => null])
         ->and($report['tables']['screens']['eligible'])->toBe(1)
         ->and($json)->not->toContain('legacy@example.test', $this->legacyRows['users'][0]['password']);
 });
@@ -112,6 +113,7 @@ it('imports hashes IDs timestamps and relationships and translates only equivale
         ->and((int) DB::table('users')->where('id', 20)->selectRaw('UNIX_TIMESTAMP(created_at) AS instant')->value('instant'))
         ->toBe(CarbonImmutable::parse('2024-02-03 04:05:06', 'UTC')->timestamp)
         ->and($user->is_paid)->toBeTrue()
+        ->and($user->convertkit_subscriber_id)->toBeNull()
         ->and($user->orders->sole()->id)->toBe(30)
         ->and($user->screens->sole()->id)->toBe(40)
         ->and($screen->index->value)->toBe('nifty_largemidcap_250')

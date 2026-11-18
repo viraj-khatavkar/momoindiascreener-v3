@@ -17,7 +17,7 @@ beforeEach(function () {
 });
 
 it('shows only public screen cards and selected completed backtests to guests', function () {
-    Screen::factory()->create(['name' => 'Private Screen']);
+    $privateScreen = Screen::factory()->create(['name' => 'Private Screen']);
     $public = Backtest::factory()->create(['is_public' => true, 'status' => BacktestStatusEnum::Completed]);
     Backtest::factory()->create(['is_public' => true, 'status' => BacktestStatusEnum::Pending]);
     Backtest::factory()->create(['status' => BacktestStatusEnum::Completed]);
@@ -25,19 +25,33 @@ it('shows only public screen cards and selected completed backtests to guests', 
 
     $this->get('/')->assertSuccessful()->assertInertia(fn (Assert $page) => $page
         ->component('Welcome')->where('auth.user', null)
-        ->has('screens', 3)->where('screenCount', 3)
+        ->has('screens', 6)->where('screenCount', 6)
         ->where('screens.0.id', 1)->where('screens.1.id', 2)->where('screens.2.id', 3)
+        ->where('screens.3.id', 55)->where('screens.4.id', 377)->where('screens.5.id', 1068)
         ->has('backtests', 1)->where('backtestCount', 1)
         ->where('backtests.0.id', $public->id)
         ->where('backtests.0.url', route('public-backtests.show', $public))
         ->missing('publicScreenPreviews')->missing('personalScreenPreviews'));
+
+    $this->get('/screens')->assertSuccessful()->assertInertia(fn (Assert $page) => $page
+        ->component('Screens/Index')->has('screens', 0)->has('publicScreens', 6)
+        ->where('publicScreens', fn (mixed $screens): bool => collect($screens)->pluck('id')->sort()->values()->all() === [1, 2, 3, 55, 377, 1068]));
+
+    $this->get('/screens/'.$privateScreen->id)->assertNotFound();
 });
+
+it('opens the additional production public screens for guests', function (int $screenId) {
+    createScreenResultRow('ALPHA', 'Alpha Industries', '2026-11-17');
+
+    $this->get('/screens/'.$screenId)->assertSuccessful()->assertInertia(fn (Assert $page) => $page
+        ->component('Screens/Show')->where('screen.id', $screenId));
+})->with([55, 377, 1068]);
 
 it('shows public screens owned by the user in their personal screens', function () {
     $owner = User::query()->where('name', 'Public Screens')->firstOrFail();
 
     $this->actingAs($owner)->get('/')->assertSuccessful()->assertInertia(fn (Assert $page) => $page
-        ->component('Welcome')->has('screens', 3)->where('screenCount', 3));
+        ->component('Welcome')->has('screens', 6)->where('screenCount', 6));
 });
 
 it('shows personal screens and backtests to an unpaid user without including other owners', function () {

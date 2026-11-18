@@ -20,7 +20,6 @@ it('copies an example screen into the paid users editable private screen', funct
         ->assertSee('Example Momentum (Copy)')
         ->assertValue('sort_by', 'close_raw')
         ->assertValue('sort_direction', 'asc')
-        ->click('Show More Filters')
         ->assertValue('name', 'Example Momentum (Copy)')
         ->assertNoJavaScriptErrors();
 
@@ -44,17 +43,15 @@ it('opens fresh copy settings and requires changes to be saved before another co
     $page = visit('/screens/'.$source->id.'/edit')->resize($width, $height)
         ->press('Duplicate Screen')
         ->assertSee('My Momentum (Copy)')
-        ->click('Show More Filters')
         ->assertValue('name', 'My Momentum (Copy)')
         ->select('sort_direction', 'asc')
         ->assertDisabled('Duplicate Screen')
         ->assertSee('Save changes before you duplicate this screen.')
-        ->press('Update & Apply Filters')
+        ->press('Save and Apply')
         ->assertEnabled('Duplicate Screen')
         ->press('Duplicate Screen')
         ->assertSee('My Momentum (Copy 2)')
         ->assertValue('sort_direction', 'asc')
-        ->click('Show More Filters')
         ->assertValue('name', 'My Momentum (Copy 2)')
         ->assertNoJavaScriptErrors();
 

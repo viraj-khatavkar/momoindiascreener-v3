@@ -51,16 +51,19 @@
             </p>
             <p>Move over the chart to inspect a date. The median updates when you zoom or move the chart.</p>
         </div>
+        <ChartInteractionHint v-if="availablePoints.length" class="mt-2" />
     </div>
 </template>
 
 <script setup lang="ts">
+import { createInteractiveChart } from '@/utils/createInteractiveChart';
+import ChartInteractionHint from '@/Components/Charts/ChartInteractionHint.vue';
 import ChartTimeRangeControl from '@/Components/Charts/ChartTimeRangeControl.vue';
 import type { InstrumentHistoryMetric, InstrumentHistoryRecord } from '@/types/InstrumentHistoryRecord';
 import { formatDate } from '@/utils';
 import { chartTimeRanges } from '@/utils/chartTimeRanges';
 import type { ChartTimeRangeKey } from '@/utils/chartTimeRanges';
-import { AreaSeries, ColorType, CrosshairMode, LineStyle, createChart } from 'lightweight-charts';
+import { AreaSeries, ColorType, CrosshairMode, LineStyle } from 'lightweight-charts';
 import type { IChartApi, IPriceLine, ISeriesApi, Time } from 'lightweight-charts';
 import { computed, nextTick, onUnmounted, ref, watch } from 'vue';
 
@@ -160,7 +163,7 @@ function destroyChart(): void {
 watch(chartContainer, (container) => {
     destroyChart();
     if (!container) return;
-    chart = createChart(container, {
+    chart = createInteractiveChart(container, {
         autoSize: true,
         layout: { background: { type: ColorType.Solid, color: '#ffffff' }, textColor: '#6b7280', fontFamily: 'inherit' },
         grid: { vertLines: { visible: false }, horzLines: { color: '#f1f5f9' } },

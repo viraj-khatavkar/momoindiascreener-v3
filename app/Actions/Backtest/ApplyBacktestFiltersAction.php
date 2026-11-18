@@ -3,6 +3,7 @@
 namespace App\Actions\Backtest;
 
 use App\Actions\RankInstrumentsAction;
+use App\Actions\SelectUniqueEtfsAction;
 use App\Enums\ApplyFiltersOnOptionEnum;
 use App\Enums\NseIndexEnum;
 use App\Models\Backtest;
@@ -12,7 +13,10 @@ use Illuminate\Support\Collection;
 
 class ApplyBacktestFiltersAction
 {
-    public function __construct(private RankInstrumentsAction $rankInstruments) {}
+    public function __construct(
+        private RankInstrumentsAction $rankInstruments,
+        private SelectUniqueEtfsAction $uniqueEtfs,
+    ) {}
 
     public function execute(Backtest $backtest, $date)
     {
@@ -33,7 +37,7 @@ class ApplyBacktestFiltersAction
         if ($backtest->apply_factor_two || $backtest->apply_factor_three) {
             $results = $this->applyCombinedRanking($query, $backtest);
         } else {
-            $results = $query->get();
+            $results = $this->uniqueEtfsPerIndex($query->get(), $backtest);
         }
 
         $rank = 0;
@@ -66,6 +70,10 @@ class ApplyBacktestFiltersAction
             $columns[] = $backtest->factor_three_sort_by;
         }
 
+        if ($backtest->index === NseIndexEnum::NIFTY_ETF && $backtest->unique_etf_per_index) {
+            $columns[] = 'median_volume_one_year';
+        }
+
         return array_values(array_unique($columns));
     }
 
@@ -79,7 +87,15 @@ class ApplyBacktestFiltersAction
             $query->whereNotNull($backtest->factor_three_sort_by);
         }
 
-        return $this->rankInstruments->execute($query->get(), $backtest);
+        return $this->rankInstruments->execute($this->uniqueEtfsPerIndex($query->get(), $backtest), $backtest);
+    }
+
+    /** @return Collection<int, BacktestNseInstrumentPrice> */
+    private function uniqueEtfsPerIndex(Collection $instruments, Backtest $backtest): Collection
+    {
+        return $backtest->index === NseIndexEnum::NIFTY_ETF && $backtest->unique_etf_per_index
+            ? $this->uniqueEtfs->execute($instruments)
+            : $instruments;
     }
 
     protected function fetchTopDecileIds(Backtest $backtest, $date): array
@@ -117,6 +133,13 @@ class ApplyBacktestFiltersAction
         $query = $this->percentagePositiveDaysFilters($query, $backtest);
         $query = $this->circuitDaysFilters($query, $backtest);
         $query = $this->priceRangeFilters($query, $backtest);
+
+        if ($backtest->apply_marketcap) {
+            $query->whereBetween('marketcap', [$backtest->marketcap_from, $backtest->marketcap_to]);
+        }
+        if ($backtest->apply_pe) {
+            $query->whereBetween('price_to_earnings', [$backtest->price_to_earnings_from, $backtest->price_to_earnings_to]);
+        }
 
         $query = $this->seriesFilter($query, $backtest);
         $query = $this->ignoreAboveBetaFilter($query, $backtest);

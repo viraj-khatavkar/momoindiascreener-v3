@@ -1,6 +1,7 @@
 ---
 paths:
   - app/Jobs/RunBacktestJob.php
+  - app/Jobs/SyncUserToConvertKitJob.php
 ---
 
 # Jobs
@@ -10,3 +11,6 @@ Keep market-data validation in the worker, outside Save and Run requests. Valida
 
 ## Require Save and Run after a failed backtest
 User decision: failed backtest jobs must not be retried from the queue. Keep RunBacktestJob tries at one and failOnTimeout enabled. Block queue:retry through JobRetryRequested and Horizon RetryFailedJob before either pushes the old job. Preserve retries for other job types. The backtest page starts a new run through Save and Run; a failed source sequence must start with the source again.
+
+## Sync ConvertKit through the default queue
+User decision: use the default queue for ConvertKit updates. Keep the verified-email requirement from the old site. Queue changes after the database commit, and read the latest saved user state in the worker. Paid tag 6008806 follows users.is_paid, including expiry updates. Do not restore the nightly subscriber sync or use a separate queue.

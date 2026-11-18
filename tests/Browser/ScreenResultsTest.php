@@ -29,7 +29,7 @@ it('renders the results grid with formatted values, quick search and custom sort
         ->assertSee('Beta Corp')
         ->assertSee('+45.20')
         ->assertSee('-12.34')
-        ->click('1Yr Return %')
+        ->click('button:has-text("1Yr Return %")')
         ->assertSee('Reset custom sort')
         ->click('Reset custom sort')
         ->assertDontSee('Reset custom sort')
@@ -95,8 +95,7 @@ it('shows unavailable valuation warnings and the saved historical date', functio
         ->assertSee('The market cap filter was not applied.')
         ->assertSee('The P/E filter was not applied.')
         ->assertSee('HISTORICAL')
-        ->click('Show More Filters')
-        ->click('Historical Ranks')
+        ->click('#screen-tab-rules')
         ->assertValue('historical_date', '2024-02-29');
 });
 
@@ -141,10 +140,11 @@ it('saves the one ETF per underlying index option and can turn it off again', fu
     visit('/screens/'.$screen->id.'/edit')
         ->assertNoJavaScriptErrors()
         ->assertDontSee('One ETF per underlying index')
+        ->click('#screen-tab-rules')
         ->select('index', 'etf')
         ->assertSee('One ETF per underlying index')
         ->click('One ETF per underlying index')
-        ->press('Update & Apply Filters')
+        ->press('Save and Apply')
         ->assertSee('HIGHVOLUME')
         ->assertDontSee('LOWVOLUME');
 
@@ -153,8 +153,9 @@ it('saves the one ETF per underlying index option and can turn it off again', fu
     visit('/screens/'.$screen->id.'/edit')
         ->assertSee('HIGHVOLUME')
         ->assertDontSee('LOWVOLUME')
+        ->click('#screen-tab-rules')
         ->click('One ETF per underlying index')
-        ->press('Update & Apply Filters')
+        ->press('Save and Apply')
         ->assertSee('HIGHVOLUME')
         ->assertSee('LOWVOLUME')
         ->assertNoJavaScriptErrors();

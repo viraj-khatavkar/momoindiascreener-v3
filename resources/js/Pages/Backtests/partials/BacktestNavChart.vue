@@ -133,15 +133,17 @@
             <p v-if="visiblePeriod" data-test="nav-visible-period">
                 Showing {{ formatDate(visiblePeriod.from) }} to {{ formatDate(visiblePeriod.to) }}
             </p>
-            <p>Scroll to zoom · drag to pan · double-click to reset</p>
+            <ChartInteractionHint reset />
         </div>
     </div>
 </template>
 
 <script setup lang="ts">
+import { createInteractiveChart } from '@/utils/createInteractiveChart';
+import ChartInteractionHint from '@/Components/Charts/ChartInteractionHint.vue';
 import { computed, onUnmounted, ref, watch } from 'vue';
 import { Popover, PopoverButton, PopoverPanel } from '@headlessui/vue';
-import { ColorType, CrosshairMode, LineSeries, PriceScaleMode, createChart } from 'lightweight-charts';
+import { ColorType, CrosshairMode, LineSeries, PriceScaleMode } from 'lightweight-charts';
 import type { IChartApi, ISeriesApi, LineStyle, SeriesType, Time } from 'lightweight-charts';
 import type { Bar } from 'oakscriptjs';
 import { formatDate } from '@/utils/format';
@@ -298,7 +300,7 @@ function hoveredDateLabel(time: Time): string {
 }
 
 function initChart(container: HTMLDivElement): void {
-    chart = createChart(container, {
+    chart = createInteractiveChart(container, {
         autoSize: true,
         layout: {
             background: { type: ColorType.Solid, color: '#f8fafc' },

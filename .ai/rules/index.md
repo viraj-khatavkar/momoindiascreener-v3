@@ -14,10 +14,13 @@ Before planning or editing, find the row whose globs match the file's path and r
 | app/Console/Commands/ImportNseIndicesCommand.php, app/Console/Commands/ReloadNseIndexHistoryCommand.php, app/Console/Commands/** | .ai/rules/commands.md |
 | resources/js/Components/ScreenCard.vue, resources/js/Components/ReturnsHeatmap.vue | .ai/rules/components.md |
 | app/Http/Controllers/BacktestsController.php, app/Http/Controllers/BacktestCsvController.php, app/Http/Controllers/NseIndexViewController.php | .ai/rules/controllers.md |
-| app/Enums/ScreenSortByOptionEnum.php | .ai/rules/enums.md |
+| app/Enums/ScreenSortByOptionEnum.php, app/Enums/PlanEnum.php | .ai/rules/enums.md |
+| resources/js/Components/Form/** | .ai/rules/form.md |
 | ** | .ai/rules/general.md |
-| app/Jobs/RunBacktestJob.php | .ai/rules/jobs.md |
-| app/Models/BacktestNseInstrument.php, app/Models/NseIndex.php | .ai/rules/models.md |
+| app/Jobs/RunBacktestJob.php, app/Jobs/SyncUserToConvertKitJob.php | .ai/rules/jobs.md |
+| resources/js/** | .ai/rules/js.md |
+| app/Models/BacktestNseInstrument.php, app/Models/NseIndex.php, app/Models/Screen.php | .ai/rules/models.md |
 | resources/js/Pages/InstrumentView.vue, resources/js/Pages/Welcome.vue, resources/js/Pages/MarketHealth.vue, resources/js/Pages/IndicesDashboard.vue, resources/js/Pages/NseIndexView.vue, resources/js/Pages/IndustryView.vue | .ai/rules/pages.md |
 | app/Providers/HorizonServiceProvider.php | .ai/rules/providers.md |
+| resources/js/Pages/Screens/** | .ai/rules/screens.md |
 | tests/** | .ai/rules/tests.md |

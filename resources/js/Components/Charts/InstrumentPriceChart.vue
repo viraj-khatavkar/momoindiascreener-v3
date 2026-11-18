@@ -106,13 +106,16 @@
 
         <!-- Pane Charts -->
         <div v-for="id in activePaneIndicatorIds" :key="id" :ref="(el) => setPaneRef(id, el as HTMLDivElement | null)" class="mt-1 h-[150px]" />
+        <ChartInteractionHint class="mt-3" />
     </div>
 </template>
 
 <script setup lang="ts">
+import { createInteractiveChart } from '@/utils/createInteractiveChart';
+import ChartInteractionHint from '@/Components/Charts/ChartInteractionHint.vue';
 import { Popover, PopoverButton, PopoverPanel } from '@headlessui/vue';
 import { computed, nextTick, onUnmounted, ref, watch } from 'vue';
-import { AreaSeries, ColorType, CrosshairMode, HistogramSeries, LineSeries, createChart } from 'lightweight-charts';
+import { AreaSeries, ColorType, CrosshairMode, HistogramSeries, LineSeries } from 'lightweight-charts';
 import type { IChartApi, ISeriesApi, LineStyle, SeriesType, Time } from 'lightweight-charts';
 import type { Bar } from 'oakscriptjs';
 import type { PriceHistoryRecord } from '@/utils/chartDataConverter';
@@ -226,7 +229,7 @@ function updateLegendDefaults(): void {
 }
 
 function initChart(container: HTMLDivElement): void {
-    chart = createChart(container, {
+    chart = createInteractiveChart(container, {
         autoSize: true,
         ...chartOptions,
     });
@@ -369,7 +372,7 @@ function syncIndicators(): void {
 }
 
 function createPaneChart(id: string, config: IndicatorConfig, bars: Bar[], container: HTMLDivElement): void {
-    const paneChart = createChart(container, {
+    const paneChart = createInteractiveChart(container, {
         autoSize: true,
         ...chartOptions,
         timeScale: {

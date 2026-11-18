@@ -2,7 +2,7 @@
 
 namespace App\Http\Requests;
 
-use App\Actions\Backtest\BacktestSortDateAction;
+use App\Actions\Backtest\BacktestStartDateAction;
 use App\Enums\ApplyFiltersOnOptionEnum;
 use App\Enums\BacktestCashCallEnum;
 use App\Enums\BacktestCashCallSourceEnum;
@@ -17,6 +17,7 @@ use App\Models\Backtest;
 use Illuminate\Contracts\Validation\ValidationRule;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
+use Illuminate\Validation\Validator;
 
 class StoreBacktestRequest extends FormRequest
 {
@@ -29,6 +30,7 @@ class StoreBacktestRequest extends FormRequest
             : BacktestCashCallSourceEnum::Index->value;
 
         $this->merge([
+            'apply_marketcap' => $this->input('apply_marketcap', $this->route('backtest')?->apply_marketcap ?? false),
             'cash_call_source' => $source,
             'cash_call_backtest_id' => $source === BacktestCashCallSourceEnum::Backtest->value
                 ? $this->input('cash_call_backtest_id') : null,
@@ -46,8 +48,18 @@ class StoreBacktestRequest extends FormRequest
         return [
             'cash_call_backtest_id.required_if' => 'Select a source backtest.',
             'cash_call_backtest_id.exists' => 'Select another backtest that you own with No cash call and no source backtest.',
-            'start_date.after_or_equal' => BacktestSortDateAction::VALIDATION_MESSAGE,
+            'start_date.after_or_equal' => BacktestStartDateAction::VALIDATION_MESSAGE,
         ];
+    }
+
+    /** @return list<callable> */
+    public function after(): array
+    {
+        return [function (Validator $validator): void {
+            foreach (app(BacktestStartDateAction::class)->unavailableSettingsErrors($this->all()) as $field => $message) {
+                $validator->errors()->add($field, $message);
+            }
+        }];
     }
 
     /**
@@ -55,8 +67,8 @@ class StoreBacktestRequest extends FormRequest
      */
     public function rules(): array
     {
-        $minimumStartDate = app(BacktestSortDateAction::class)->minimumDate($this->only([
-            'sort_by', 'apply_factor_two', 'factor_two_sort_by', 'apply_factor_three', 'factor_three_sort_by',
+        $minimumStartDate = app(BacktestStartDateAction::class)->minimumDate($this->only([
+            'index', 'apply_marketcap', 'apply_pe', 'sort_by', 'apply_factor_two', 'factor_two_sort_by', 'apply_factor_three', 'factor_three_sort_by',
         ]));
 
         return [
@@ -102,6 +114,7 @@ class StoreBacktestRequest extends FormRequest
 
             // Screen filter fields
             'index' => ['required', Rule::enum(NseIndexEnum::class)],
+            'unique_etf_per_index' => ['sometimes', 'boolean'],
             'sort_by' => ['required', Rule::enum(ScreenSortByOptionEnum::class)],
             'sort_direction' => ['required', Rule::in(['asc', 'desc'])],
             'median_volume_one_year' => ['required', 'numeric', 'between:0,1000000000'],
@@ -136,11 +149,12 @@ class StoreBacktestRequest extends FormRequest
             'circuits_six_months' => ['required', 'numeric', 'between:0,300'],
             'circuits_three_months' => ['required', 'numeric', 'between:0,300'],
             'circuits_one_months' => ['required', 'numeric', 'between:0,300'],
+            'apply_marketcap' => ['sometimes', 'boolean'],
             'marketcap_from' => ['required', 'numeric', 'between:0,100000000'],
-            'marketcap_to' => ['required', 'numeric', 'between:0,100000000'],
+            'marketcap_to' => ['required', 'numeric', 'between:0,100000000', Rule::when($this->boolean('apply_marketcap'), 'gte:marketcap_from')],
             'apply_pe' => ['required', 'boolean'],
             'price_to_earnings_from' => ['required', 'numeric', 'between:0,10000'],
-            'price_to_earnings_to' => ['required', 'numeric', 'between:0,10000'],
+            'price_to_earnings_to' => ['required', 'numeric', 'between:0,10000', Rule::when($this->boolean('apply_pe'), 'gte:price_to_earnings_from')],
             'series_eq' => ['required', 'boolean'],
             'series_be' => ['required', 'boolean'],
             'ignore_above_beta' => ['required', 'numeric', 'between:0,100'],

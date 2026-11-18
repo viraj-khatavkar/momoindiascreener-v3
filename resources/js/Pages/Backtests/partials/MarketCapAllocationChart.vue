@@ -74,7 +74,7 @@
                     @blur="dateSliderFocused = false"
                     @input="showSelectedDate"
                 />
-                <p class="mt-2 text-xs text-gray-500">Scroll to zoom · drag to pan · double-click to reset</p>
+                <ChartInteractionHint class="mt-2" reset />
             </div>
 
             <p class="text-xs leading-relaxed text-gray-500">
@@ -93,7 +93,9 @@
 </template>
 
 <script setup lang="ts">
-import { AreaSeries, ColorType, CrosshairMode, LineType, createChart } from 'lightweight-charts';
+import { createInteractiveChart } from '@/utils/createInteractiveChart';
+import ChartInteractionHint from '@/Components/Charts/ChartInteractionHint.vue';
+import { AreaSeries, ColorType, CrosshairMode, LineType } from 'lightweight-charts';
 import type { IChartApi, ISeriesApi, Time } from 'lightweight-charts';
 import { computed, onUnmounted, ref, watch } from 'vue';
 import type { MarketCapAllocation, MarketCapAllocationPoint } from '@/types/MarketCapAllocation';
@@ -133,7 +135,7 @@ let chart: IChartApi | null = null;
 const series = new Map<CategoryKey, ISeriesApi<'Area'>>();
 
 function initChart(container: HTMLDivElement): void {
-    chart = createChart(container, {
+    chart = createInteractiveChart(container, {
         autoSize: true,
         layout: { background: { type: ColorType.Solid, color: '#f8fafc' }, textColor: '#6b7280' },
         grid: { vertLines: { visible: false }, horzLines: { color: '#e2e8f0' } },

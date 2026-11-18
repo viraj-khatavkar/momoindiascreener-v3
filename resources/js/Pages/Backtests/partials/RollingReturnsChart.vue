@@ -15,13 +15,15 @@
             @dblclick="resetView"
         />
 
-        <p class="mt-2 text-[11px] text-gray-400">Scroll to zoom · drag to pan · double-click to reset</p>
+        <ChartInteractionHint class="mt-2" reset />
     </div>
 </template>
 
 <script setup lang="ts">
+import { createInteractiveChart } from '@/utils/createInteractiveChart';
+import ChartInteractionHint from '@/Components/Charts/ChartInteractionHint.vue';
 import { computed, onUnmounted, ref, watch } from 'vue';
-import { LineSeries, ColorType, CrosshairMode, LineStyle, createChart } from 'lightweight-charts';
+import { LineSeries, ColorType, CrosshairMode, LineStyle } from 'lightweight-charts';
 import type { IChartApi, ISeriesApi, SeriesType, Time } from 'lightweight-charts';
 import type { ChartSyncGroup } from '@/utils/chartSyncGroup';
 
@@ -52,7 +54,7 @@ let fiveYearSeries: ISeriesApi<SeriesType> | null = null;
 let unregisterSync: (() => void) | null = null;
 
 function initChart(container: HTMLDivElement): void {
-    chart = createChart(container, {
+    chart = createInteractiveChart(container, {
         autoSize: true,
         layout: {
             background: { type: ColorType.Solid, color: '#f8fafc' },

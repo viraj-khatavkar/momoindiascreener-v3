@@ -87,3 +87,6 @@ Screen and backtest factors give equal stored numeric values the average of thei
 
 ## Copy saved screens into a paid users private workspace
 Paid users with verified email may duplicate a screen they own or one of Screen::PUBLIC_SCREENS. Check access on the server and save the copy under the requesting user. Copy all saved filters, factor settings, historical settings and result columns, with fresh identity and timestamps and no loaded relations. Generate numbered Copy names within the new owner scope. The editor must require saved changes before duplication and open the new copy with fresh Inertia state.
+
+## Apply screen EMA filters to adjusted closes
+Screens support opt-in above/below EMA 20, 50, 100 and 200 filters. Compare close_adjusted strictly against the stored EMA, require every selected condition, and ignore EMA flags when apply_ema is off. Default all EMA flags false, including in-memory models used for older export snapshots. Copy and save all flags; current/historical results, CSV, and queued ZIP exports must reuse the same filtering action.

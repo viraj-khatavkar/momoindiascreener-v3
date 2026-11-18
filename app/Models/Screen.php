@@ -14,10 +14,19 @@ class Screen extends Model
     /** @use HasFactory<ScreenFactory> */
     use HasFactory;
 
-    public const PUBLIC_SCREENS = [1, 2, 3];
+    public const PUBLIC_SCREENS = [1, 2, 3, 55, 377, 1068];
 
     protected $attributes = [
         'unique_etf_per_index' => false,
+        'apply_ema' => false,
+        'above_ema_200' => false,
+        'above_ema_100' => false,
+        'above_ema_50' => false,
+        'above_ema_20' => false,
+        'below_ema_200' => false,
+        'below_ema_100' => false,
+        'below_ema_50' => false,
+        'below_ema_20' => false,
     ];
 
     protected function casts(): array
@@ -35,6 +44,15 @@ class Screen extends Model
             'below_ma_100' => 'boolean',
             'below_ma_50' => 'boolean',
             'below_ma_20' => 'boolean',
+            'apply_ema' => 'boolean',
+            'above_ema_200' => 'boolean',
+            'above_ema_100' => 'boolean',
+            'above_ema_50' => 'boolean',
+            'above_ema_20' => 'boolean',
+            'below_ema_200' => 'boolean',
+            'below_ema_100' => 'boolean',
+            'below_ema_50' => 'boolean',
+            'below_ema_20' => 'boolean',
             'apply_pe' => 'boolean',
             'series_eq' => 'boolean',
             'series_be' => 'boolean',

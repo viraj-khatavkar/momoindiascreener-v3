@@ -32,13 +32,16 @@
         <div v-else class="flex h-[250px] items-center justify-center px-6 text-center text-sm text-[#706b7d] sm:h-[300px]">
             No values are available for this metric and period.
         </div>
+        <ChartInteractionHint v-if="hasValues" class="mt-3" />
         <span class="sr-only" aria-live="polite">{{ keyboardAnnouncement }}</span>
     </div>
 </template>
 
 <script setup lang="ts">
+import { createInteractiveChart } from '@/utils/createInteractiveChart';
+import ChartInteractionHint from '@/Components/Charts/ChartInteractionHint.vue';
 import { computed, onUnmounted, ref, watch } from 'vue';
-import { AreaSeries, ColorType, CrosshairMode, LineStyle, TickMarkType, createChart } from 'lightweight-charts';
+import { AreaSeries, ColorType, CrosshairMode, LineStyle, TickMarkType } from 'lightweight-charts';
 import type { IChartApi, IPriceLine, ISeriesApi, Time } from 'lightweight-charts';
 
 interface DataPoint {
@@ -133,7 +136,7 @@ function formatTick(time: Time, type: TickMarkType): string {
 }
 
 function initChart(container: HTMLDivElement): void {
-    chart = createChart(container, {
+    chart = createInteractiveChart(container, {
         autoSize: true,
         layout: {
             background: { type: ColorType.Solid, color: '#ffffff' },

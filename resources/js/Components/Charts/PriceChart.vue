@@ -6,11 +6,7 @@
                 :key="range.key"
                 type="button"
                 class="cursor-pointer px-3 py-1.5 text-sm font-medium first:rounded-l-md last:rounded-r-md"
-                :class="
-                    selectedRange === range.key
-                        ? 'bg-purple-600 text-white'
-                        : 'text-gray-700 hover:bg-gray-50'
-                "
+                :class="selectedRange === range.key ? 'bg-purple-600 text-white' : 'text-gray-700 hover:bg-gray-50'"
                 @click="selectedRange = range.key"
             >
                 {{ range.label }}
@@ -18,12 +14,15 @@
         </div>
 
         <div ref="chartContainer" class="mt-4 h-[400px]" />
+        <ChartInteractionHint class="mt-3" />
     </div>
 </template>
 
 <script setup lang="ts">
+import { createInteractiveChart } from '@/utils/createInteractiveChart';
+import ChartInteractionHint from '@/Components/Charts/ChartInteractionHint.vue';
 import { onUnmounted, ref, watch } from 'vue';
-import { AreaSeries, ColorType, CrosshairMode, createChart } from 'lightweight-charts';
+import { AreaSeries, ColorType, CrosshairMode } from 'lightweight-charts';
 import type { IChartApi, ISeriesApi, SeriesType, Time } from 'lightweight-charts';
 
 interface DataPoint {
@@ -51,7 +50,7 @@ let chart: IChartApi | null = null;
 let series: ISeriesApi<SeriesType> | null = null;
 
 function initChart(container: HTMLDivElement): void {
-    chart = createChart(container, {
+    chart = createInteractiveChart(container, {
         autoSize: true,
         layout: {
             background: { type: ColorType.Solid, color: '#f8fafc' },

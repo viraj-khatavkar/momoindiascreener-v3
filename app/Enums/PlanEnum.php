@@ -17,9 +17,9 @@ enum PlanEnum: string implements ResolveDisplayableValueListForEnum
     public function getAmountInRupees(): int
     {
         return match ($this) {
-            self::Monthly => 500,
-            self::Yearly => 3999,
-            self::Forever => 14999,
+            self::Monthly => 899,
+            self::Yearly => 5999,
+            self::Forever => 19999,
             self::Newsletter => 2999,
         };
     }

@@ -26,6 +26,8 @@ class Backtest extends Model
 
     protected $attributes = [
         'is_public' => false,
+        'unique_etf_per_index' => false,
+        'apply_marketcap' => false,
         'cash_call_source' => BacktestCashCallSourceEnum::Index->value,
         'cash_call_backtest_id' => null,
         'cash_call_gold_dma_period' => 50,
@@ -39,6 +41,8 @@ class Backtest extends Model
     {
         return [
             'is_public' => 'boolean',
+            'unique_etf_per_index' => 'boolean',
+            'apply_marketcap' => 'boolean',
             'status' => BacktestStatusEnum::class,
             'rebalance_frequency' => BacktestRebalanceFrequencyEnum::class,
             'weightage' => BacktestWeightageEnum::class,

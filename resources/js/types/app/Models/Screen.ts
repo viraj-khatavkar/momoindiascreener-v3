@@ -17,6 +17,15 @@ export interface Screen {
     below_ma_100: boolean;
     below_ma_50: boolean;
     below_ma_20: boolean;
+    apply_ema: boolean;
+    above_ema_200: boolean;
+    above_ema_100: boolean;
+    above_ema_50: boolean;
+    above_ema_20: boolean;
+    below_ema_200: boolean;
+    below_ema_100: boolean;
+    below_ema_50: boolean;
+    below_ema_20: boolean;
     away_from_high_one_year: number;
     away_from_high_all_time: number;
     positive_days_percent_one_year: number;

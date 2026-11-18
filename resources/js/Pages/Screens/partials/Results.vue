@@ -1,5 +1,5 @@
 <template>
-    <div class="relative mt-10" :aria-busy="loading || undefined">
+    <div class="relative mt-6" :aria-busy="loading || undefined">
         <!-- Results Toolbar -->
         <div class="flex flex-wrap items-center gap-x-4 gap-y-3">
             <div class="flex flex-wrap items-center gap-x-2 gap-y-1 text-sm text-gray-600">
@@ -15,11 +15,11 @@
                 </template>
                 <span class="text-gray-300">·</span>
                 <span v-if="isMultiFactor">
-                    combined rank of
+                    Screen ranking: combined rank of
                     {{ factorColumns.map((factor) => screenSortByDisplayName(factor.key)).join(' + ') }}
                 </span>
                 <span v-else>
-                    sorted by {{ screenSortByDisplayName(screen.sort_by) }}
+                    Screen ranking: {{ screenSortByDisplayName(screen.sort_by) }}
                     {{ screen.sort_direction === 'asc' ? '↑' : '↓' }}
                 </span>
                 <span
@@ -38,37 +38,66 @@
                 </button>
             </div>
 
-            <div class="ms-auto flex flex-wrap items-center gap-3">
-                <div v-if="results.length > 0" class="relative">
+            <div class="flex w-full flex-wrap items-center gap-3 lg:ms-auto lg:w-auto">
+                <div v-if="results.length > 0" class="relative w-full sm:w-auto">
                     <MagnifyingGlassIcon class="pointer-events-none absolute top-1/2 left-2.5 h-4 w-4 -translate-y-1/2 text-gray-400" />
                     <input
                         v-model="searchQuery"
                         type="search"
                         name="results_search"
+                        aria-label="Find a stock by symbol or name"
                         placeholder="Find symbol or name"
-                        class="w-44 rounded-md bg-white py-1.5 pr-3 pl-8 text-sm text-gray-900 outline-1 -outline-offset-1 outline-gray-300 placeholder:text-gray-400 focus:outline-2 focus:-outline-offset-2 focus:outline-purple-600 sm:w-56"
+                        class="h-11 w-full rounded-md bg-white py-2 pr-3 pl-8 text-base/6 text-gray-900 outline-1 -outline-offset-1 outline-gray-300 placeholder:text-gray-400 focus:outline-2 focus:-outline-offset-2 focus:outline-purple-600 sm:h-10 sm:w-56 sm:text-sm/6"
                     />
                 </div>
                 <template v-if="showActions">
                     <button
                         v-if="availableColumns"
                         type="button"
-                        class="inline-flex cursor-pointer items-center gap-1.5 rounded-md bg-white px-3 py-1.5 text-sm font-semibold text-gray-900 ring-1 ring-gray-300 ring-inset hover:bg-gray-50"
+                        :disabled="actionsDisabled"
+                        class="inline-flex min-h-11 cursor-pointer items-center gap-1.5 rounded-md bg-white px-3 py-2 text-sm font-semibold text-gray-900 ring-1 ring-gray-300 ring-inset hover:bg-gray-50 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-purple-600 disabled:cursor-not-allowed disabled:opacity-50 sm:min-h-10"
                         @click="columnsPanelOpen = true"
                     >
                         <TableCellsIcon class="h-4 w-4 text-gray-400" />
                         Edit Columns
                     </button>
                     <a
-                        :href="`/screens/${screen.id}/csv`"
+                        :href="actionsDisabled ? undefined : `/screens/${screen.id}/csv`"
+                        :aria-disabled="actionsDisabled || undefined"
+                        :tabindex="actionsDisabled ? -1 : undefined"
+                        :class="{ 'pointer-events-none opacity-50': actionsDisabled }"
                         target="_blank"
-                        class="inline-flex items-center gap-1.5 rounded-md bg-white px-3 py-1.5 text-sm font-semibold text-gray-900 ring-1 ring-gray-300 ring-inset hover:bg-gray-50"
+                        class="inline-flex min-h-11 items-center gap-1.5 rounded-md bg-white px-3 py-2 text-sm font-semibold text-gray-900 ring-1 ring-gray-300 ring-inset hover:bg-gray-50 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-purple-600 sm:min-h-10"
                     >
                         <ArrowDownTrayIcon class="h-4 w-4 text-gray-400" />
                         Export
                     </a>
                 </template>
             </div>
+        </div>
+
+        <div class="mt-3 flex flex-wrap justify-between gap-2 text-xs text-gray-500">
+            <p>
+                Display order: <span class="font-medium text-gray-700">{{ displayOrder }}</span
+                >. Screen ranks stay unchanged.
+            </p>
+            <p v-if="showActions">
+                {{
+                    actionsDisabled
+                        ? 'Save or discard changes before you export or edit columns.'
+                        : 'CSV includes all matches from the saved rules in screen rank order.'
+                }}
+            </p>
+        </div>
+        <div v-if="results.length" class="mt-4 grid gap-4 sm:grid-cols-2 md:hidden">
+            <SelectInput v-model="mobileSortColumn" label="Sort results by" name="results_sort" :options="sortOptions" show-selected-label />
+            <SelectInput
+                v-model="mobileSortDirection"
+                label="Display direction"
+                name="results_direction"
+                :options="directionOptions"
+                :disabled="!clientSort"
+            />
         </div>
 
         <WarningAlert v-for="warning in valuationFilterWarnings" :key="warning" class="mt-4">
@@ -79,7 +108,13 @@
         <div v-if="results.length === 0" class="mt-4 rounded-lg border border-dashed border-gray-300 px-6 py-16 text-center">
             <FunnelIcon class="mx-auto h-10 w-10 text-gray-400" />
             <p class="mt-3 text-sm font-semibold text-gray-900">No stocks matched your filters</p>
-            <p class="mt-1 text-sm text-gray-500">Try relaxing or removing some filters above, then apply again.</p>
+            <p class="mt-1 text-sm text-gray-500">
+                {{
+                    showActions
+                        ? 'Open Rules to review the filters, then select Save and Apply.'
+                        : 'Open Rules to review this example, or try another example screen.'
+                }}
+            </p>
         </div>
 
         <!-- Search matched nothing -->
@@ -100,7 +135,7 @@
                             <tr>
                                 <th
                                     scope="col"
-                                    class="sticky top-0 left-0 z-30 w-14 min-w-14 border-b border-gray-300 bg-gray-50 px-3 py-3 text-left text-sm font-semibold text-gray-900"
+                                    class="sticky top-0 left-0 z-30 w-20 min-w-20 border-b border-gray-300 bg-gray-50 px-3 py-3 text-left text-sm font-semibold text-gray-900"
                                 >
                                     <button
                                         type="button"
@@ -108,12 +143,12 @@
                                         title="Screen rank — click to restore screen order"
                                         @click="clientSort = null"
                                     >
-                                        #
+                                        Screen Rank
                                     </button>
                                 </th>
                                 <th
                                     scope="col"
-                                    class="sticky top-0 left-14 z-30 border-r border-b border-gray-300 bg-gray-50 px-3 py-3 text-left text-sm font-semibold text-gray-900"
+                                    class="sticky top-0 left-20 z-30 border-r border-b border-gray-300 bg-gray-50 px-3 py-3 text-left text-sm font-semibold text-gray-900"
                                     :aria-sort="ariaSort('symbol')"
                                 >
                                     <SortHeaderButton :direction="sortDirectionFor('symbol')" @toggle="toggleSort('symbol')">
@@ -155,12 +190,12 @@
                         <tbody>
                             <tr v-for="row in displayedRows" :key="row.item.id" class="group hover:bg-gray-50">
                                 <td
-                                    class="sticky left-0 z-10 w-14 min-w-14 border-b border-gray-200 bg-white px-3 py-2.5 text-sm whitespace-nowrap text-gray-500 tabular-nums group-last:border-b-0 group-hover:bg-gray-50"
+                                    class="sticky left-0 z-10 w-20 min-w-20 border-b border-gray-200 bg-white px-3 py-2.5 text-sm whitespace-nowrap text-gray-500 tabular-nums group-last:border-b-0 group-hover:bg-gray-50"
                                 >
                                     {{ row.screenRank }}
                                 </td>
                                 <td
-                                    class="sticky left-14 z-10 border-r border-b border-gray-200 bg-white px-3 py-2.5 whitespace-nowrap group-last:border-b-0 group-hover:bg-gray-50"
+                                    class="sticky left-20 z-10 border-r border-b border-gray-200 bg-white px-3 py-2.5 whitespace-nowrap group-last:border-b-0 group-hover:bg-gray-50"
                                 >
                                     <Link
                                         :href="`/instruments/${row.item.symbol}`"
@@ -201,10 +236,13 @@
 
             <!-- Mobile View -->
             <div class="mt-4 md:hidden">
+                <p class="mb-2 text-xs text-gray-500">Row values: {{ mobileValueLabel }}</p>
                 <Disclosure v-for="row in displayedRows" :key="row.item.id" v-slot="{ open }" as="div" class="border-b border-gray-200">
-                    <DisclosureButton class="flex w-full cursor-pointer items-center gap-3 py-3 text-left">
+                    <DisclosureButton
+                        class="flex w-full cursor-pointer items-center gap-3 rounded py-3 text-left focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-purple-600"
+                    >
                         <span class="w-7 shrink-0 text-sm text-gray-400 tabular-nums">
-                            {{ row.screenRank }}
+                            <span class="sr-only">Screen rank </span>{{ row.screenRank }}
                         </span>
                         <span class="min-w-0 flex-1">
                             <span class="block truncate text-sm font-semibold text-gray-900">
@@ -214,19 +252,19 @@
                                 {{ row.item.name }}
                             </span>
                         </span>
-                        <span class="shrink-0 text-sm tabular-nums" :class="screenCellClass(screen.sort_by, row.item[screen.sort_by])">
-                            {{ formatScreenCellValue(screen.sort_by, row.item[screen.sort_by]) }}
+                        <span class="shrink-0 text-sm tabular-nums" :class="screenCellClass(mobileValueColumn, row.item[mobileValueColumn])">
+                            {{ formatScreenCellValue(mobileValueColumn, row.item[mobileValueColumn]) }}
                         </span>
                         <ChevronDownIcon :class="[open ? 'rotate-180' : '', 'h-5 w-5 shrink-0 text-gray-400']" />
                     </DisclosureButton>
                     <DisclosurePanel class="pb-4 pl-10">
-                        <div class="flex flex-col gap-1">
+                        <div class="flex flex-col gap-3">
                             <template v-if="isMultiFactor">
                                 <div v-for="factor in factorColumns" :key="factor.rankKey" class="flex items-center justify-between gap-4">
                                     <span class="text-sm text-gray-500">
                                         {{ screenSortByDisplayName(factor.key) }}
                                     </span>
-                                    <span class="text-sm tabular-nums" :class="screenCellClass(factor.key, row.item[factor.key])">
+                                    <span class="shrink-0 text-right text-sm tabular-nums" :class="screenCellClass(factor.key, row.item[factor.key])">
                                         {{ formatScreenCellValue(factor.key, row.item[factor.key]) }}
                                         <span v-if="row.item[factor.rankKey] != null" class="text-xs text-gray-400">
                                             #{{ row.item[factor.rankKey] }}
@@ -236,7 +274,7 @@
                             </template>
                             <div v-for="column in visibleColumns" :key="column.name" class="flex items-center justify-between gap-4">
                                 <span class="text-sm text-gray-500">{{ column.display_name }}</span>
-                                <span class="text-sm tabular-nums" :class="screenCellClass(column.name, row.item[column.name])">
+                                <span class="shrink-0 text-right text-sm tabular-nums" :class="screenCellClass(column.name, row.item[column.name])">
                                     {{ formatScreenCellValue(column.name, row.item[column.name]) }}
                                 </span>
                             </div>
@@ -274,6 +312,7 @@ import { ArrowDownTrayIcon, ChevronDownIcon, MagnifyingGlassIcon, TableCellsIcon
 import { FunnelIcon } from '@heroicons/vue/24/outline';
 import { Link } from '@inertiajs/vue3';
 import WarningAlert from '@/Components/Alerts/WarningAlert.vue';
+import SelectInput from '@/Components/Form/SelectInput.vue';
 import ColumnsPanel from '@/Pages/Screens/partials/ColumnsPanel.vue';
 import SortHeaderButton from '@/Pages/Screens/partials/SortHeaderButton.vue';
 import { formatDate } from '@/utils/format';
@@ -306,6 +345,7 @@ const props = withDefaults(
         valuationFilterWarnings?: string[];
         showActions?: boolean;
         loading?: boolean;
+        actionsDisabled?: boolean;
     }>(),
     {
         showActions: true,
@@ -349,6 +389,48 @@ const visibleColumns = computed(() => props.columns.filter((column) => !factorCo
 const searchQuery = ref('');
 const clientSort = ref<{ column: string; direction: 'asc' | 'desc' } | null>(null);
 const columnsPanelOpen = ref(false);
+const sortOptions = computed(() =>
+    [
+        { id: '', name: 'Screen Rank' },
+        { id: 'symbol', name: 'Stock' },
+        ...factorColumns.value.map((factor) => ({ id: factor.key, name: screenSortByDisplayName(factor.key) })),
+        ...visibleColumns.value.map((column) => ({ id: column.name, name: column.display_name })),
+    ].filter((option, index, options) => options.findIndex((item) => item.id === option.id) === index),
+);
+const directionOptions = computed(() =>
+    !clientSort.value
+        ? [{ id: 'asc', name: 'Rank 1 first' }]
+        : isTextScreenColumn(clientSort.value.column)
+          ? [
+                { id: 'asc', name: 'A to Z' },
+                { id: 'desc', name: 'Z to A' },
+            ]
+          : [
+                { id: 'asc', name: 'Lowest to Highest' },
+                { id: 'desc', name: 'Highest to Lowest' },
+            ],
+);
+const mobileSortColumn = computed({
+    get: () => clientSort.value?.column ?? '',
+    set: (column: string) => {
+        clientSort.value = column ? { column, direction: isTextScreenColumn(column) ? 'asc' : 'desc' } : null;
+    },
+});
+const mobileSortDirection = computed({
+    get: () => clientSort.value?.direction ?? 'asc',
+    set: (direction: 'asc' | 'desc') => {
+        if (clientSort.value) clientSort.value = { ...clientSort.value, direction };
+    },
+});
+const displayOrder = computed(() => {
+    if (!clientSort.value) return 'Screen Rank';
+    const label = sortOptions.value.find((option) => option.id === clientSort.value?.column)?.name ?? clientSort.value.column;
+    return `${label} · ${directionOptions.value.find((option) => option.id === clientSort.value?.direction)?.name}`;
+});
+const mobileValueColumn = computed(() =>
+    clientSort.value && !isTextScreenColumn(clientSort.value.column) ? clientSort.value.column : props.screen.sort_by,
+);
+const mobileValueLabel = computed(() => sortOptions.value.find((option) => option.id === mobileValueColumn.value)?.name);
 
 const rankedRows = computed<ResultRow[]>(() => props.results.map((item, index) => ({ item, screenRank: index + 1 })));
 

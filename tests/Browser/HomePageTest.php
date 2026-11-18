@@ -43,9 +43,9 @@ it('shows example lists to guests and uses the same screen cards on both pages',
         ->assertNoJavaScriptErrors();
 
     expect($page->script('document.documentElement.scrollWidth <= window.innerWidth'))->toBeTrue();
-    $cardClass = $page->script('document.querySelector("a[aria-label=\"Open Example Screen 1\"]").className');
+    $cardClass = $page->script('document.querySelector("a[aria-label=\"Open Example Screen 1\"]").closest("article").className');
     $page->click('View all screens')->assertPathIs('/screens')->assertSee('Example Screens');
-    expect($page->script('document.querySelector("a[aria-label=\"Open Example Screen 1\"]").className'))->toBe($cardClass);
+    expect($page->script('document.querySelector("a[aria-label=\"Open Example Screen 1\"]").closest("article").className'))->toBe($cardClass);
     $page->click('a[aria-label="Open Example Screen 1"]')->assertPathIs('/screens/1')->assertNoJavaScriptErrors();
 })->with(['desktop' => [1440, 1000], 'mobile' => [390, 844]]);
 
@@ -56,9 +56,9 @@ it('shows only the signed in users lists with working edit links', function (int
         ->assertDontSee('Example screens')->assertDontSee('Example momentum strategy')->assertNoJavaScriptErrors();
 
     expect($page->script('document.documentElement.scrollWidth <= window.innerWidth'))->toBeTrue();
-    $cardClass = $page->script('document.querySelector("a[aria-label=\"Edit My momentum screen\"]").className');
+    $cardClass = $page->script('document.querySelector("a[aria-label=\"Edit My momentum screen\"]").closest("article").className');
     $page->click('View all screens')->assertPathIs('/screens');
-    expect($page->script('document.querySelector("a[aria-label=\"Edit My momentum screen\"]").className'))->toBe($cardClass);
+    expect($page->script('document.querySelector("a[aria-label=\"Edit My momentum screen\"]").closest("article").className'))->toBe($cardClass);
     $page->click('a[aria-label="Edit My momentum screen"]')->assertPathIs('/screens/'.$this->personalScreen->id.'/edit')->assertNoJavaScriptErrors();
 })->with(['desktop' => [1440, 1000], 'mobile' => [390, 844]]);
 

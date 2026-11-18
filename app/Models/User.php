@@ -4,6 +4,7 @@ namespace App\Models;
 
 use App\Enums\CountryEnum;
 use App\Enums\StateEnum;
+use App\Jobs\SyncUserToConvertKitJob;
 use Database\Factories\UserFactory;
 use Illuminate\Contracts\Auth\MustVerifyEmail;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
@@ -24,7 +25,21 @@ class User extends Authenticatable implements MustVerifyEmail
     protected $hidden = [
         'password',
         'remember_token',
+        'convertkit_subscriber_id',
     ];
+
+    protected static function booted(): void
+    {
+        static::saved(function (User $user): void {
+            if (! $user->hasVerifiedEmail()
+                || blank(config('convertkit.key'))
+                || ! $user->isDirty(['name', 'email', 'email_verified_at', 'is_paid'])) {
+                return;
+            }
+
+            SyncUserToConvertKitJob::dispatch($user->id);
+        });
+    }
 
     /**
      * Get the attributes that should be cast.
@@ -34,6 +49,7 @@ class User extends Authenticatable implements MustVerifyEmail
     protected function casts(): array
     {
         return [
+            'convertkit_subscriber_id' => 'integer',
             'email_verified_at' => 'datetime',
             'password' => 'hashed',
             'is_admin' => 'boolean',

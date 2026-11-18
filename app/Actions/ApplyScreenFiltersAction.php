@@ -4,7 +4,6 @@ namespace App\Actions;
 
 use App\Enums\ApplyFiltersOnOptionEnum;
 use App\Enums\NseIndexEnum;
-use App\Models\BacktestNseInstrument;
 use App\Models\BacktestNseInstrumentPrice;
 use App\Models\Screen;
 use Carbon\CarbonInterface;
@@ -18,7 +17,10 @@ class ApplyScreenFiltersAction
     /** @var list<string> */
     private array $valuationFilterWarnings = [];
 
-    public function __construct(private RankInstrumentsAction $rankInstruments) {}
+    public function __construct(
+        private RankInstrumentsAction $rankInstruments,
+        private SelectUniqueEtfsAction $uniqueEtfs,
+    ) {}
 
     /**
      * @return Collection<int, BacktestNseInstrumentPrice>
@@ -116,23 +118,7 @@ class ApplyScreenFiltersAction
             return $instruments;
         }
 
-        $underlyingIndices = BacktestNseInstrument::query()
-            ->whereIn('symbol', $instruments->pluck('symbol'))
-            ->pluck('etf_index', 'symbol');
-
-        $selectedIds = $instruments
-            ->sortBy([
-                ['median_volume_one_year', 'desc'],
-                ['symbol', 'asc'],
-            ])
-            ->unique(function (BacktestNseInstrumentPrice $instrument) use ($underlyingIndices): string {
-                $underlyingIndex = $underlyingIndices->get($instrument->symbol);
-
-                return filled($underlyingIndex) ? 'index:'.$underlyingIndex : 'symbol:'.$instrument->symbol;
-            })
-            ->pluck('id');
-
-        return $instruments->whereIn('id', $selectedIds)->values();
+        return $this->uniqueEtfs->execute($instruments);
     }
 
     /**
@@ -234,6 +220,7 @@ class ApplyScreenFiltersAction
     protected function applyFilters(Builder $query, Screen $screen, $ids = [])
     {
         $query = $this->movingAverageFilters($query, $screen);
+        $query = $this->exponentialMovingAverageFilters($query, $screen);
         $query = $this->awayFromHighFilters($query, $screen);
         $query = $this->percentagePositiveDaysFilters($query, $screen);
         $query = $this->circuitDaysFilters($query, $screen);
@@ -275,6 +262,29 @@ class ApplyScreenFiltersAction
                 return $query->whereColumn('close_adjusted', '<', 'ma_50');
             })->when($screen->below_ma_20, function (Builder $query) {
                 return $query->whereColumn('close_adjusted', '<', 'ma_20');
+            });
+        });
+    }
+
+    protected function exponentialMovingAverageFilters(Builder $query, Screen $screen): Builder
+    {
+        return $query->when($screen->apply_ema, function (Builder $query) use ($screen) {
+            return $query->when($screen->above_ema_200, function (Builder $query) {
+                return $query->whereColumn('close_adjusted', '>', 'ema_200');
+            })->when($screen->above_ema_100, function (Builder $query) {
+                return $query->whereColumn('close_adjusted', '>', 'ema_100');
+            })->when($screen->above_ema_50, function (Builder $query) {
+                return $query->whereColumn('close_adjusted', '>', 'ema_50');
+            })->when($screen->above_ema_20, function (Builder $query) {
+                return $query->whereColumn('close_adjusted', '>', 'ema_20');
+            })->when($screen->below_ema_200, function (Builder $query) {
+                return $query->whereColumn('close_adjusted', '<', 'ema_200');
+            })->when($screen->below_ema_100, function (Builder $query) {
+                return $query->whereColumn('close_adjusted', '<', 'ema_100');
+            })->when($screen->below_ema_50, function (Builder $query) {
+                return $query->whereColumn('close_adjusted', '<', 'ema_50');
+            })->when($screen->below_ema_20, function (Builder $query) {
+                return $query->whereColumn('close_adjusted', '<', 'ema_20');
             });
         });
     }

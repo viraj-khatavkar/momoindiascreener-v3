@@ -25,6 +25,8 @@ it('copies every saved screen setting into an independent private screen for the
         'apply_factor_three' => true,
         'factor_three_sort_by' => 'beta',
         'apply_ma' => true,
+        'apply_ema' => true,
+        'above_ema_50' => true,
         'above_ma_200' => true,
         'ignore_above_beta' => 1.25,
         'apply_pe' => true,
@@ -61,7 +63,7 @@ it('copies every saved screen setting into an independent private screen for the
     $copy = $user->screens()->whereKeyNot($source->id)->sole();
     $except = ['id', 'name', 'user_id', 'created_at', 'updated_at'];
 
-    $response->assertRedirect(route('screens.edit', $copy))->assertSessionHas('success');
+    $response->assertRedirect(route('screens.edit', ['screen' => $copy, 'tab' => 'rules']))->assertSessionHas('success');
     expect(Screen::count())->toBe($beforeCount + 1)
         ->and($copy->id)->not->toBeIn(Screen::PUBLIC_SCREENS)
         ->and($copy->user_id)->toBe($user->id)

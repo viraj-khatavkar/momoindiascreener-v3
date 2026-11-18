@@ -38,7 +38,7 @@ it('rejects valuation sorts before their first data date without saving or queue
 
     $this->actingAs($user)->put('/backtests/'.$backtest->id, array_merge($backtest->toArray(), sortDateFactorSettings($sort, $position), [
         'start_date' => '2024-02-29', 'run' => $run,
-    ]))->assertSessionHasErrors(['start_date' => 'The selected ranking factors require a start date on or after 2024-03-01.']);
+    ]))->assertSessionHasErrors(['start_date' => 'The selected universe and settings require a start date on or after 2024-03-01.']);
 
     expect($backtest->fresh()->getAttributes())->toBe($settings)->and($priceQueries)->toBeEmpty();
     Queue::assertNothingPushed();

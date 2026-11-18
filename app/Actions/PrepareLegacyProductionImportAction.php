@@ -25,7 +25,7 @@ use JsonException;
 
 /**
  * @phpstan-type Issue array{kind: string, table: string, column: string, message: string, ids: list<int>, count: int}
- * @phpstan-type TableAudit array{file: string, sha256: string, source_columns: list<string>, destination_columns: list<string>, copied_columns: list<string>, omitted_columns: list<string>, defaulted_columns: array<string, string>, rows: int, eligible: int, destination_rows: int, min_id: ?int, max_id: ?int, latest_update: ?string, distributions: array<string, array<string, int>>}
+ * @phpstan-type TableAudit array{file: string, sha256: string, source_columns: list<string>, destination_columns: list<string>, copied_columns: list<string>, omitted_columns: list<string>, defaulted_columns: array<string, string|null>, rows: int, eligible: int, destination_rows: int, min_id: ?int, max_id: ?int, latest_update: ?string, distributions: array<string, array<string, int>>}
  * @phpstan-type ImportAudit array{audited_at: string, database: string, destination_time_zone: string, source_time_zone?: ?string, market_data_range: array{first: ?string, last: ?string}, tables: array<string, TableAudit>, issues: array<string, Issue>, invalid_ids: array<string, array<int, true>>, unsupported_screen_ids: array<int, true>, public_screens: list<array{id: int, user_id: int}>}
  */
 class PrepareLegacyProductionImportAction
@@ -94,7 +94,11 @@ class PrepareLegacyProductionImportAction
                 'destination_columns' => $destinationColumns,
                 'copied_columns' => [],
                 'omitted_columns' => $table === 'screens' ? ['ignore_top_beta', 'ignore_top_volatility'] : [],
-                'defaulted_columns' => $table === 'screens' ? ['unique_etf_per_index' => '0'] : [],
+                'defaulted_columns' => match ($table) {
+                    'users' => ['convertkit_subscriber_id' => null],
+                    'screens' => ['unique_etf_per_index' => '0'],
+                    default => [],
+                },
                 'rows' => 0,
                 'eligible' => 0,
                 'destination_rows' => DB::table($destination)->count(),
@@ -115,6 +119,8 @@ class PrepareLegacyProductionImportAction
 
                     if ($table === 'screens') {
                         $expected = array_merge(array_diff($expected, ['unique_etf_per_index']), ['ignore_top_beta', 'ignore_top_volatility']);
+                    } elseif ($table === 'users') {
+                        $expected = array_diff($expected, ['convertkit_subscriber_id']);
                     }
 
                     if (array_diff($expected, array_keys($row)) !== [] || array_diff(array_keys($row), $expected) !== []) {
@@ -188,6 +194,10 @@ class PrepareLegacyProductionImportAction
      */
     public function normalize(string $table, array $row): array
     {
+        if ($table === 'users') {
+            $row['convertkit_subscriber_id'] = null;
+        }
+
         if ($table !== 'screens') {
             return $row;
         }

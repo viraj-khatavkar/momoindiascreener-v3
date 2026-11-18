@@ -17,7 +17,7 @@ class ScreenDuplicateController extends Controller
 
         $copy = $duplicate->execute($screen, $request->user());
 
-        return redirect()->route('screens.edit', $copy)
+        return redirect()->route('screens.edit', ['screen' => $copy, 'tab' => 'rules'])
             ->with('success', 'Screen copied. You can edit your private copy.');
     }
 }

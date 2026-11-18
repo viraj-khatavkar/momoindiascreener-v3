@@ -22,6 +22,7 @@ export interface Backtest {
     weightage: 'equal_weight' | 'equal_weight_rebalanced' | 'inverse_volatility' | 'rank_weighted' | 'price_weighted';
     cash_call: 'no_cash_call' | 'cash_call_if_not_enough_stocks' | 'full_cash_below_index_dma' | 'only_exits_below_index_dma' | 'allocate_to_gold_below_index_dma' | 'only_exits_allocate_to_gold_below_index_dma' | 'only_exits_allocate_to_gold_above_dma_below_index_dma';
     cash_call_index: string;
+    unique_etf_per_index: boolean;
     cash_call_source: 'index' | 'backtest';
     cash_call_backtest_id: number | null;
     cash_call_dma_period: number;
@@ -74,6 +75,7 @@ export interface Backtest {
     circuits_six_months: number;
     circuits_three_months: number;
     circuits_one_months: number;
+    apply_marketcap: boolean;
     marketcap_from: number;
     marketcap_to: number;
     apply_pe: boolean;

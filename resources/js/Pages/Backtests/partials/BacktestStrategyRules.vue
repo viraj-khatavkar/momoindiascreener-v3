@@ -273,6 +273,10 @@ function formatStartDate(value: string): string {
 function activeFilters(bt: Backtest): string[] {
     const filters: string[] = [];
 
+    if (bt.index === 'etf' && bt.unique_etf_per_index) {
+        filters.push('One ETF per underlying index · highest one-year median volume');
+    }
+
     // Moving Averages
     if (bt.apply_ma) {
         const above: number[] = [];
@@ -305,8 +309,12 @@ function activeFilters(bt: Backtest): string[] {
         if (below.length) filters.push('Below EMA ' + below.join(', '));
     }
 
-    // Note: apply_pe / marketcap fields exist on the model but the backtest
-    // engine never applies them, so they get no chip.
+    if (bt.apply_marketcap) {
+        filters.push(`Market cap ₹${formatCompactNumber(Number(bt.marketcap_from))}–₹${formatCompactNumber(Number(bt.marketcap_to))} crore`);
+    }
+    if (bt.apply_pe) {
+        filters.push(`P/E ${bt.price_to_earnings_from}–${bt.price_to_earnings_to}`);
+    }
 
     // Series
     const series: string[] = [];

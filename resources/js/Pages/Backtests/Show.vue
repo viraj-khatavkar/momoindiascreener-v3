@@ -1181,7 +1181,7 @@ const props = withDefaults(
         benchmarkOptions: SelectOption[];
         indices: SelectOption[];
         sortByOptions: SelectOption[];
-        startDateLimits: { default: string; sorts: Record<string, string> };
+        startDateLimits: { default: string; universes: Record<string, string>; sorts: Record<string, string>; filters: Record<string, string> };
         applyFiltersOnOptions: SelectOption[];
         customFilterValueOptions: SelectOption[];
         customFilterComparatorOptions: SelectOption[];
@@ -1266,6 +1266,7 @@ const form = useForm({
     stamp_charges_rate: props.backtest.stamp_charges_rate,
     start_date: props.backtest.start_date ? props.backtest.start_date.substring(0, 10) : '2011-01-05',
     index: props.backtest.index,
+    unique_etf_per_index: props.backtest.unique_etf_per_index,
     sort_by: props.backtest.sort_by,
     sort_direction: props.backtest.sort_direction,
     median_volume_one_year: props.backtest.median_volume_one_year,
@@ -1300,6 +1301,7 @@ const form = useForm({
     circuits_six_months: props.backtest.circuits_six_months,
     circuits_three_months: props.backtest.circuits_three_months,
     circuits_one_months: props.backtest.circuits_one_months,
+    apply_marketcap: props.backtest.apply_marketcap,
     marketcap_from: props.backtest.marketcap_from,
     marketcap_to: props.backtest.marketcap_to,
     apply_pe: props.backtest.apply_pe,

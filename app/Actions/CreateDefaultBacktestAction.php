@@ -53,6 +53,7 @@ class CreateDefaultBacktestAction
 
             // Screen filter defaults
             'index' => NseIndexEnum::NIFTY_ALLCAP->value,
+            'unique_etf_per_index' => false,
             'sort_by' => ScreenSortByOptionEnum::sharpe_return_one_year->value,
             'sort_direction' => 'desc',
             'median_volume_one_year' => 10000000,
@@ -87,6 +88,7 @@ class CreateDefaultBacktestAction
             'circuits_six_months' => 300,
             'circuits_three_months' => 300,
             'circuits_one_months' => 300,
+            'apply_marketcap' => false,
             'marketcap_from' => 0,
             'marketcap_to' => 100000000,
             'apply_pe' => false,

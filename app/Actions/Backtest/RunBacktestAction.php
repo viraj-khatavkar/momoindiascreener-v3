@@ -2,6 +2,7 @@
 
 namespace App\Actions\Backtest;
 
+use App\Actions\SelectUniqueEtfsAction;
 use App\Enums\BacktestCashCallEnum;
 use App\Enums\BacktestStopLossProceedsEnum;
 use App\Enums\BacktestWeightageEnum;
@@ -18,7 +19,7 @@ use Illuminate\Validation\ValidationException;
 
 class RunBacktestAction
 {
-    private const DEFAULT_START_DATE = BacktestSortDateAction::DEFAULT_START_DATE;
+    private const DEFAULT_START_DATE = BacktestStartDateAction::DEFAULT_START_DATE;
 
     /** Buy-side cost fraction derived from the backtest's configured rates. */
     private float $buyCostRate = 0;
@@ -77,12 +78,13 @@ class RunBacktestAction
         private BacktestNavSourceAction $navSource,
         private LoadBacktestIndexDataAction $indexDataLoader,
         private BacktestTradingCalendarAction $tradingCalendar,
-        private BacktestSortDateAction $sortDates,
+        private BacktestStartDateAction $startDates,
+        private SelectUniqueEtfsAction $uniqueEtfs,
     ) {}
 
     public function execute(Backtest $backtest, ?string $throughDate = null): void
     {
-        $this->sortDates->validate($backtest);
+        $this->startDates->validate($backtest);
         $this->validateFnoMembership($backtest, $throughDate);
         $this->initialCapital = (float) $backtest->initial_capital;
         $this->cash = $this->initialCapital;
@@ -222,7 +224,7 @@ class RunBacktestAction
 
     public function validateDataAvailability(Backtest $backtest, ?string $throughDate = null, bool $validateSourceNav = true): void
     {
-        $this->sortDates->validate($backtest);
+        $this->startDates->validate($backtest);
         $this->validateFnoMembership($backtest, $throughDate);
         $dates = $this->tradingCalendar->latestDates(
             $backtest->index,
@@ -560,8 +562,8 @@ class RunBacktestAction
         // Determine buy candidates. Circuit-hit stocks are filtered out before the
         // slot cap so the next-ranked candidate slides in to take their place.
         $remainingSlots = $backtest->max_stocks_to_hold - count($this->holdings);
-        $buyCandidates = $eligibleStocks
-            ->filter(fn ($stock) => ! isset($this->holdings[$stock->symbol]))
+        $buyCandidates = $this->excludeHeldEtfIndices($backtest, $eligibleStocks
+            ->filter(fn ($stock) => ! isset($this->holdings[$stock->symbol])))
             ->take(max($remainingSlots, 0));
 
         if ($backtest->weightage->rebalancesHoldings()) {
@@ -866,7 +868,7 @@ class RunBacktestAction
 
             $blockedSymbols = [...$exitedSymbols, ...$additionalBlockedSymbols];
 
-            $replacementCandidates = $rankedStocks
+            $replacementCandidates = $this->excludeHeldEtfIndices($backtest, $rankedStocks
                 ->filter(fn (BacktestNseInstrumentPrice $stock): bool => (float) $stock->close_adjusted > 0)
                 ->filter(fn ($stock) => ! isset($this->holdings[$stock->symbol]))
                 ->filter(fn ($stock) => ! in_array($stock->symbol, $blockedSymbols, true))
@@ -874,7 +876,7 @@ class RunBacktestAction
                 ->filter(fn ($stock) => ! $this->isBeSeriesEntryBlocked($backtest, $stock))
                 ->filter(fn ($stock) => ! $this->isDemergerEntryBlocked($stock->symbol, $dateStr))
                 ->filter(fn ($stock) => ! $this->isAssumedDelistingEntryBlocked($stock->symbol, $dateStr))
-                ->filter(fn (BacktestNseInstrumentPrice $stock): bool => $this->hasWeightingData($backtest, $stock))
+                ->filter(fn (BacktestNseInstrumentPrice $stock): bool => $this->hasWeightingData($backtest, $stock)))
                 ->take($replacementCount);
 
             if ($replacementCandidates->isEmpty()) {
@@ -919,6 +921,14 @@ class RunBacktestAction
         foreach ($stocks as $stock) {
             $this->executeBuy($backtest, $date, $stock, $perStockBudget, 'No cash call - allocating available cash to stocks');
         }
+    }
+
+    /** @return Collection<int, BacktestNseInstrumentPrice> */
+    private function excludeHeldEtfIndices(Backtest $backtest, Collection $candidates): Collection
+    {
+        return $backtest->index === NseIndexEnum::NIFTY_ETF && $backtest->unique_etf_per_index
+            ? $this->uniqueEtfs->excludeHeldIndices($candidates, array_keys($this->holdings))
+            : $candidates;
     }
 
     /**
@@ -1219,6 +1229,21 @@ class RunBacktestAction
 
             if ($stock->close_raw < $backtest->price_from || $stock->close_raw > $backtest->price_to) {
                 $failures[] = 'Price out of range (₹'.number_format((float) $stock->close_raw, 2).')';
+            }
+
+            if ($backtest->apply_marketcap) {
+                if ($stock->marketcap === null) {
+                    $failures[] = 'Missing market cap data';
+                } elseif ($stock->marketcap < $backtest->marketcap_from || $stock->marketcap > $backtest->marketcap_to) {
+                    $failures[] = 'Market cap out of range';
+                }
+            }
+            if ($backtest->apply_pe) {
+                if ($stock->price_to_earnings === null) {
+                    $failures[] = 'Missing P/E data';
+                } elseif ($stock->price_to_earnings < $backtest->price_to_earnings_from || $stock->price_to_earnings > $backtest->price_to_earnings_to) {
+                    $failures[] = 'P/E out of range';
+                }
             }
 
             if ($stock->median_volume_one_year < $backtest->median_volume_one_year) {
