@@ -1,275 +1,236 @@
 <template>
-    <div class="min-w-0">
+    <div class="min-w-0 space-y-5">
         <Head :title="portfolio.name + ' · Portfolio'" />
-        <Link :href="portfolioRoutes.index" class="mb-4 inline-flex text-sm font-medium text-purple-700 hover:text-purple-500">← All Portfolios</Link>
-        <div class="flex flex-wrap items-start justify-between gap-4">
-            <div class="min-w-0 break-words">
-                <PageHeader description="Review your holdings, values, and corporate actions.">{{ portfolio.name }}</PageHeader>
-            </div>
-            <a
-                :href="portfolioRoutes.download"
-                class="inline-flex items-center gap-2 rounded-md border border-slate-300 bg-white px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50"
-            >
-                <ArrowDownTrayIcon class="size-4" aria-hidden="true" />
-                Export Portfolio
-            </a>
-        </div>
-
-        <div class="flex flex-col gap-6">
-            <section class="rounded-xl border border-slate-200 bg-white p-5 shadow-xs sm:p-6">
-                <div class="grid grid-cols-1 gap-6 lg:grid-cols-2">
-                    <form class="flex flex-wrap items-end gap-3" @submit.prevent="rename">
-                        <TextInput
+        <header>
+            <Link :href="portfolioRoutes.index" class="inline-flex items-center gap-1.5 text-sm font-medium text-slate-600 hover:text-purple-700">
+                <ArrowLeftIcon class="size-4" aria-hidden="true" /> All portfolios
+            </Link>
+            <div class="mt-3 flex flex-wrap items-center justify-between gap-x-6 gap-y-3">
+                <form v-if="renaming" class="min-w-0 flex-auto sm:max-w-lg" @submit.prevent="rename" @keydown.esc.prevent="cancelRename">
+                    <label for="portfolio-name" class="sr-only">Portfolio name</label>
+                    <div class="flex flex-wrap items-center gap-2">
+                        <input
                             id="portfolio-name"
+                            ref="nameInput"
                             v-model="nameForm.name"
-                            label="Portfolio Name"
                             name="name"
-                            :error="nameForm.errors.name"
-                            class="min-w-0 flex-1"
+                            type="text"
+                            maxlength="255"
+                            required
+                            :aria-invalid="!!nameForm.errors.name"
+                            :aria-describedby="nameForm.errors.name ? 'name-error' : undefined"
+                            :disabled="nameForm.processing"
+                            class="h-10 min-w-32 flex-1 rounded-md border border-slate-300 bg-white px-3 font-semibold focus:outline-purple-600"
                         />
-                        <PrimaryButton type="submit" :disabled="nameForm.processing" class="mt-0 disabled:opacity-50">Save Name</PrimaryButton>
-                    </form>
-                    <form class="flex flex-wrap items-end gap-3" @submit.prevent="changeDate">
-                        <div class="min-w-0 flex-1">
-                            <label for="valuation-date" class="block text-sm/6 font-medium text-gray-900">Valuation Date</label>
-                            <input
-                                id="valuation-date"
-                                v-model="dateForm.date"
-                                name="date"
-                                type="date"
-                                :max="today"
-                                required
-                                class="mt-2 block w-full rounded-md bg-white px-3 py-1.5 text-sm/6 outline-1 -outline-offset-1 outline-gray-300 focus:outline-2 focus:outline-purple-600"
-                            />
-                            <p v-if="dateForm.errors.date" role="alert" class="mt-2 text-sm text-red-600">{{ dateForm.errors.date }}</p>
-                        </div>
-                        <PrimaryButton type="submit" :disabled="dateForm.processing" class="mt-0 disabled:opacity-50">Apply Date</PrimaryButton>
-                        <Link :href="portfolioRoutes.edit" class="py-2 text-sm font-medium text-purple-700">Latest</Link>
-                    </form>
-                </div>
-                <p class="mt-5 text-xs text-slate-500">
-                    Values use your current quantities and raw market prices on or before {{ valuation.date }}. The same entered holdings are used for
-                    each selected date.
-                </p>
-            </section>
-
-            <div class="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
-                <StatCard label="Total Cost" :value="amount(valuation.summary.cost)" />
-                <StatCard
-                    :label="valuation.summary.missingPrices ? 'Known Portfolio Value' : 'Total Portfolio Value'"
-                    :value="amount(valuation.summary.value)"
-                    variant="blue"
-                >
-                    <div class="mt-3 flex flex-wrap items-center gap-2">
-                        <button
-                            type="button"
-                            :aria-label="valuation.summary.missingPrices ? 'Copy known portfolio value' : 'Copy total portfolio value'"
-                            title="Copy number for Google Sheets"
-                            class="inline-flex cursor-pointer items-center gap-1 rounded-md bg-white/70 px-2 py-1 text-xs font-semibold text-blue-700 hover:bg-white focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-700"
-                            @click="copyPortfolioValue"
+                        <PrimaryButton type="submit" :disabled="nameForm.processing" class="mt-0! min-h-10 disabled:opacity-50"
+                            >Save name</PrimaryButton
                         >
-                            <ClipboardDocumentIcon class="size-4" aria-hidden="true" />
-                            Copy value
-                        </button>
-                        <p role="status" aria-live="polite" class="text-xs text-blue-900">{{ copyMessage }}</p>
-                    </div>
-                </StatCard>
-                <StatCard
-                    label="Unrealised Profit / Loss"
-                    :value="amount(valuation.summary.profitLoss)"
-                    :variant="valuation.summary.profitLoss === null ? 'amber' : valuation.summary.profitLoss < 0 ? 'red' : 'green'"
-                />
-                <StatCard label="Total Stocks" :value="valuation.summary.stocks" />
-            </div>
-            <p v-if="valuation.summary.percentChange !== null" class="text-sm text-slate-600">
-                Portfolio change:
-                <span class="font-semibold" :class="changeColor(valuation.summary.percentChange)">{{
-                    percent(valuation.summary.percentChange)
-                }}</span>
-                · {{ valuation.summary.lots }} holding entries
-            </p>
-            <WarningAlert v-if="valuation.summary.missingPrices">
-                {{ valuation.summary.missingPrices }} holding entries have no price on or before {{ valuation.date }}. The known value excludes them.
-                Total profit and percentage change are unavailable.
-            </WarningAlert>
-            <WarningAlert v-if="valuation.summary.earlierPrices">
-                {{ valuation.summary.earlierPrices }} holding entries use prices earlier than the latest market date, {{ valuation.marketDate }}.
-                Check the price date in each row.
-            </WarningAlert>
-
-            <section id="holding-form" class="scroll-mt-24 rounded-xl border border-slate-200 bg-white p-5 shadow-xs sm:p-6">
-                <h2 class="mb-4 text-base font-semibold text-slate-900">{{ editingHolding ? 'Edit Holding' : 'Add Holding' }}</h2>
-                <HoldingForm
-                    :key="holdingFormKey"
-                    :holding="editingHolding"
-                    :date="valuation.date"
-                    :submit-url="editingHolding?.updateUrl ?? portfolioRoutes.addHolding"
-                    :symbol-search-url="portfolioRoutes.symbols"
-                    :quote-url="portfolioRoutes.quote"
-                    @saved="clearEditor"
-                    @cancel="clearEditor"
-                />
-            </section>
-
-            <section v-if="corporateActions.length" class="rounded-xl border border-slate-200 bg-white p-5 shadow-xs sm:p-6">
-                <h2 class="text-base font-semibold text-slate-900">Corporate Actions · {{ valuation.date }}</h2>
-                <p class="mt-1 text-xs text-slate-500">These events do not change the quantities or purchase prices entered here.</p>
-                <div class="mt-4 overflow-x-auto">
-                    <table class="w-full divide-y divide-slate-200 text-left text-sm">
-                        <thead>
-                            <tr>
-                                <th scope="col" class="px-3 py-3">Symbol</th>
-                                <th scope="col" class="px-3 py-3">Type</th>
-                                <th scope="col" class="px-3 py-3">Value</th>
-                                <th scope="col" class="px-3 py-3">Ex-Date</th>
-                                <th scope="col" class="relative px-3 py-3"><span class="sr-only">Actions</span></th>
-                            </tr>
-                        </thead>
-                        <tbody class="divide-y divide-slate-100">
-                            <tr v-for="action in corporateActions" :key="action.id">
-                                <td class="px-3 py-3 font-medium">{{ action.symbol }}</td>
-                                <td class="px-3 py-3">
-                                    <span class="capitalize">{{ action.type ?? 'Other' }}</span>
-                                    <p v-if="action.description" class="mt-1 max-w-md text-xs text-slate-500">{{ action.description }}</p>
-                                </td>
-                                <td class="px-3 py-3 whitespace-nowrap">
-                                    {{ action.type === 'dividend' ? dividendAmount(action.dividend) : (action.ratio ?? '—') }}
-                                </td>
-                                <td class="px-3 py-3 whitespace-nowrap">{{ action.date }}</td>
-                                <td class="px-3 py-3"><Link :href="action.editUrl" class="font-semibold text-purple-700">Edit Action</Link></td>
-                            </tr>
-                        </tbody>
-                    </table>
-                </div>
-            </section>
-
-            <section class="min-w-0 rounded-xl border border-slate-200 bg-white p-5 shadow-xs sm:p-6">
-                <h2 class="text-base font-semibold text-slate-900">Holdings</h2>
-                <p class="mt-1 text-xs text-slate-500">Each row is a separate purchase entry. You can keep multiple entries for the same symbol.</p>
-                <div
-                    v-if="holdingToRemove"
-                    role="alert"
-                    class="mt-4 flex flex-wrap items-center justify-between gap-3 rounded-lg border border-red-200 bg-red-50 p-4"
-                >
-                    <p class="text-sm text-red-800">
-                        Remove {{ holdingToRemove.symbol }} ({{ holdingToRemove.quantity }} shares) from this portfolio?
-                    </p>
-                    <div class="flex gap-3">
                         <button
                             type="button"
-                            :disabled="deleteForm.processing"
-                            class="cursor-pointer rounded-md bg-red-600 px-3 py-2 text-sm font-semibold text-white disabled:opacity-50"
-                            @click="removeHolding"
-                        >
-                            Remove Holding
-                        </button>
-                        <button
-                            type="button"
-                            :disabled="deleteForm.processing"
-                            class="cursor-pointer text-sm font-medium text-slate-700"
-                            @click="holdingToRemove = null"
+                            :disabled="nameForm.processing"
+                            class="cursor-pointer px-2 py-2 text-sm text-slate-600"
+                            @click="cancelRename"
                         >
                             Cancel
                         </button>
                     </div>
+                    <p v-if="nameForm.errors.name" id="name-error" role="alert" class="mt-1 text-sm text-red-700">{{ nameForm.errors.name }}</p>
+                </form>
+                <div v-else class="flex min-w-0 items-center gap-1.5">
+                    <h1 class="text-2xl font-semibold tracking-tight wrap-anywhere text-slate-950 sm:text-3xl">{{ portfolio.name }}</h1>
+                    <button
+                        ref="renameButton"
+                        type="button"
+                        title="Rename portfolio"
+                        aria-label="Rename portfolio"
+                        class="grid size-10 shrink-0 cursor-pointer place-items-center rounded-md text-slate-500 hover:bg-white hover:text-purple-700 focus-visible:outline-purple-600"
+                        @click="startRename"
+                    >
+                        <PencilSquareIcon class="size-4" aria-hidden="true" />
+                    </button>
                 </div>
-                <p v-if="deleteForm.errors.date" role="alert" class="mt-3 text-sm text-red-700">{{ deleteForm.errors.date }}</p>
-                <div class="mt-4 overflow-x-auto">
-                    <table class="w-full divide-y divide-slate-200 text-left text-sm">
-                        <thead class="text-slate-600">
-                            <tr>
-                                <th scope="col" class="px-3 py-3">Name</th>
-                                <th scope="col" class="px-3 py-3">Series</th>
-                                <th scope="col" class="px-3 py-3 text-right">Quantity</th>
-                                <th scope="col" class="px-3 py-3 text-right whitespace-nowrap">Buy Price</th>
-                                <th scope="col" class="px-3 py-3 text-right">CMP</th>
-                                <th scope="col" class="px-3 py-3 text-right">Current Value</th>
-                                <th scope="col" class="px-3 py-3 text-right whitespace-nowrap">Profit / Loss</th>
-                                <th scope="col" class="px-3 py-3 text-right">Change</th>
-                                <th scope="col" class="relative px-3 py-3"><span class="sr-only">Actions</span></th>
-                            </tr>
-                        </thead>
-                        <tbody class="divide-y divide-slate-100">
-                            <tr
-                                v-for="holding in valuation.holdings"
-                                :key="holding.id"
-                                :data-test="'holding-' + holding.id"
-                                class="hover:bg-slate-50"
+                <div class="flex flex-wrap items-center gap-2 sm:ml-auto">
+                    <Popover class="relative">
+                        <PopoverButton
+                            :aria-label="'Change valuation date, ' + valuation.date"
+                            class="inline-flex min-h-10 cursor-pointer items-center gap-2 rounded-lg border border-slate-300 bg-white px-3 text-sm font-medium text-slate-700 hover:border-slate-400 focus-visible:outline-purple-600"
+                            @click="resetDate"
+                        >
+                            <CalendarDaysIcon class="size-4 text-slate-500" aria-hidden="true" />
+                            <span
+                                >As of <time :datetime="valuation.date">{{ formatDate(valuation.date + 'T00:00:00') }}</time></span
                             >
-                                <td class="min-w-40 px-3 py-4">
-                                    <Link :href="'/instruments/' + encodeURIComponent(holding.symbol)" class="font-semibold text-purple-700">{{
-                                        holding.symbol
-                                    }}</Link>
-                                    <p class="mt-1 text-xs text-slate-500">{{ holding.name }}</p>
-                                </td>
-                                <td class="px-3 py-4">
-                                    <span
-                                        class="rounded-full px-2 py-1 text-xs font-medium"
-                                        :class="holding.series === 'BE' ? 'bg-red-50 text-red-700' : 'bg-green-50 text-green-700'"
-                                        >{{ holding.series ?? '—' }}</span
+                            <ChevronDownIcon class="size-3.5 text-slate-500" aria-hidden="true" />
+                        </PopoverButton>
+                        <PopoverPanel
+                            v-slot="{ close }"
+                            focus
+                            class="absolute left-0 z-25 mt-2 w-68 max-w-[calc(100vw-2rem)] rounded-xl border border-slate-200 bg-white p-4 shadow-lg sm:right-0 sm:left-auto"
+                        >
+                            <form @submit.prevent="changeDate(close)">
+                                <label for="valuation-date" class="text-sm font-semibold text-slate-900">Valuation date</label>
+                                <input
+                                    id="valuation-date"
+                                    v-model="dateForm.date"
+                                    name="date"
+                                    type="date"
+                                    required
+                                    :max="today"
+                                    :aria-invalid="!!dateForm.errors.date"
+                                    :aria-describedby="dateForm.errors.date ? 'valuation-date-error' : 'valuation-date-hint'"
+                                    class="mt-2 block h-11 w-full min-w-0 rounded-md border border-slate-300 px-3 text-base focus:outline-purple-600 sm:h-10 sm:text-sm"
+                                />
+                                <p id="valuation-date-hint" class="mt-2 text-xs/5 text-slate-600">
+                                    Use current quantities and the last raw closing price on or before this date.
+                                </p>
+                                <p v-if="dateForm.errors.date" id="valuation-date-error" role="alert" class="mt-2 text-sm text-red-700">
+                                    {{ dateForm.errors.date }}
+                                </p>
+                                <div class="mt-4 flex items-center justify-between gap-3">
+                                    <Link
+                                        :href="portfolioRoutes.edit"
+                                        preserve-state
+                                        preserve-scroll
+                                        class="py-2 text-sm font-medium text-purple-700 hover:underline"
+                                        @success="close()"
+                                        >Use latest</Link
                                     >
-                                </td>
-                                <td class="px-3 py-4 text-right tabular-nums">{{ holding.quantity.toLocaleString('en-IN') }}</td>
-                                <td class="px-3 py-4 text-right whitespace-nowrap tabular-nums">{{ amount(holding.price) }}</td>
-                                <td class="px-3 py-4 text-right whitespace-nowrap tabular-nums">
-                                    {{ amount(holding.close) }}
-                                    <p class="mt-1 text-xs" :class="holding.earlierPrice || !holding.priceDate ? 'text-amber-700' : 'text-slate-500'">
-                                        {{ holding.priceDate ?? 'No price' }}
-                                    </p>
-                                    <span v-if="holding.earlierPrice" class="text-xs text-amber-700">Earlier price</span>
-                                </td>
-                                <td class="px-3 py-4 text-right whitespace-nowrap tabular-nums">{{ amount(holding.value) }}</td>
-                                <td class="px-3 py-4 text-right whitespace-nowrap tabular-nums" :class="changeColor(holding.profitLoss)">
-                                    {{ amount(holding.profitLoss) }}
-                                </td>
-                                <td class="px-3 py-4 text-right whitespace-nowrap tabular-nums" :class="changeColor(holding.percentChange)">
-                                    {{ percent(holding.percentChange) }}
-                                </td>
-                                <td class="px-3 py-4">
-                                    <div class="flex gap-3">
-                                        <button
-                                            type="button"
-                                            class="cursor-pointer font-semibold text-purple-700"
-                                            :aria-label="'Edit ' + holding.symbol + ' holding'"
-                                            @click="editHolding(holding)"
-                                        >
-                                            Edit
-                                        </button>
-                                        <button
-                                            type="button"
-                                            class="cursor-pointer font-semibold text-red-600"
-                                            :aria-label="'Remove ' + holding.symbol + ' holding'"
-                                            @click="holdingToRemove = holding"
-                                        >
-                                            Remove
-                                        </button>
-                                    </div>
-                                </td>
-                            </tr>
-                            <tr v-if="valuation.holdings.length === 0">
-                                <td colspan="9" class="px-3 py-12 text-center text-slate-500">
-                                    No holdings yet. Add a symbol, quantity, and buy price above.
-                                </td>
-                            </tr>
-                        </tbody>
-                    </table>
+                                    <PrimaryButton type="submit" :disabled="dateForm.processing" class="mt-0! min-h-10 disabled:opacity-50"
+                                        >Apply date</PrimaryButton
+                                    >
+                                </div>
+                            </form>
+                        </PopoverPanel>
+                    </Popover>
+                    <a
+                        :href="portfolioRoutes.download"
+                        class="inline-flex min-h-10 items-center gap-2 rounded-lg px-3 text-sm font-medium text-slate-700 hover:bg-slate-100 focus-visible:outline-purple-600"
+                    >
+                        <ArrowDownTrayIcon class="size-4" aria-hidden="true" /> Export CSV
+                    </a>
                 </div>
-            </section>
-        </div>
+            </div>
+        </header>
+
+        <section aria-label="Portfolio valuation" class="@container rounded-xl border border-slate-200 bg-white shadow-xs">
+            <dl class="grid grid-cols-2 @2xl:grid-cols-[1.25fr_1fr_1fr]">
+                <div
+                    class="col-span-2 min-w-0 rounded-t-xl border-b border-purple-100 bg-purple-50/65 px-4 py-3 @2xl:col-span-1 @2xl:rounded-l-xl @2xl:rounded-tr-none @2xl:border-r @2xl:border-b-0 @2xl:px-6 @2xl:py-4"
+                >
+                    <dt class="text-sm font-medium text-purple-900">
+                        {{ valuation.summary.missingPrices ? 'Known portfolio value' : 'Portfolio value' }}
+                    </dt>
+                    <dd class="mt-1 flex flex-wrap items-center gap-x-2">
+                        <span class="text-2xl font-semibold tracking-tight wrap-anywhere text-slate-950 tabular-nums">{{
+                            formatCurrency(valuation.summary.value)
+                        }}</span>
+                        <button
+                            type="button"
+                            :aria-label="valuation.summary.missingPrices ? 'Copy known portfolio value' : 'Copy total portfolio value'"
+                            title="Copy value for Google Sheets"
+                            class="grid size-8 cursor-pointer place-items-center rounded-md text-purple-700 hover:bg-purple-100 focus-visible:outline-purple-600"
+                            @click="copyPortfolioValue"
+                        >
+                            <CheckIcon v-if="copyState === 'copied'" class="size-4" aria-hidden="true" />
+                            <ClipboardDocumentIcon v-else class="size-4" aria-hidden="true" />
+                        </button>
+                    </dd>
+                    <dd role="status" class="text-xs text-purple-800">
+                        <span v-if="copyState === 'copied'">Value copied.</span>
+                        <span v-if="copyState === 'manual'"
+                            >Select and copy <strong class="select-all">{{ valuation.summary.value.toFixed(2) }}</strong></span
+                        >
+                    </dd>
+                </div>
+                <div class="min-w-0 px-4 py-3 @2xl:px-6 @2xl:py-4">
+                    <dt class="text-sm font-medium text-slate-600">Total cost</dt>
+                    <dd class="mt-1 text-lg font-semibold tracking-tight wrap-anywhere text-slate-900 tabular-nums sm:text-xl">
+                        {{ formatCurrency(valuation.summary.cost) }}
+                    </dd>
+                </div>
+                <div class="min-w-0 border-l border-slate-200 px-4 py-3 @2xl:px-6 @2xl:py-4">
+                    <dt class="text-sm font-medium text-slate-600">Unrealised P/L</dt>
+                    <dd class="mt-1 text-lg tracking-tight sm:text-xl">
+                        <ProfitLoss :value="valuation.summary.profitLoss" :percent-change="valuation.summary.percentChange" />
+                    </dd>
+                </div>
+            </dl>
+        </section>
+
+        <WarningAlert v-if="valuation.summary.missingPrices">
+            {{ valuation.summary.missingPrices }} {{ valuation.summary.missingPrices === 1 ? 'entry has' : 'entries have' }} no price by
+            {{ valuation.date }}. Value is partial. Total profit and return are unavailable.
+        </WarningAlert>
+        <WarningAlert v-if="valuation.summary.earlierPrices">
+            {{ valuation.summary.earlierPrices }} {{ valuation.summary.earlierPrices === 1 ? 'entry uses a price' : 'entries use prices' }} from
+            before the latest market date, {{ valuation.marketDate }}. See the marked price dates below.
+        </WarningAlert>
+
+        <details v-if="corporateActions.length" class="group rounded-xl border border-slate-200 bg-white">
+            <summary
+                class="flex cursor-pointer list-none flex-wrap items-center gap-2 rounded-xl px-4 py-3 text-sm focus-visible:outline-purple-600 sm:px-5 [&::-webkit-details-marker]:hidden"
+            >
+                <CalendarDaysIcon class="size-4 text-slate-500" aria-hidden="true" />
+                <span class="font-semibold text-slate-800">Corporate actions</span>
+                <span class="rounded bg-slate-100 px-1.5 text-xs/5 font-medium text-slate-700">{{ corporateActions.length }}</span>
+                <time :datetime="valuation.date" class="ml-auto text-xs text-slate-500">{{ formatDate(valuation.date + 'T00:00:00') }}</time>
+                <ChevronDownIcon class="size-4 text-slate-500 group-open:rotate-180" aria-hidden="true" />
+            </summary>
+            <div class="border-t border-slate-100 px-4 sm:px-5">
+                <p class="pt-3 text-xs text-slate-600">Review these events and update the holding quantities or buy prices yourself if needed.</p>
+                <ul class="divide-y divide-slate-100">
+                    <li v-for="action in corporateActions" :key="action.id" class="flex items-center justify-between gap-3 py-3 text-sm">
+                        <div class="min-w-0">
+                            <div class="flex flex-wrap items-baseline gap-x-2">
+                                <span class="font-semibold wrap-anywhere">{{ action.symbol }}</span>
+                                <span class="text-slate-700 capitalize">{{ action.type ?? 'Other' }}</span>
+                                <span class="font-medium tabular-nums">{{
+                                    action.type === 'dividend' ? dividendAmount(action.dividend) : (action.ratio ?? '—')
+                                }}</span>
+                            </div>
+                            <p v-if="action.description" class="mt-1 text-xs text-slate-600">{{ action.description }}</p>
+                        </div>
+                        <Link
+                            :href="action.editUrl"
+                            :aria-label="'Edit ' + action.symbol + ' corporate action'"
+                            class="shrink-0 rounded px-2 py-2 text-sm font-medium text-purple-700 hover:bg-purple-50"
+                            >Edit action</Link
+                        >
+                    </li>
+                </ul>
+            </div>
+        </details>
+
+        <HoldingsPanel
+            :holdings="valuation.holdings"
+            :stock-count="valuation.summary.stocks"
+            :date="valuation.date"
+            :add-url="portfolioRoutes.addHolding"
+            :symbol-search-url="portfolioRoutes.symbols"
+            :quote-url="portfolioRoutes.quote"
+        />
     </div>
 </template>
 
 <script setup lang="ts">
 import WarningAlert from '@/Components/Alerts/WarningAlert.vue';
 import PrimaryButton from '@/Components/Button/PrimaryButton.vue';
-import TextInput from '@/Components/Form/TextInput.vue';
-import PageHeader from '@/Components/PageHeader.vue';
-import StatCard from '@/Components/StatCard.vue';
-import type { PortfolioHoldingValue, PortfolioValuation } from '@/types/app/Models/Portfolio';
-import { ArrowDownTrayIcon, ClipboardDocumentIcon } from '@heroicons/vue/24/outline';
+import type { PortfolioValuation } from '@/types/app/Models/Portfolio';
+import { formatCurrency, formatDate } from '@/utils/format';
+import { Popover, PopoverButton, PopoverPanel } from '@headlessui/vue';
+import {
+    ArrowDownTrayIcon,
+    ArrowLeftIcon,
+    CalendarDaysIcon,
+    CheckIcon,
+    ChevronDownIcon,
+    ClipboardDocumentIcon,
+    PencilSquareIcon,
+} from '@heroicons/vue/24/outline';
 import { Head, Link, useForm } from '@inertiajs/vue3';
 import { nextTick, ref, watch } from 'vue';
-import HoldingForm from './partials/HoldingForm.vue';
+import HoldingsPanel from './partials/HoldingsPanel.vue';
+import ProfitLoss from './partials/ProfitLoss.vue';
 
 const props = defineProps<{
     portfolio: { id: number; name: string };
@@ -290,79 +251,58 @@ const props = defineProps<{
 
 const nameForm = useForm({ name: props.portfolio.name });
 const dateForm = useForm({ date: props.valuation.date });
-const deleteForm = useForm({ date: props.valuation.date });
-const editingHolding = ref<PortfolioHoldingValue | null>(null);
-const holdingToRemove = ref<PortfolioHoldingValue | null>(null);
-const holdingFormKey = ref(0);
-const copyMessage = ref('');
-const currency = new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', minimumFractionDigits: 2, maximumFractionDigits: 2 });
+const renaming = ref(false);
+const nameInput = ref<HTMLInputElement | null>(null);
+const renameButton = ref<HTMLButtonElement | null>(null);
+const copyState = ref<'idle' | 'copied' | 'manual'>('idle');
 
 watch(
     () => props.valuation.summary.value,
     () => {
-        copyMessage.value = '';
+        copyState.value = 'idle';
     },
 );
 
-async function copyPortfolioValue(): Promise<void> {
+async function copyPortfolioValue() {
     const value = props.valuation.summary.value.toFixed(2);
-    copyMessage.value = '';
-
     try {
         await navigator.clipboard.writeText(value);
-        copyMessage.value = 'Value copied.';
+        copyState.value = 'copied';
     } catch {
-        copyMessage.value = 'Copy was not available. Select and copy this number: ' + value;
+        copyState.value = 'manual';
     }
 }
 
-function amount(value: number | null): string {
-    return value === null ? '—' : currency.format(value);
+function dividendAmount(value: string | null) {
+    return value !== null && Number.isFinite(Number(value)) ? formatCurrency(value) : '—';
 }
 
-function percent(value: number | null): string {
-    return value === null ? '—' : (value > 0 ? '+' : '') + value.toFixed(2) + '%';
+async function startRename() {
+    nameForm.name = props.portfolio.name;
+    nameForm.clearErrors();
+    renaming.value = true;
+    await nextTick();
+    nameInput.value?.focus();
+    nameInput.value?.select();
 }
 
-function changeColor(value: number | null): string {
-    return value === null || value === 0 ? 'text-slate-600' : value > 0 ? 'text-green-700' : 'text-red-700';
-}
-
-function dividendAmount(value: string | null): string {
-    return value !== null && Number.isFinite(Number(value)) ? amount(Number(value)) : '—';
+async function cancelRename() {
+    if (nameForm.processing) return;
+    renaming.value = false;
+    await nextTick();
+    renameButton.value?.focus();
 }
 
 function rename() {
-    nameForm.put(props.portfolioRoutes.update, { preserveScroll: true });
+    nameForm.put(props.portfolioRoutes.update, { preserveScroll: true, onSuccess: cancelRename });
 }
 
-function changeDate() {
-    dateForm.get(props.portfolioRoutes.edit, { preserveState: false });
+function resetDate() {
+    dateForm.date = props.valuation.date;
+    dateForm.clearErrors();
 }
 
-function clearEditor() {
-    editingHolding.value = null;
-    holdingFormKey.value++;
-}
-
-async function editHolding(holding: PortfolioHoldingValue) {
-    editingHolding.value = holding;
-    holdingFormKey.value++;
-    await nextTick();
-    document.getElementById('holding-form')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-}
-
-function removeHolding() {
-    if (!holdingToRemove.value) {
-        return;
-    }
-    deleteForm.date = props.valuation.date;
-    deleteForm.delete(holdingToRemove.value.destroyUrl, {
-        preserveScroll: true,
-        onSuccess: () => {
-            holdingToRemove.value = null;
-            clearEditor();
-        },
-    });
+function changeDate(close: () => void) {
+    dateForm.get(props.portfolioRoutes.edit, { preserveState: true, preserveScroll: true, onSuccess: () => close() });
 }
 </script>

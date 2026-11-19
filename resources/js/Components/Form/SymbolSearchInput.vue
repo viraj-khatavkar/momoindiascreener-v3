@@ -7,7 +7,9 @@
             <div class="relative mt-2">
                 <ComboboxInput
                     :name="name"
-                    class="block w-full rounded-md bg-white px-3 py-1.5 text-base text-gray-900 outline-1 -outline-offset-1 outline-gray-300 placeholder:text-gray-400 focus:outline-2 focus:-outline-offset-2 focus:outline-purple-600 sm:text-sm/6"
+                    :aria-invalid="error ? true : undefined"
+                    :aria-describedby="error ? errorId : undefined"
+                    class="block h-11 w-full rounded-md bg-white px-3 py-2 text-base/6 text-gray-900 outline-1 -outline-offset-1 outline-gray-300 placeholder:text-gray-400 focus:outline-2 focus:-outline-offset-2 focus:outline-purple-600 sm:h-10 sm:text-sm/6"
                     :placeholder="placeholder"
                     :display-value="() => model ?? ''"
                     autocomplete="off"
@@ -27,58 +29,58 @@
                 </ComboboxOptions>
             </div>
         </Combobox>
+        <p v-if="error" :id="errorId" role="alert" class="mt-2 text-sm text-red-600">{{ error }}</p>
     </div>
 </template>
 
 <script setup lang="ts">
 import { Combobox, ComboboxInput, ComboboxLabel, ComboboxOption, ComboboxOptions } from '@headlessui/vue';
 import axios from 'axios';
-import { ref } from 'vue';
+import { ref, useId, watch } from 'vue';
 
 const props = defineProps<{
     label: string;
     name: string;
     placeholder?: string;
     searchUrl: string;
+    error?: string;
 }>();
 
 const model = defineModel<string>({ default: '' });
+const errorId = useId();
 
 const query = ref('');
 const results = ref<string[]>([]);
 const loading = ref(false);
-
-let debounceTimer: ReturnType<typeof setTimeout> | null = null;
 
 function onInputChange(event: Event) {
     const value = (event.target as HTMLInputElement).value;
 
     query.value = value;
     model.value = value;
+}
 
-    if (debounceTimer) {
-        clearTimeout(debounceTimer);
-    }
+watch(query, (value, _, onCleanup) => {
+    results.value = [];
+    loading.value = value.length > 0;
+    if (!value) return;
 
-    if (value.length === 0) {
-        results.value = [];
-        loading.value = false;
-        return;
-    }
-
-    loading.value = true;
-
-    debounceTimer = setTimeout(async () => {
+    const controller = new AbortController();
+    const timer = setTimeout(async () => {
         try {
-            const response = await axios.get<string[]>(props.searchUrl, { params: { q: value } });
+            const response = await axios.get<string[]>(props.searchUrl, { params: { q: value }, signal: controller.signal });
             results.value = response.data;
         } catch {
-            results.value = [];
+            if (!controller.signal.aborted) results.value = [];
         } finally {
-            loading.value = false;
+            if (!controller.signal.aborted) loading.value = false;
         }
     }, 250);
-}
+    onCleanup(() => {
+        clearTimeout(timer);
+        controller.abort();
+    });
+});
 
 function onSelect(symbol: string | null) {
     if (symbol) {
