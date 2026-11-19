@@ -91,9 +91,15 @@ it('omits internal adjustment fields from the payload', function () {
 it('returns displayable type options', function () {
     $this->get('/corporate-actions')
         ->assertInertia(fn (Assert $page) => $page
-            ->has('types', 5)
-            ->where('types.0.id', 'bonus')
-            ->where('types.0.name', 'Bonus')
+            ->where('types', [
+                ['id' => 'bonus', 'name' => 'Bonus'],
+                ['id' => 'split', 'name' => 'Split'],
+                ['id' => 'dividend', 'name' => 'Dividend'],
+                ['id' => 'distribution', 'name' => 'Distribution'],
+                ['id' => 'interest', 'name' => 'Interest'],
+                ['id' => 'rights', 'name' => 'Rights'],
+                ['id' => 'demerger', 'name' => 'Demerger'],
+            ])
         );
 });
 

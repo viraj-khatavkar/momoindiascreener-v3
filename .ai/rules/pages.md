@@ -20,19 +20,16 @@ Use Example screens and Example backtests in user-facing headings, descriptions,
 The approved Market Health design starts with a dated session summary, then chart history and metric details. Keep daily advances and declines distinct from moving-average, annual-return and all-time-high participation. Keep all existing measures accessible and retain the selected metric and period when the index changes.
 
 ## Keep index comparison compact and retain search context
-The approved index dashboard puts key indices above grouped, sortable comparison rows. Keep every index accessible with pagination and a compact phone layout. Preserve search, group, sort and result page on browser Back and the All indices link.
+Put key indices above the sortable comparison rows. Keep every index accessible with pagination and a compact phone layout. Preserve search, sort, and result page on browser Back and the All indices link. Name-based categories were unreliable. Omit category pills and group labels on the dashboard and index detail pages. Discard legacy group values from remembered state and navigation URLs.
 
 ## Share the chart period across index measures
-The approved detail page uses one chart with price, P/E, P/B and dividend yield tabs. Keep the chosen period across tabs and index changes. Max must include all stored dates even on a narrow phone screen; the chart minimum bar spacing must allow this. Yield uses an automatic percent scale, while Market Health participation keeps its 0–100 scale. Show the data date and index points, and keep return-year labels visible during horizontal scroll.
+The approved detail page uses one chart with price, P/E, P/B and dividend yield tabs. Keep the chosen period across tabs and index changes. Max must include all stored dates even on a narrow phone screen. Set the minimum bar spacing accordingly. Yield uses an automatic percent scale. Market Health participation keeps its 0–100 scale. Show the data date and index points.
 
 ## Use the shared white page background
 User decision: Market Health, the indices dashboard and index detail pages must use the same white page background as the rest of the site. Keep light shading inside controls, table headers and supporting panels only; do not add a separate gray page canvas.
 
 ## Show full monthly history without internal scrolling
-User decision: show every available return year by default, with all 12 months and the annual or YTD value. Remove the recent-five-year selector and fixed-height or horizontal scroll containers. Use a full-width desktop table and year grids on smaller screens, with normal page scrolling only. This replaces the earlier scrolling returns-table design.
-
-## Do not classify indices with category pills
-User decision: remove the dashboard category pills and the related group labels from dashboard rows and index details. The name-based classification was not reliable. Keep search, sorting and pagination; discard legacy group values from remembered state and navigation URLs. This replaces the earlier grouped-comparison design.
+Follow the [monthly returns display rule](components.md#show-full-monthly-history-without-internal-scrolling) on pages that show the returns table.
 
 ## Keep stock membership pills compact
 Show the first six index pills by default on the stock page. When more memberships exist, show an accessible Show more button with the remaining count, and Show less after expansion. Preserve each dated constituent link and the existing index order. Do not expand the screener or backtest choices.

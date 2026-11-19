@@ -57,18 +57,19 @@ it('repeats the index import from its command block and resumes live output', fu
 it('shows market cap and adjusted PE imports before marking ETFs', function () {
     $admin = User::factory()->create(['is_admin' => true]);
     $run = app(CreateAdminProcessRunAction::class)->execute($admin, '2024-03-01');
-    $run->steps()->where('position', '<=', 13)->update([
+    $adjustmentPosition = $run->steps->sole('key', 'apply-corporate-action')->position;
+    $run->steps()->where('position', '<=', $adjustmentPosition)->update([
         'status' => AdminProcessStepStatusEnum::Completed->value,
     ]);
 
     $this->actingAs($admin);
 
     visit("/admin/process-runs/{$run->id}")
-        ->assertSee('13. Apply corporate action adjustments')
-        ->assertSee('14. Import market cap')
-        ->assertSee('15. Import price to earnings')
-        ->assertSee('16. Mark ETFs')
-        ->assertSee('22. Update assumed delistings')
+        ->assertSee($adjustmentPosition.'. Apply corporate action adjustments')
+        ->assertSee(($adjustmentPosition + 1).'. Import market cap')
+        ->assertSee(($adjustmentPosition + 2).'. Import price to earnings')
+        ->assertSee(($adjustmentPosition + 3).'. Mark ETFs')
+        ->assertSee($run->steps->count().'. Update assumed delistings')
         ->assertSee('php artisan backtest:update-assumed-delistings --date=2024-03-01')
         ->assertSee('save values in crores')
         ->assertSee('Import ADJUSTED P/E values')

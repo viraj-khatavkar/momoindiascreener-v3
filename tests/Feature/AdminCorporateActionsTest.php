@@ -31,7 +31,7 @@ it('lists corporate actions ordered by date descending with 100 per page', funct
             ->where('corporateActions.data.1.symbol', 'MIDDLE')
             ->where('corporateActions.data.2.symbol', 'OLDEST')
             ->where('corporateActions.per_page', 100)
-            ->has('types', 5)
+            ->where('types', array_column(CorporateActionTypeEnum::cases(), 'value'))
         );
 });
 
@@ -72,7 +72,7 @@ it('renders the create page', function () {
         ->get('/admin/corporate-actions/create')
         ->assertInertia(fn (Assert $page) => $page
             ->component('Admin/CorporateActions/Create')
-            ->has('types', 5)
+            ->where('types', array_column(CorporateActionTypeEnum::cases(), 'value'))
         );
 });
 
@@ -121,7 +121,7 @@ it('renders the edit page', function () {
             ->component('Admin/CorporateActions/Edit')
             ->where('corporateAction.id', $action->id)
             ->where('corporateAction.symbol', 'TCS')
-            ->has('types', 5)
+            ->where('types', array_column(CorporateActionTypeEnum::cases(), 'value'))
         );
 });
 

@@ -29,7 +29,8 @@ it('shows daily market cap allocation and supports date selection on desktop and
 
     $page = visit('/backtests/'.$backtest->id)
         ->resize($width, $height)
-        ->press('Market caps')
+        ->press('Portfolio')
+        ->click('summary:has-text("Allocation over time")')
         ->assertSee('Market Cap Allocation Over Time')
         ->assertSeeIn('#bt-market-cap', '29.0%')
         ->assertSeeIn('#bt-market-cap', '21.0%')
@@ -66,7 +67,8 @@ it('explains when the backtest has no market cap coverage', function () {
     loginAs($user->email);
 
     visit('/backtests/'.$backtest->id)
-        ->press('Market caps')
+        ->press('Portfolio')
+        ->click('summary:has-text("Allocation over time")')
         ->assertSee('No allocation data is available for this backtest period.')
         ->assertMissing('#allocation-date')
         ->assertNoJavaScriptErrors();
@@ -95,7 +97,8 @@ it('shows the available part of a longer backtest with unclassified holdings', f
 
     $page = visit('/backtests/'.$backtest->id)
         ->resize($width, $height)
-        ->press('Market caps')
+        ->press('Portfolio')
+        ->click('summary:has-text("Allocation over time")')
         ->assertSeeIn('#bt-market-cap', 'Data from 31 Jul 2017')
         ->assertSeeIn('#bt-market-cap', '1 dates without sufficient data are excluded.')
         ->assertSeeIn('#bt-market-cap dl > div:has-text("Unclassified")', '0.0%')

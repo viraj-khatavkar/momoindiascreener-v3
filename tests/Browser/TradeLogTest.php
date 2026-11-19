@@ -32,12 +32,13 @@ it('loads the next trade page on scroll and searches trades outside loaded pages
     loginAs($user->email);
 
     $page = visit('/backtests/'.$backtest->id)->resize($width, $height)
-        ->press('Trades')
+        ->press('Trade log')
+        ->assertAriaAttribute('button:has-text("Trade log")', 'current', 'location')
         ->assertSee('Loaded 100 of 225 matching trades.')
         ->assertSee('Buys (113)')
         ->assertSee('Sells (112)');
 
-    $page->script('Array.from(document.querySelectorAll("#bt-trades button")).find(button => button.textContent.trim() === "Load more trades").scrollIntoView()');
+    $page->script('document.querySelector("#bt-trades [id^=tl-]:last-child").scrollIntoView({ behavior: "instant", block: "center" })');
     $page->assertSee('Loaded 200 of 225 matching trades.')
         ->fill('input[aria-label="Search trades by symbol"]', 'EARLYONLY')
         ->assertSee('Loaded 1 of 1 matching trades.')

@@ -52,11 +52,11 @@ it('shows completed position statistics and separate open results on desktop and
     loginAs($backtest->user->email);
 
     $page = visit('/backtests/'.$backtest->id)->resize($width, $height)
+        ->press('Portfolio')
         ->assertSeeIn('[data-test="position-statistics"]', '66.7%')
         ->assertSeeIn('[data-test="position-statistics"]', '2 winning / 3 completed · 0 breakeven')
-        ->assertSeeIn('[data-test="position-statistics"]', '₹161')
-        ->assertSeeIn('[data-test="position-statistics"]', '−₹100')
-        ->press('Positions')
+        ->click('summary:has-text("Position averages")')
+        ->assertSeeIn('[data-test="position-statistics"]', '₹161 / −₹100')
         ->assertSeeIn('[data-test="final-holdings"]', 'OPEN')
         ->assertSeeIn('[data-test="final-holdings"] th:nth-child(7)', 'Realised P&L')
         ->assertSeeIn('[data-test="final-holdings"] th:nth-child(8)', 'Unrealised P&L')
@@ -86,9 +86,9 @@ it('shows no completed statistics while all positions remain open', function () 
     loginAs($backtest->user->email);
 
     visit('/backtests/'.$backtest->id)
+        ->press('Portfolio')
         ->assertSeeIn('[data-test="position-statistics"]', '0 winning / 0 completed · 0 breakeven')
         ->assertDontSeeIn('[data-test="position-statistics"]', '100.0%')
-        ->press('Positions')
         ->assertSee('No positions were fully exited during this backtest.')
         ->assertSee('No completed winning positions.')
         ->assertSee('No completed losing positions.')
