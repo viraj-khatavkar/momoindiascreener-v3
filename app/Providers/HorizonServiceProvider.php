@@ -3,6 +3,7 @@
 namespace App\Providers;
 
 use App\Listeners\PreventBacktestJobRetry;
+use App\Models\User;
 use Illuminate\Console\Events\CommandStarting;
 use Illuminate\Contracts\Queue\Factory as QueueFactory;
 use Illuminate\Foundation\Application;
@@ -82,10 +83,6 @@ class HorizonServiceProvider extends HorizonApplicationServiceProvider
      */
     protected function gate(): void
     {
-        Gate::define('viewHorizon', function ($user = null) {
-            return in_array(optional($user)->email, [
-                //
-            ]);
-        });
+        Gate::define('viewHorizon', fn (User $user): bool => $user->is_admin && $user->hasVerifiedEmail());
     }
 }
