@@ -3,6 +3,8 @@
 use App\Models\BacktestNseIndexConstituent;
 use App\Models\BacktestNseInstrumentPrice;
 use App\Models\MarketHeartbeat;
+use Illuminate\Database\Events\QueryExecuted;
+use Illuminate\Support\Facades\DB;
 
 it('fails when no date is provided', function () {
     $this->artisan('backtest:import-constituents')
@@ -95,10 +97,17 @@ it('imports Nifty 1000 membership for only the requested date and can run again'
     $member = createBacktestPriceRow('MEMBER', '2026-11-16', ['series' => 'BE', 'close_adjusted' => 123]);
     $other = createBacktestPriceRow('OTHER', '2026-11-16', ['series' => 'EQ', 'is_nifty_1000' => true]);
 
+    $priceUpdates = 0;
+    DB::listen(function (QueryExecuted $query) use (&$priceUpdates): void {
+        if (str_starts_with(strtolower($query->sql), 'update ') && str_contains($query->sql, 'backtest_nse_instrument_prices')) {
+            $priceUpdates++;
+        }
+    });
     foreach (range(1, 2) as $attempt) {
         $this->artisan('backtest:import-constituents', ['--date' => '2026-11-16'])
             ->expectsOutputToContain('nifty 1000: 1')
             ->assertSuccessful();
+        expect($priceUpdates)->toBe($attempt);
     }
 
     expect($member->fresh()->is_nifty_1000)->toBeTrue()

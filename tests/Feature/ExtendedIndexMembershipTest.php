@@ -103,7 +103,7 @@ it('keeps additional memberships out of screen and backtest choices and validati
         ->and(NseIndexEnum::getOptionsForFilters())->toHaveCount(16);
 });
 
-it('rolls back all membership changes if a later index update fails', function () {
+it('rolls back all membership changes if the bulk update fails', function () {
     $price = createBacktestPriceRow('MEMBER', '2026-11-16', ['is_nifty_50' => true, 'is_nifty_alpha_50' => true]);
     DB::listen(function (QueryExecuted $query): void {
         if (str_starts_with($query->sql, 'update') && str_contains($query->sql, '`is_nifty_alpha_50`')) {
