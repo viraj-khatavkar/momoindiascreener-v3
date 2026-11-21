@@ -26,11 +26,16 @@
                     type="button"
                     data-test="save-and-run"
                     :disabled="runBlocked || form.processing"
-                    class="inline-flex cursor-pointer items-center gap-1.5 rounded-lg bg-purple-600 px-4 py-2 text-sm font-semibold text-white shadow-xs transition-all duration-200 hover:bg-purple-500 hover:shadow-md disabled:cursor-not-allowed disabled:opacity-75"
+                    class="inline-flex min-h-10 cursor-pointer items-center gap-1.5 rounded-lg px-3 py-2 text-sm font-semibold disabled:cursor-not-allowed disabled:opacity-75"
+                    :class="
+                        reviewingCompletedRun
+                            ? 'border border-gray-300 bg-white text-gray-700 hover:bg-gray-50'
+                            : 'bg-purple-600 text-white shadow-xs hover:bg-purple-500'
+                    "
                     @click="saveAndRun"
                 >
                     <PlayIcon class="h-4 w-4" aria-hidden="true" />
-                    {{ backtest.status === 'running' ? 'Running…' : 'Save and Run' }}
+                    {{ backtest.status === 'running' ? 'Running…' : reviewingCompletedRun ? 'Re-run backtest' : 'Save and Run' }}
                 </button>
             </div>
         </div>
@@ -281,25 +286,24 @@
                         {{ section.label }}
                     </button>
                 </nav>
-                <section id="bt-overview" class="scroll-mt-48 space-y-5 sm:scroll-mt-36" aria-labelledby="overview-heading">
+                <section id="bt-overview" class="scroll-mt-48 space-y-3 sm:scroll-mt-36 sm:space-y-5" aria-labelledby="overview-heading">
                     <div class="flex flex-wrap items-end justify-between gap-4">
                         <div>
                             <h2 id="overview-heading" class="text-xl font-semibold tracking-tight text-slate-900">Performance overview</h2>
-                            <p class="mt-1 text-sm text-slate-500">{{ backtestPeriod }} · {{ backtestDuration }} · After trading charges</p>
+                            <p class="mt-1 text-sm text-slate-500">{{ backtestDuration }} · After trading charges</p>
                         </div>
-                        <div class="w-full sm:w-auto">
-                            <label for="result-benchmark" class="mb-1 block text-xs font-medium text-slate-600">Compare with</label
-                            ><select
+                        <div class="flex w-full items-center gap-3 sm:block sm:w-auto">
+                            <label for="result-benchmark" class="shrink-0 text-xs font-medium text-slate-600 sm:mb-1 sm:block">Compare with</label>
+                            <select
                                 id="result-benchmark"
                                 v-model="selectedBenchmark"
-                                class="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 focus:border-purple-500 focus:ring-purple-500 sm:min-w-56"
+                                class="min-h-10 min-w-0 flex-1 rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 focus:border-purple-500 focus:ring-purple-500 sm:min-w-56"
                             >
                                 <option value="">No benchmark</option>
                                 <option v-for="option in benchmarkOptions" :key="option.id" :value="option.id">{{ option.name }}</option>
                             </select>
                         </div>
                     </div>
-                    <p v-if="!settingsChangedSinceRun" class="text-sm text-slate-600">{{ strategySummary }}</p>
                     <p v-if="loadingBenchmark" class="text-sm text-purple-700" role="status">Loading {{ selectedBenchmarkName }}…</p>
                     <div
                         v-else-if="benchmarkError"
@@ -316,66 +320,133 @@
                     >
                         No benchmark data is available for this period. Choose another benchmark.
                     </p>
-                    <dl class="grid grid-cols-2 gap-3 lg:grid-cols-4">
-                        <div
-                            class="min-w-0 rounded-xl border p-4 sm:p-5"
-                            :class="
-                                summaryMetrics.cagr !== null && summaryMetrics.cagr >= 0
-                                    ? 'border-emerald-200 bg-emerald-50/60'
-                                    : 'border-slate-200 bg-white'
-                            "
+                    <p v-else-if="benchmarkCoverageNotice" class="text-sm text-amber-800" role="status">{{ benchmarkCoverageNotice }}</p>
+                    <div class="overflow-hidden rounded-xl border border-slate-200 bg-white">
+                        <dl
+                            aria-label="Performance statistics"
+                            class="grid grid-cols-2 gap-px bg-slate-200 lg:grid-cols-4"
+                            data-test="performance-metrics"
                         >
-                            <dt class="text-sm font-medium text-slate-600">Annualised return · CAGR</dt>
-                            <dd
-                                class="mt-3 text-2xl font-semibold tracking-tight tabular-nums sm:text-4xl"
-                                :class="
-                                    summaryMetrics.cagr === null ? 'text-slate-500' : summaryMetrics.cagr >= 0 ? 'text-emerald-700' : 'text-red-700'
-                                "
+                            <ResultMetric
+                                headline
+                                label="CAGR"
+                                :value="formatPercent(summaryMetrics.cagr)"
+                                :tone="metricTone(summaryMetrics.cagr)"
+                                detail="Annualised return"
                             >
-                                {{ formatPercent(summaryMetrics.cagr) }}
-                            </dd>
-                            <dd class="mt-3 text-sm text-slate-500">Over {{ backtestDuration }}</dd>
-                        </div>
-                        <div class="min-w-0 rounded-xl border border-slate-200 bg-white p-4 sm:p-5">
-                            <dt class="text-sm font-medium text-slate-600">Maximum drawdown</dt>
-                            <dd class="mt-3 text-2xl font-semibold tracking-tight text-red-700 tabular-nums sm:text-4xl">
-                                {{ formatPercent(summaryMetrics.max_drawdown) }}
-                            </dd>
-                            <dd class="mt-3">
+                                <template v-if="benchmarkMetrics.cagr !== null" #default>
+                                    <span class="flex flex-wrap items-baseline gap-x-2 tabular-nums" data-test="benchmark-comparison">
+                                        <span>{{ selectedBenchmarkName }} {{ formatPercent(benchmarkMetrics.cagr) }}</span>
+                                        <span
+                                            v-if="benchmarkDelta !== null"
+                                            class="font-semibold"
+                                            :class="returnColor(benchmarkDelta)"
+                                            data-test="cagr-difference"
+                                        >
+                                            <span class="sr-only">CAGR difference in percentage points </span
+                                            >{{ formatPercentagePoints(benchmarkDelta) }}
+                                        </span>
+                                    </span>
+                                </template>
+                            </ResultMetric>
+                            <ResultMetric
+                                headline
+                                label="Maximum drawdown"
+                                :value="formatPercent(summaryMetrics.max_drawdown)"
+                                :tone="metricTone(summaryMetrics.max_drawdown)"
+                            >
+                                <span v-if="benchmarkMetrics.maxDrawdown !== null" class="block tabular-nums">
+                                    {{ selectedBenchmarkName }} {{ formatPercent(benchmarkMetrics.maxDrawdown) }}
+                                </span>
                                 <button
                                     type="button"
-                                    class="text-left text-sm font-medium text-purple-700 hover:underline"
+                                    class="inline-flex items-baseline gap-1 text-left font-medium text-purple-700 hover:underline"
                                     @click="scrollToSection('bt-drawdown')"
                                 >
-                                    View loss &amp; recovery →
+                                    {{
+                                        summaryMetrics.max_drawdown_end_date
+                                            ? 'Trough ' + formatDate(summaryMetrics.max_drawdown_end_date)
+                                            : 'View drawdown'
+                                    }}
+                                    <span aria-hidden="true">→</span><span class="sr-only"> · View loss and recovery</span>
                                 </button>
-                            </dd>
-                        </div>
-                        <div class="min-w-0 rounded-xl border border-slate-200 bg-white p-4 sm:p-5">
-                            <dt class="text-sm font-medium text-slate-600">Ending portfolio value</dt>
-                            <dd class="mt-3 text-2xl font-semibold tracking-tight text-slate-900 tabular-nums sm:text-4xl">
-                                {{ formatCurrencyShort(summaryMetrics.final_value) }}
-                            </dd>
-                            <dd class="mt-3 text-sm text-slate-500">
-                                From {{ formatCurrencyShort(backtest.initial_capital) }} · {{ growthMultiplier }}×
-                            </dd>
-                        </div>
-                        <div class="min-w-0 rounded-xl border border-slate-200 bg-white p-4 sm:p-5" data-test="benchmark-comparison">
-                            <dt class="text-sm font-medium text-slate-600">CAGR difference</dt>
-                            <dd
-                                class="mt-3 text-2xl font-semibold tracking-tight tabular-nums sm:text-4xl"
-                                :class="benchmarkDelta === null ? 'text-slate-500' : benchmarkDelta >= 0 ? 'text-emerald-700' : 'text-red-700'"
+                            </ResultMetric>
+                            <ResultMetric
+                                headline
+                                label="Annualised volatility"
+                                :tone="metricTone(annualizedVolatility, 'risk')"
+                                detail="Standard deviation of daily returns"
                             >
-                                {{ loadingBenchmark ? '…' : formatPercentagePoints(benchmarkDelta) }}
-                            </dd>
-                            <dd class="mt-3 text-sm text-slate-500">
-                                {{ selectedBenchmark ? `vs ${selectedBenchmarkName} · percentage points` : 'Choose a benchmark to compare' }}
-                            </dd>
-                        </div>
-                    </dl>
+                                <template #value>
+                                    <Deferred data="dailySnapshots">
+                                        <template #fallback
+                                            ><span role="status"
+                                                ><span class="sr-only">Loading annualised volatility</span><span aria-hidden="true">…</span></span
+                                            ></template
+                                        >
+                                        {{ annualizedVolatility !== null ? (annualizedVolatility * 100).toFixed(1) + '%' : '—' }}
+                                    </Deferred>
+                                </template>
+                            </ResultMetric>
+                            <ResultMetric
+                                headline
+                                label="Sharpe ratio"
+                                :value="summaryMetrics.sharpe_ratio != null ? Number(summaryMetrics.sharpe_ratio).toFixed(2) : '—'"
+                                :tone="metricTone(summaryMetrics.sharpe_ratio, 'ratio')"
+                                detail="Excess return over cash per unit of volatility"
+                            />
+                        </dl>
+                        <p class="flex flex-wrap items-baseline gap-x-3 gap-y-1 border-t border-slate-200 px-4 py-3 text-sm text-slate-600 sm:px-5">
+                            <span>Portfolio value</span>
+                            <span class="font-semibold text-slate-900 tabular-nums">
+                                {{ formatCurrencyShort(backtest.initial_capital) }} <span aria-hidden="true">→</span><span class="sr-only">to</span>
+                                {{ formatCurrencyShort(summaryMetrics.final_value) }}
+                            </span>
+                            <span class="tabular-nums">{{ growthMultiplier }}×</span>
+                        </p>
+                        <details class="group border-t border-slate-200 px-4 sm:px-5" data-test="risk-statistics">
+                            <summary class="cursor-pointer py-3 text-sm font-semibold text-slate-800">
+                                Additional statistics
+                                <span class="ml-2 text-xs font-normal text-slate-500 group-open:hidden">Sortino, Calmar, Ulcer index, K-ratio</span>
+                            </summary>
+                            <dl class="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+                                <ResultMetric
+                                    data-test="sortino-ratio"
+                                    label="Sortino ratio"
+                                    :value="sortinoRatio !== null ? sortinoRatio.toFixed(2) : '—'"
+                                    :tone="metricTone(sortinoRatio, 'ratio')"
+                                    help="Return above the configured cash return, relative to downside variation. This is the saved value from the run."
+                                />
+                                <ResultMetric
+                                    label="Calmar ratio"
+                                    :value="calmarRatio !== null ? calmarRatio.toFixed(2) : '—'"
+                                    :tone="metricTone(calmarRatio, 'ratio')"
+                                    help="Annualised return divided by the magnitude of the maximum drawdown."
+                                />
+                                <ResultMetric
+                                    label="Ulcer index"
+                                    :value="summaryMetrics.ulcer_index != null ? Number(summaryMetrics.ulcer_index).toFixed(2) : '—'"
+                                    :tone="metricTone(summaryMetrics.ulcer_index, 'risk')"
+                                    help="Measures the depth and persistence of losses below previous portfolio highs. Lower values indicate less time or depth below those highs."
+                                />
+                                <ResultMetric
+                                    label="K-ratio"
+                                    :value="summaryMetrics.k_ratio != null ? Number(summaryMetrics.k_ratio).toFixed(2) : '—'"
+                                    :tone="metricTone(summaryMetrics.k_ratio, 'ratio')"
+                                    help="Measures the consistency of growth in log NAV. Read it with returns, drawdown and the test period."
+                                />
+                            </dl>
+                            <p class="py-4 text-sm text-slate-600">
+                                {{ summaryMetrics.total_trades.toLocaleString('en-IN') }} transactions ·
+                                {{ formatCurrencyShort(summaryMetrics.total_charges_paid) }} total charges
+                                <span v-if="chargesPctOfCapital !== null">({{ chargesPctOfCapital }}% of initial capital)</span>
+                            </p>
+                        </details>
+                    </div>
                     <details class="rounded-xl border border-slate-200 bg-slate-50/60 px-4 py-3 sm:px-5">
                         <summary class="cursor-pointer text-sm font-medium text-slate-700">
                             {{ settingsChangedSinceRun ? 'Current saved strategy rules' : 'Strategy rules' }}
+                            <span v-if="!settingsChangedSinceRun" class="ml-2 text-xs font-normal text-slate-500">{{ strategySummary }}</span>
                         </summary>
                         <div class="mt-4">
                             <BacktestStrategyRules :backtest="backtest" /><button
@@ -425,35 +496,6 @@
                                 <p class="mt-4 text-sm text-slate-500">
                                     Strategy summary figures use the full backtest period, even when the chart is zoomed.
                                 </p>
-                                <p v-if="benchmarkCoverageNotice" class="mt-2 text-sm text-amber-800">{{ benchmarkCoverageNotice }}</p>
-                                <!-- Benchmark comparison metrics -->
-                                <div v-if="benchmarkData.length > 0" class="mt-4 flex flex-wrap gap-6 border-t border-gray-100 pt-4 text-sm">
-                                    <div>
-                                        <span class="text-gray-500">{{ selectedBenchmarkName }} CAGR: </span>
-                                        <span :class="(benchmarkMetrics.cagr ?? 0) >= 0 ? 'text-emerald-700' : 'text-red-700'" class="font-semibold">
-                                            {{ formatPercent(benchmarkMetrics.cagr) }}
-                                        </span>
-                                    </div>
-                                    <div>
-                                        <span class="text-gray-500">CAGR difference: </span>
-                                        <span
-                                            :class="
-                                                benchmarkMetrics.alpha === null
-                                                    ? 'text-gray-500'
-                                                    : benchmarkMetrics.alpha >= 0
-                                                      ? 'text-emerald-700'
-                                                      : 'text-red-700'
-                                            "
-                                            class="font-semibold"
-                                        >
-                                            {{ formatPercentagePoints(benchmarkMetrics.alpha) }}
-                                        </span>
-                                    </div>
-                                    <div>
-                                        <span class="text-gray-500">{{ selectedBenchmarkName }} Max DD: </span>
-                                        <span class="font-semibold text-red-700">{{ formatPercent(benchmarkMetrics.maxDrawdown) }}</span>
-                                    </div>
-                                </div>
                             </div>
                         </Deferred>
                     </div>
@@ -542,48 +584,6 @@
                             </div>
                         </Deferred>
                     </div>
-                    <details class="rounded-xl border border-slate-200 bg-slate-50/50 p-4 sm:p-6" data-test="risk-statistics">
-                        <summary class="cursor-pointer text-base font-semibold text-slate-800">More statistics</summary>
-                        <p class="mt-2 text-sm text-slate-500">Statistics for the full saved run. Select an information button for an explanation.</p>
-                        <dl class="mt-5 grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
-                            <ResultMetric
-                                label="Annualised volatility"
-                                :value="annualizedVolatility !== null ? (annualizedVolatility * 100).toFixed(1) + '%' : '—'"
-                                help="Annualised standard deviation of daily returns. Lower values indicate less variation in daily returns."
-                            />
-                            <ResultMetric
-                                label="Sharpe ratio"
-                                :value="summaryMetrics.sharpe_ratio !== null ? Number(summaryMetrics.sharpe_ratio).toFixed(2) : '—'"
-                                help="Return above the configured cash return, relative to total volatility."
-                            />
-                            <ResultMetric
-                                data-test="sortino-ratio"
-                                label="Sortino ratio"
-                                :value="sortinoRatio !== null ? sortinoRatio.toFixed(2) : '—'"
-                                help="Return above the configured cash return, relative to downside variation. This is the saved value from the run."
-                            />
-                            <ResultMetric
-                                label="Calmar ratio"
-                                :value="calmarRatio !== null ? calmarRatio.toFixed(2) : '—'"
-                                help="Annualised return divided by the magnitude of the maximum drawdown."
-                            />
-                            <ResultMetric
-                                label="Ulcer index"
-                                :value="summaryMetrics.ulcer_index !== null ? Number(summaryMetrics.ulcer_index).toFixed(2) : '—'"
-                                help="Measures the depth and persistence of losses below previous portfolio highs. Lower values indicate less time or depth below those highs."
-                            />
-                            <ResultMetric
-                                label="K-ratio"
-                                :value="summaryMetrics.k_ratio !== null ? Number(summaryMetrics.k_ratio).toFixed(2) : '—'"
-                                help="Measures the consistency of growth in log NAV. Read it with returns, drawdown and the test period."
-                            />
-                        </dl>
-                        <p class="mt-4 text-sm leading-relaxed text-slate-600">
-                            {{ summaryMetrics.total_trades.toLocaleString('en-IN') }} transactions ·
-                            {{ formatCurrencyShort(summaryMetrics.total_charges_paid) }} total charges over {{ backtestDuration
-                            }}<span v-if="chargesPctOfCapital !== null"> ({{ chargesPctOfCapital }}% of initial capital)</span>.
-                        </p>
-                    </details>
                     <div id="bt-monthly" class="scroll-mt-48 sm:scroll-mt-36">
                         <Deferred data="dailySnapshots"
                             ><template #fallback
@@ -623,13 +623,13 @@
                                 <tbody class="divide-y divide-gray-100">
                                     <tr v-for="period in rollingPeriods" :key="period.key">
                                         <td class="py-2.5 font-medium text-gray-900">{{ period.label }}</td>
-                                        <td class="py-2.5 text-right" :class="rollingReturnColor(rollingStats(period.key).min)">
+                                        <td class="py-2.5 text-right" :class="returnColor(rollingStats(period.key).min)">
                                             {{ formatPercent(rollingStats(period.key).min) }}
                                         </td>
-                                        <td class="py-2.5 text-right" :class="rollingReturnColor(rollingStats(period.key).median)">
+                                        <td class="py-2.5 text-right" :class="returnColor(rollingStats(period.key).median)">
                                             {{ formatPercent(rollingStats(period.key).median) }}
                                         </td>
-                                        <td class="py-2.5 text-right" :class="rollingReturnColor(rollingStats(period.key).max)">
+                                        <td class="py-2.5 text-right" :class="returnColor(rollingStats(period.key).max)">
                                             {{ formatPercent(rollingStats(period.key).max) }}
                                         </td>
                                         <td class="py-2.5 text-right text-gray-700 tabular-nums">
@@ -720,6 +720,25 @@
                                 Cost held covers the remaining shares. Total P&L includes partial sales; its percentage uses all purchase costs for
                                 the position.
                             </p>
+                            <div class="mb-3 flex flex-wrap items-center gap-2 text-sm lg:hidden">
+                                <label for="holdings-sort" class="text-slate-600">Sort by</label>
+                                <select
+                                    id="holdings-sort"
+                                    :value="holdingsSortKey"
+                                    class="min-h-10 rounded border border-slate-300 py-1 pr-8 pl-2"
+                                    @change="setHoldingsSort(($event.target as HTMLSelectElement).value as HoldingsSortKey)"
+                                >
+                                    <option value="unrealized_value">Value / weight</option>
+                                    <option value="symbol">Symbol</option>
+                                    <option value="entry_date">Entry date</option>
+                                    <option value="holding_days">Time held</option>
+                                    <option value="remaining_cost">Cost held</option>
+                                    <option value="pnl_pct">Total P&amp;L %</option>
+                                </select>
+                                <button type="button" class="min-h-10 px-1 font-medium text-purple-700" @click="setHoldingsSort(holdingsSortKey)">
+                                    {{ holdingsSortDir === 'asc' ? 'Ascending ↑' : 'Descending ↓' }}
+                                </button>
+                            </div>
                             <div class="relative overflow-x-auto">
                                 <table class="min-w-full text-sm">
                                     <thead>
@@ -729,7 +748,7 @@
                                                     Symbol{{ holdingsSortIndicator('symbol') }}
                                                 </button>
                                             </th>
-                                            <th class="px-4 pb-2 text-left font-medium text-gray-500">
+                                            <th class="hidden px-4 pb-2 text-left font-medium text-gray-500 lg:table-cell">
                                                 <button
                                                     type="button"
                                                     class="cursor-pointer hover:text-gray-700"
@@ -738,7 +757,7 @@
                                                     Entry{{ holdingsSortIndicator('entry_date') }}
                                                 </button>
                                             </th>
-                                            <th class="px-4 pb-2 text-right font-medium text-gray-500">
+                                            <th class="hidden px-4 pb-2 text-right font-medium text-gray-500 lg:table-cell">
                                                 <button
                                                     type="button"
                                                     class="cursor-pointer hover:text-gray-700"
@@ -747,7 +766,7 @@
                                                     Held{{ holdingsSortIndicator('holding_days') }}
                                                 </button>
                                             </th>
-                                            <th class="px-4 pb-2 text-right font-medium text-gray-500">
+                                            <th class="hidden px-4 pb-2 text-right font-medium text-gray-500 lg:table-cell">
                                                 <button
                                                     type="button"
                                                     class="cursor-pointer hover:text-gray-700"
@@ -756,7 +775,7 @@
                                                     Cost held{{ holdingsSortIndicator('remaining_cost') }}
                                                 </button>
                                             </th>
-                                            <th class="px-4 pb-2 text-right font-medium text-gray-500">
+                                            <th class="hidden px-4 pb-2 text-right font-medium text-gray-500 lg:table-cell">
                                                 <button
                                                     type="button"
                                                     class="cursor-pointer hover:text-gray-700"
@@ -765,15 +784,15 @@
                                                     Value{{ holdingsSortIndicator('unrealized_value') }}
                                                 </button>
                                             </th>
-                                            <th class="px-4 pb-2 text-right font-medium text-gray-500">Weight</th>
+                                            <th class="px-1 pb-2 text-right font-medium text-gray-500 lg:px-4">Weight</th>
                                             <th
-                                                class="px-4 pb-2 text-right font-medium text-gray-500"
+                                                class="hidden px-4 pb-2 text-right font-medium text-gray-500 lg:table-cell"
                                                 title="Net profit or loss from partial sales within this open position"
                                             >
                                                 Realised P&L
                                             </th>
                                             <th
-                                                class="px-4 pb-2 text-right font-medium text-gray-500"
+                                                class="hidden px-4 pb-2 text-right font-medium text-gray-500 lg:table-cell"
                                                 title="Current value less the cost of the remaining shares, including buy charges"
                                             >
                                                 Unrealised P&L
@@ -789,70 +808,131 @@
                                         </tr>
                                     </thead>
                                     <tbody class="divide-y divide-gray-100">
-                                        <tr
-                                            v-for="position in finalHoldings"
-                                            :key="`${position.symbol}-${position.entry_date}`"
-                                            class="hover:bg-gray-50"
-                                        >
-                                            <td class="sticky left-0 z-10 bg-white py-2 pr-4 whitespace-nowrap">
-                                                <a
-                                                    :href="`/instruments/${position.symbol}`"
-                                                    target="_blank"
-                                                    class="font-medium text-gray-900 hover:text-purple-700 hover:underline"
+                                        <template v-for="position in finalHoldings" :key="position.symbol">
+                                            <tr class="hover:bg-gray-50">
+                                                <td class="sticky left-0 z-10 bg-white py-2 pr-1 lg:pr-4">
+                                                    <a
+                                                        :href="`/instruments/${position.symbol}`"
+                                                        target="_blank"
+                                                        class="hidden font-medium text-gray-900 hover:text-purple-700 hover:underline lg:inline"
+                                                    >
+                                                        {{ position.symbol }}
+                                                    </a>
+                                                    <button
+                                                        type="button"
+                                                        class="inline-flex min-h-9 items-center gap-1 text-left font-semibold text-slate-900 lg:hidden"
+                                                        :aria-label="`Details for ${position.symbol}`"
+                                                        :aria-expanded="expandedHolding === position.symbol"
+                                                        :aria-controls="`holding-details-${position.symbol}`"
+                                                        @click="expandedHolding = expandedHolding === position.symbol ? null : position.symbol"
+                                                    >
+                                                        <span class="wrap-anywhere">{{ position.symbol }}</span
+                                                        ><span aria-hidden="true" class="text-purple-700">{{
+                                                            expandedHolding === position.symbol ? '▾' : '▸'
+                                                        }}</span>
+                                                    </button>
+                                                    <button
+                                                        type="button"
+                                                        class="mt-1 block cursor-pointer py-2 text-xs font-medium text-purple-700 hover:underline"
+                                                        :aria-label="`View trades for ${position.symbol}`"
+                                                        @click="viewPositionTrades(position)"
+                                                    >
+                                                        View trades
+                                                    </button>
+                                                </td>
+                                                <td class="hidden px-4 py-2 whitespace-nowrap text-gray-600 lg:table-cell">
+                                                    {{ formatMonthYear(position.entry_date) }}
+                                                </td>
+                                                <td class="hidden px-4 py-2 text-right whitespace-nowrap text-gray-600 lg:table-cell">
+                                                    {{ formatHoldingPeriod(position.holding_days) }}
+                                                </td>
+                                                <td class="hidden px-4 py-2 text-right whitespace-nowrap text-gray-600 tabular-nums lg:table-cell">
+                                                    {{ formatCurrencyShort(position.remaining_cost) }}
+                                                </td>
+                                                <td
+                                                    class="hidden px-4 py-2 text-right font-medium whitespace-nowrap text-gray-900 tabular-nums lg:table-cell"
                                                 >
-                                                    {{ position.symbol }}
-                                                </a>
-                                                <button
-                                                    type="button"
-                                                    class="mt-1 block cursor-pointer py-2 text-xs font-medium text-purple-700 hover:underline"
-                                                    :aria-label="`View trades for ${position.symbol}`"
-                                                    @click="viewPositionTrades(position)"
+                                                    {{ formatCurrencyShort(position.unrealized_value) }}
+                                                </td>
+                                                <td class="px-1 py-2 text-right whitespace-nowrap text-gray-700 tabular-nums lg:px-4">
+                                                    {{ holdingWeight(position.unrealized_value) }}
+                                                </td>
+                                                <td
+                                                    class="hidden px-4 py-2 text-right whitespace-nowrap tabular-nums lg:table-cell"
+                                                    :class="position.realized_pnl >= 0 ? 'text-emerald-700' : 'text-red-700'"
                                                 >
-                                                    View trades
-                                                </button>
-                                            </td>
-                                            <td class="px-4 py-2 whitespace-nowrap text-gray-600">{{ formatMonthYear(position.entry_date) }}</td>
-                                            <td class="px-4 py-2 text-right whitespace-nowrap text-gray-600">
-                                                {{ formatHoldingPeriod(position.holding_days) }}
-                                            </td>
-                                            <td class="px-4 py-2 text-right whitespace-nowrap text-gray-600 tabular-nums">
-                                                {{ formatCurrencyShort(position.remaining_cost) }}
-                                            </td>
-                                            <td class="px-4 py-2 text-right font-medium whitespace-nowrap text-gray-900 tabular-nums">
-                                                {{ formatCurrencyShort(position.unrealized_value) }}
-                                            </td>
-                                            <td class="px-4 py-2 text-right whitespace-nowrap text-gray-700 tabular-nums">
-                                                {{ holdingWeight(position.unrealized_value) }}
-                                            </td>
-                                            <td
-                                                class="px-4 py-2 text-right whitespace-nowrap tabular-nums"
-                                                :class="position.realized_pnl >= 0 ? 'text-emerald-700' : 'text-red-700'"
+                                                    {{ formatCurrencyShort(position.realized_pnl) }}
+                                                </td>
+                                                <td
+                                                    class="hidden px-4 py-2 text-right whitespace-nowrap tabular-nums lg:table-cell"
+                                                    :class="position.unrealized_pnl >= 0 ? 'text-emerald-700' : 'text-red-700'"
+                                                >
+                                                    {{ formatCurrencyShort(position.unrealized_pnl) }}
+                                                </td>
+                                                <td class="py-2 pl-4 text-right whitespace-nowrap">
+                                                    <div
+                                                        class="font-semibold tabular-nums"
+                                                        :class="position.net_pnl >= 0 ? 'text-emerald-700' : 'text-red-700'"
+                                                    >
+                                                        {{ position.pnl_pct >= 0 ? '+' : '' }}{{ position.pnl_pct.toFixed(1) }}%
+                                                    </div>
+                                                    <div
+                                                        class="text-xs tabular-nums"
+                                                        :class="position.net_pnl >= 0 ? 'text-emerald-600' : 'text-red-600'"
+                                                    >
+                                                        {{ formatCurrencyShort(position.net_pnl) }}
+                                                    </div>
+                                                </td>
+                                            </tr>
+                                            <tr
+                                                v-if="expandedHolding === position.symbol"
+                                                :id="`holding-details-${position.symbol}`"
+                                                class="lg:hidden"
                                             >
-                                                {{ formatCurrencyShort(position.realized_pnl) }}
-                                            </td>
-                                            <td
-                                                class="px-4 py-2 text-right whitespace-nowrap tabular-nums"
-                                                :class="position.unrealized_pnl >= 0 ? 'text-emerald-700' : 'text-red-700'"
-                                            >
-                                                {{ formatCurrencyShort(position.unrealized_pnl) }}
-                                            </td>
-                                            <td class="py-2 pl-4 text-right whitespace-nowrap">
-                                                <div
-                                                    class="font-semibold tabular-nums"
-                                                    :class="position.net_pnl >= 0 ? 'text-emerald-700' : 'text-red-700'"
-                                                >
-                                                    {{ position.pnl_pct >= 0 ? '+' : '' }}{{ position.pnl_pct.toFixed(1) }}%
-                                                </div>
-                                                <div
-                                                    class="text-xs tabular-nums"
-                                                    :class="position.net_pnl >= 0 ? 'text-emerald-600' : 'text-red-600'"
-                                                >
-                                                    {{ formatCurrencyShort(position.net_pnl) }}
-                                                </div>
-                                            </td>
-                                        </tr>
+                                                <td colspan="3" class="rounded-md bg-slate-50 p-3">
+                                                    <dl
+                                                        class="grid grid-cols-2 gap-3 text-xs [&_dd]:mt-1 [&_dd]:font-medium [&_dd]:tabular-nums [&_dt]:text-slate-600"
+                                                    >
+                                                        <div>
+                                                            <dt>Entry date</dt>
+                                                            <dd>{{ formatDate(position.entry_date) }}</dd>
+                                                        </div>
+                                                        <div>
+                                                            <dt>Time held</dt>
+                                                            <dd>{{ formatHoldingPeriod(position.holding_days) }}</dd>
+                                                        </div>
+                                                        <div>
+                                                            <dt>Cost held</dt>
+                                                            <dd>{{ formatCurrencyShort(position.remaining_cost) }}</dd>
+                                                        </div>
+                                                        <div>
+                                                            <dt>Value</dt>
+                                                            <dd>{{ formatCurrencyShort(position.unrealized_value) }}</dd>
+                                                        </div>
+                                                        <div>
+                                                            <dt>Realised P&amp;L</dt>
+                                                            <dd :class="returnColor(position.realized_pnl)">
+                                                                {{ formatCurrencyShort(position.realized_pnl) }}
+                                                            </dd>
+                                                        </div>
+                                                        <div>
+                                                            <dt>Unrealised P&amp;L</dt>
+                                                            <dd :class="returnColor(position.unrealized_pnl)">
+                                                                {{ formatCurrencyShort(position.unrealized_pnl) }}
+                                                            </dd>
+                                                        </div>
+                                                    </dl>
+                                                    <a
+                                                        :href="`/instruments/${position.symbol}`"
+                                                        target="_blank"
+                                                        class="mt-2 inline-flex min-h-9 items-center font-medium text-purple-700"
+                                                        >View {{ position.symbol }} instrument ↗</a
+                                                    >
+                                                </td>
+                                            </tr>
+                                        </template>
                                     </tbody>
-                                    <tfoot>
+                                    <tfoot class="hidden lg:table-footer-group">
                                         <tr class="border-t border-gray-200">
                                             <td class="py-2 pr-4 font-medium text-gray-500" colspan="4">Cash</td>
                                             <td class="px-4 py-2 text-right font-medium whitespace-nowrap text-gray-900 tabular-nums">
@@ -877,6 +957,16 @@
                                     </tfoot>
                                 </table>
                             </div>
+                            <dl class="mt-1 divide-y divide-slate-200 border-t border-slate-200 text-sm lg:hidden">
+                                <div class="flex justify-between gap-2 py-2">
+                                    <dt>Cash ({{ holdingWeight(finalCash) }})</dt>
+                                    <dd class="tabular-nums">{{ formatCurrencyShort(finalCash) }}</dd>
+                                </div>
+                                <div class="flex justify-between gap-2 py-2 font-semibold">
+                                    <dt>Total portfolio value</dt>
+                                    <dd class="tabular-nums">{{ formatCurrencyShort(summaryMetrics.final_value) }}</dd>
+                                </div>
+                            </dl>
                         </div>
 
                         <!-- Top Gainers & Losers (IMMEDIATE — from summaryMetrics) -->
@@ -1077,9 +1167,13 @@
                                 <div class="mb-4 flex flex-wrap items-center justify-between gap-2">
                                     <h2 class="text-sm font-semibold tracking-wide text-gray-500 uppercase">
                                         Trade Log
-                                        <span class="ml-2 text-xs font-normal text-gray-400 normal-case"
-                                            >({{ tradeLogSummary?.total ?? 0 }} transactions)</span
-                                        >
+                                        <span v-if="trades && tradeLogSummary" class="ml-2 text-xs font-normal text-slate-600 normal-case">
+                                            <template v-if="hasTradeFilters"
+                                                >{{ trades.total.toLocaleString('en-IN') }} matching trades of
+                                                {{ tradeLogSummary.total.toLocaleString('en-IN') }}</template
+                                            >
+                                            <template v-else>{{ tradeLogSummary.total.toLocaleString('en-IN') }} transactions</template>
+                                        </span>
                                     </h2>
                                     <a
                                         v-if="!readOnly"
@@ -1133,7 +1227,7 @@
 </template>
 
 <script setup lang="ts">
-import { Deferred, Head, router, useForm } from '@inertiajs/vue3';
+import { Deferred, Head, router, useForm, usePage } from '@inertiajs/vue3';
 import { PlayIcon } from '@heroicons/vue/20/solid';
 import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue';
 import PageHeader from '@/Components/PageHeader.vue';
@@ -1173,7 +1267,7 @@ const props = withDefaults(
         summaryMetrics: BacktestSummaryMetric | null;
         // Deferred Inertia props — absent on the first render while their groups load.
         dailySnapshots?: BacktestDailySnapshot[];
-        defaultBenchmark?: BenchmarkPoint[];
+        defaultBenchmark?: BenchmarkPoint[] | null;
         trades?: PaginatedBacktestTrades | null;
         tradeLogSummary?: TradeLogSummary | null;
         tradeFilters: TradeLogFilters;
@@ -1220,16 +1314,20 @@ function initialTab(): Tab {
 const activeTab = ref<Tab>(initialTab());
 const runBlocked = computed(() => props.settingsLocked || props.backtest.status === 'running' || props.activeBacktest !== null);
 
+function replaceResultParameter(key: string, value: string | null): void {
+    const url = new URL(window.location.href);
+    if (value === null) url.searchParams.delete(key);
+    else url.searchParams.set(key, value);
+    router.replace({ url: url.pathname + url.search + url.hash, preserveState: true, preserveScroll: true });
+}
+
 function setTab(tab: Tab): void {
     if (props.readOnly && tab === 'settings') {
         return;
     }
 
     activeTab.value = tab;
-    const url = new URL(window.location.href);
-    url.searchParams.set('tab', tab);
-    // Keep Inertia's history state intact — only the visible URL changes.
-    window.history.replaceState(window.history.state, '', url.toString());
+    replaceResultParameter('tab', tab);
 }
 
 // --- Settings form ---
@@ -1341,6 +1439,8 @@ const form = useForm({
     custom_filter_five_value_two: props.backtest.custom_filter_five_value_two,
 });
 
+const reviewingCompletedRun = computed(() => activeTab.value === 'results' && props.backtest.status === 'completed' && !form.isDirty);
+
 function save(): void {
     if (props.settingsLocked || form.processing) {
         return;
@@ -1412,6 +1512,10 @@ const resultSections = computed(() => [
 ]);
 const navChart = ref<InstanceType<typeof BacktestNavChart> | null>(null);
 const focusedPosition = ref<PositionTradeScope | null>(null);
+const hasTradeFilters = computed(() => {
+    const { symbol, search, type, reason, year } = props.tradeFilters;
+    return Boolean(symbol || search || type !== 'all' || reason || year);
+});
 const showAllocation = ref(false);
 const strategySummary = computed(() =>
     [
@@ -1539,7 +1643,17 @@ function stopPolling(): void {
 
 // --- Benchmark ---
 
-const selectedBenchmark = ref<string>('nifty-50');
+const resultPage = usePage();
+const selectedBenchmark = computed({
+    get(): string {
+        const slug = new URL(resultPage.url, window.location.origin).searchParams.get('benchmark');
+        if (slug === 'none') return '';
+        return slug && props.benchmarkOptions.some((option) => option.id === slug) ? slug : 'nifty-50';
+    },
+    set(slug: string) {
+        replaceResultParameter('benchmark', slug === 'nifty-50' ? null : slug || 'none');
+    },
+});
 const benchmarkData = ref<BenchmarkPoint[]>([]);
 const loadingBenchmark = ref(false);
 const benchmarkError = ref('');
@@ -1554,8 +1668,8 @@ async function fetchBenchmark(slug: string): Promise<void> {
     benchmarkData.value = [];
     benchmarkError.value = '';
     loadingBenchmark.value = false;
-    if (!slug) return;
-    if (slug === 'nifty-50') {
+    if (!slug || props.backtest.status !== 'completed') return;
+    if (slug === 'nifty-50' && props.defaultBenchmark !== null) {
         benchmarkData.value = props.defaultBenchmark;
         return;
     }
@@ -1585,13 +1699,15 @@ async function fetchBenchmark(slug: string): Promise<void> {
 }
 
 watch(
-    () => props.defaultBenchmark,
-    (value) => {
-        if (selectedBenchmark.value === 'nifty-50') benchmarkData.value = value;
-    },
+    [
+        selectedBenchmark,
+        () => props.backtest.id,
+        () => props.backtest.status,
+        () => (selectedBenchmark.value === 'nifty-50' ? props.defaultBenchmark : null),
+    ],
+    ([slug]) => fetchBenchmark(slug),
     { immediate: true },
 );
-watch(selectedBenchmark, fetchBenchmark);
 onUnmounted(() => benchmarkRequest?.abort());
 
 const benchmarkCoversPeriod = computed(() => {
@@ -1603,7 +1719,7 @@ const benchmarkCoversPeriod = computed(() => {
 });
 const benchmarkCoverageNotice = computed(() => {
     if (!benchmarkData.value.length || benchmarkCoversPeriod.value) return '';
-    return `Benchmark data covers ${formatDate(benchmarkData.value[0].date)} to ${formatDate(benchmarkData.value[benchmarkData.value.length - 1].date)}. A CAGR difference is unavailable because the periods differ.`;
+    return `${selectedBenchmarkName.value} covers ${formatDate(benchmarkData.value[0].date)} to ${formatDate(benchmarkData.value[benchmarkData.value.length - 1].date)}. A CAGR difference is unavailable because the periods differ.`;
 });
 const benchmarkMetrics = computed(() => {
     const data = benchmarkData.value;
@@ -1639,8 +1755,18 @@ function statusBadgeClass(status: string): Record<string, boolean> {
     };
 }
 
-function rollingReturnColor(value: number): string {
-    return value >= 0 ? 'text-emerald-700' : 'text-red-700';
+function metricTone(value: number | string | null | undefined, positiveTone: 'positive' | 'risk' | 'ratio' = 'positive') {
+    const numeric = Number(value);
+    if (!Number.isFinite(numeric) || numeric === 0) return 'neutral';
+
+    return numeric < 0 ? 'negative' : positiveTone;
+}
+
+function returnColor(value: number): string {
+    if (value > 0) return 'text-emerald-700';
+    if (value < 0) return 'text-red-700';
+
+    return 'text-slate-600';
 }
 
 // --- Computed: derived metrics ---
@@ -1853,6 +1979,7 @@ type HoldingsSortKey = 'symbol' | 'entry_date' | 'holding_days' | 'remaining_cos
 
 const holdingsSortKey = ref<HoldingsSortKey>('unrealized_value');
 const holdingsSortDir = ref<'asc' | 'desc'>('desc');
+const expandedHolding = ref<string | null>(null);
 
 function setHoldingsSort(key: HoldingsSortKey): void {
     if (holdingsSortKey.value === key) {

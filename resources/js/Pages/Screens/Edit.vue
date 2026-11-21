@@ -52,6 +52,8 @@
                 @show-rules="activeTab = 'rules'"
             />
             <Results
+                v-if="results !== null"
+                :visible="activeTab === 'results'"
                 :screen="screen"
                 :results="results"
                 :columns="columns"
@@ -60,6 +62,13 @@
                 :loading="form.processing"
                 :actions-disabled="form.isDirty || form.processing || deleting"
             />
+            <div v-else-if="activeTab === 'results'" class="mt-5 rounded-lg border border-gray-200 p-5 text-sm text-gray-600" role="status">
+                <template v-if="resultsFailed">
+                    The saved results could not be loaded.
+                    <button type="button" class="ml-1 font-semibold text-purple-700 underline" @click="loadResults">Try again</button>
+                </template>
+                <template v-else>Loading saved results…</template>
+            </div>
         </div>
         <div id="screen-panel-rules" v-show="activeTab === 'rules'" role="tabpanel" aria-labelledby="screen-tab-rules">
             <div
@@ -111,8 +120,8 @@
                 <button
                     type="submit"
                     form="screen-rules-form"
-                    :disabled="form.processing || deleting"
-                    class="min-h-11 rounded-lg bg-purple-600 px-2 py-2 text-sm font-semibold whitespace-nowrap text-white hover:bg-purple-500 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-purple-600 disabled:cursor-not-allowed disabled:opacity-50 sm:min-h-10 sm:px-4"
+                    :disabled="!form.isDirty || form.processing || deleting"
+                    class="min-h-11 rounded-lg bg-purple-600 px-2 py-2 text-sm font-semibold whitespace-nowrap text-white focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-purple-600 enabled:hover:bg-purple-500 disabled:cursor-not-allowed disabled:bg-gray-100 disabled:text-gray-500 sm:min-h-10 sm:px-4"
                 >
                     {{ form.processing ? 'Applying…' : 'Save and Apply' }}
                 </button>
@@ -122,8 +131,9 @@
 </template>
 <script setup lang="ts">
 import { Head, Link, router, useForm, useRemember } from '@inertiajs/vue3';
+import type { CancelToken } from '@inertiajs/core';
 import { Menu, MenuButton, MenuItem, MenuItems } from '@headlessui/vue';
-import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue';
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import PageHeader from '@/Components/PageHeader.vue';
 import WarningAlert from '@/Components/Alerts/WarningAlert.vue';
 import Results from '@/Pages/Screens/partials/Results.vue';
@@ -146,7 +156,7 @@ const props = defineProps<{
     applyFiltersOnOptions: SelectOption[];
     customFilterValueOptions: SelectOption[];
     customFilterComparatorOptions: SelectOption[];
-    results: (BacktestNseInstrumentPriceResource & Record<string, any>)[];
+    results: (BacktestNseInstrumentPriceResource & Record<string, any>)[] | null;
     valuationFilterWarnings: string[];
     columns: ScreenResultColumn[];
     availableColumns: ScreenColumnGroup[];
@@ -245,10 +255,40 @@ const deleting = ref(false);
 const saved = ref(false);
 const editorRevision = ref(0);
 const errorSummary = ref<HTMLElement | null>(null);
+const resultsFailed = ref(false);
+let resultsRequest: CancelToken | undefined;
+
+function loadResults(): void {
+    if (activeTab.value !== 'results' || props.results !== null || resultsRequest || form.processing) return;
+    const url = new URL(window.location.href);
+    url.searchParams.set('tab', 'results');
+    resultsFailed.value = false;
+    router.get(
+        url,
+        {},
+        {
+            only: ['results', 'valuationFilterWarnings'],
+            async: true,
+            preserveState: true,
+            preserveScroll: true,
+            preserveUrl: true,
+            onCancelToken: (token) => {
+                resultsRequest = token;
+            },
+            onFinish: (visit) => {
+                resultsRequest = undefined;
+                resultsFailed.value = !visit.cancelled && !visit.interrupted && props.results === null;
+            },
+        },
+    );
+}
+
+onMounted(loadResults);
 watch(activeTab, (tab) => {
+    if (tab === 'rules') resultsRequest?.cancel();
     const url = new URL(window.location.href);
     url.searchParams.set('tab', tab);
-    router.replace({ url: `${url.pathname}${url.search}`, preserveState: true, preserveScroll: true });
+    router.replace({ url: `${url.pathname}${url.search}`, preserveState: true, preserveScroll: true, onFinish: loadResults });
 });
 watch(
     () => form.isDirty,
@@ -264,7 +304,8 @@ function discard(): void {
     editorRevision.value++;
 }
 function update(): void {
-    if (form.processing || deleting.value) return;
+    if (!form.isDirty || form.processing || deleting.value) return;
+    resultsRequest?.cancel();
     if (!form.apply_historical_date) form.historical_date = '2010-01-04';
     form.put(`/screens/${props.screen.id}`, {
         preserveScroll: true,
@@ -299,6 +340,8 @@ function warnBeforeUnload(event: BeforeUnloadEvent): void {
 }
 window.addEventListener('beforeunload', warnBeforeUnload);
 const removeNavigationGuard = router.on('before', (event) => {
+    const visit = event.detail.visit;
+    if (visit.url.pathname === window.location.pathname && visit.only.includes('results')) return;
     if (
         event.detail.visit.method === 'get' &&
         form.isDirty &&
@@ -310,6 +353,7 @@ const removeNavigationGuard = router.on('before', (event) => {
     }
 });
 onBeforeUnmount(() => {
+    resultsRequest?.cancel();
     window.removeEventListener('beforeunload', warnBeforeUnload);
     removeNavigationGuard();
 });

@@ -23,6 +23,8 @@ class UpdateScreenRequest extends FormRequest
      */
     public function rules(): array
     {
+        $stockUniverseOnly = 'exclude_if:index,'.NseIndexEnum::NIFTY_ETF->value;
+
         return [
             'name' => ['required'],
             'index' => ['required', Rule::enum(NseIndexEnum::class)],
@@ -61,11 +63,11 @@ class UpdateScreenRequest extends FormRequest
             'circuits_six_months' => ['required', 'numeric', 'between:0,300'],
             'circuits_three_months' => ['required', 'numeric', 'between:0,300'],
             'circuits_one_months' => ['required', 'numeric', 'between:0,300'],
-            'marketcap_from' => ['required', 'numeric', 'between:0,100000000'],
-            'marketcap_to' => ['required', 'numeric', 'between:0,100000000'],
-            'apply_pe' => ['required', 'boolean'],
-            'price_to_earnings_from' => ['required', 'numeric', 'between:0,10000'],
-            'price_to_earnings_to' => ['required', 'numeric', 'between:0,10000'],
+            'marketcap_from' => [$stockUniverseOnly, 'required', 'numeric', 'between:0,100000000'],
+            'marketcap_to' => [$stockUniverseOnly, 'required', 'numeric', 'between:0,100000000'],
+            'apply_pe' => [$stockUniverseOnly, 'required', 'boolean'],
+            'price_to_earnings_from' => [$stockUniverseOnly, 'required', 'numeric', 'between:0,10000'],
+            'price_to_earnings_to' => [$stockUniverseOnly, 'required', 'numeric', 'between:0,10000'],
             'series_eq' => ['required', 'boolean'],
             'series_be' => ['required', 'boolean'],
             'ignore_above_beta' => ['required', 'numeric', 'between:0,100'],

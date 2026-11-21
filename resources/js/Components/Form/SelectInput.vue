@@ -1,8 +1,9 @@
 <template>
     <div class="min-w-0">
-        <label :for="inputId" class="block text-sm/6 font-medium text-gray-900">
-            {{ label }}
-        </label>
+        <div class="flex items-center justify-between gap-2">
+            <label :for="inputId" class="block text-sm/6 font-medium text-gray-900">{{ label }}</label>
+            <slot name="label-action" />
+        </div>
         <div class="relative mt-2">
             <select
                 ref="selectElement"

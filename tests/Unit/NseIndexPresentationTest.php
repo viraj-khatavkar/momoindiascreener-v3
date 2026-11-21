@@ -1,6 +1,7 @@
 <?php
 
 use App\Http\Controllers\NseIndexViewController;
+use App\Models\NseIndex;
 use Illuminate\Database\ConnectionResolver;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\MySqlConnection;
@@ -31,6 +32,45 @@ beforeEach(function () {
 afterEach(function () {
     Model::setConnectionResolver($this->originalResolver);
 });
+
+it('calculates trailing CAGR from four bounded anniversary lookups in one read', function () {
+    $index = (new NseIndex)->forceFill(['slug' => 'nifty-realty', 'date' => '2024-02-29', 'close' => 200]);
+    $this->connection->shouldReceive('select')->once()->andReturnUsing(function (string $query, array $bindings): array {
+        expect(substr_count($query, 'order by `date` desc limit 1'))->toBe(4)
+            ->and($bindings)->toBe([
+                'nifty-realty', '2023-02-21', '2023-02-28',
+                'nifty-realty', '2021-02-21', '2021-02-28',
+                'nifty-realty', '2019-02-21', '2019-02-28',
+                'nifty-realty', '2014-02-21', '2014-02-28',
+            ]);
+
+        return [(object) ['close_1y' => '250', 'close_3y' => '100', 'close_5y' => '200', 'close_10y' => '50']];
+    });
+
+    expect((new ReflectionMethod(NseIndexViewController::class, 'getTrailingCagr'))->invoke(new NseIndexViewController, $index))
+        ->toBe([
+            ['years' => 1, 'percent' => -20.0], ['years' => 3, 'percent' => 25.99],
+            ['years' => 5, 'percent' => 0.0], ['years' => 10, 'percent' => 14.87],
+        ]);
+});
+
+it('omits only the CAGR periods with missing or zero starting closes', function () {
+    $index = (new NseIndex)->forceFill(['slug' => 'nifty-realty', 'date' => '2026-11-20', 'close' => 120]);
+    $this->connection->shouldReceive('select')->once()->andReturn([
+        (object) ['close_1y' => '100', 'close_3y' => null, 'close_5y' => '0.00', 'close_10y' => null],
+    ]);
+
+    expect((new ReflectionMethod(NseIndexViewController::class, 'getTrailingCagr'))->invoke(new NseIndexViewController, $index))
+        ->toBe([['years' => 1, 'percent' => 20.0]]);
+});
+
+it('omits investment CAGR for volatility and annually resetting dividend points', function (string $slug) {
+    $this->connection->shouldNotReceive('select');
+    $index = (new NseIndex)->forceFill(['slug' => $slug]);
+
+    expect((new ReflectionMethod(NseIndexViewController::class, 'getTrailingCagr'))->invoke(new NseIndexViewController, $index))
+        ->toBe([]);
+})->with(['india-vix', 'nifty50-dividend-points']);
 
 it('keeps independent valuation values and preserves missing values and zero', function () {
     $rows = [

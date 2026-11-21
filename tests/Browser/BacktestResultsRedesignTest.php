@@ -68,18 +68,36 @@ it('shows the complete history and consistent comparisons on desktop and mobile'
     loginAs($this->member->email);
     $page = visit('/backtests/'.$this->backtest->id)->resize($width, $height)
         ->assertSee('Performance overview')
+        ->assertSeeIn('[data-test="save-and-run"]', 'Re-run backtest')
         ->assertSeeIn('[data-test="nav-visible-period"]', '01 Mar 2011')
         ->assertSeeIn('[data-test="nav-visible-period"]', '02 Nov 2026')
+        ->assertSeeIn('[data-test="benchmark-comparison"]', 'Nifty 50')
         ->assertSeeIn('[data-test="benchmark-comparison"]', 'pp')
+        ->assertSeeIn('[data-test="performance-metrics"] > div:nth-child(3)', '%')
+        ->assertAttributeContains('[data-test="performance-metrics"] > div:nth-child(1)', 'class', 'bg-emerald-50')
+        ->assertAttributeContains('[data-test="performance-metrics"] > div:nth-child(2)', 'class', 'bg-red-50')
+        ->assertAttributeContains('[data-test="performance-metrics"] > div:nth-child(3)', 'class', 'bg-amber-50')
+        ->assertAttributeContains('[data-test="performance-metrics"] > div:nth-child(4)', 'class', 'bg-violet-50')
+        ->assertAttributeMissing('#bt-overview [data-test="risk-statistics"]', 'open')
+        ->assertDontSeeIn('#bt-nav', 'CAGR difference')
         ->assertNoJavaScriptErrors();
+    expect($page->script('Array.from(document.querySelectorAll("[data-test=performance-metrics] dt"), el => el.innerText)'))
+        ->toBe(['CAGR', 'Maximum drawdown', 'Annualised volatility', 'Sharpe ratio']);
+    expect($page->script('new Set(Array.from(document.querySelectorAll("[data-test=performance-metrics] dd:first-of-type"), el => getComputedStyle(el).color)).size'))
+        ->toBe(4);
+    expect($page->script('getComputedStyle(document.querySelector("[data-test=performance-metrics]")).gridTemplateColumns.split(" ").length'))
+        ->toBe($width === 1440 ? 4 : 2);
     expect($page->script('document.documentElement.scrollWidth <= window.innerWidth'))->toBeTrue();
     $page->screenshot(false, 'backtest-overview-'.$width);
 
-    $originalDelta = $page->script('document.querySelector("[data-test=benchmark-comparison] dd").textContent.trim()');
+    $originalDelta = $page->script('document.querySelector("[data-test=cagr-difference]").textContent.trim()');
     $page->select('#result-benchmark', 'nifty-500')
-        ->assertSeeIn('#bt-nav', 'Nifty 500 CAGR:')
-        ->assertSeeIn('[data-test="benchmark-comparison"]', 'vs Nifty 500');
-    expect($page->script('document.querySelector("[data-test=benchmark-comparison] dd").textContent.trim()'))->not->toBe($originalDelta);
+        ->assertQueryStringHas('benchmark', 'nifty-500')
+        ->refresh()
+        ->assertSelected('#result-benchmark', 'nifty-500')
+        ->assertSeeIn('[data-test="benchmark-comparison"]', 'Nifty 500')
+        ->assertSeeIn('[data-test="performance-metrics"] > div:nth-child(2)', 'Nifty 500');
+    expect($page->script('document.querySelector("[data-test=cagr-difference]").textContent.trim()'))->not->toBe($originalDelta);
 
     $page->press('Monthly returns')->assertSee('Partial period')->assertSee('YTD');
     $monthSelector = $width < 1024
@@ -93,16 +111,43 @@ it('shows the complete history and consistent comparisons on desktop and mobile'
     expect($page->script('document.documentElement.scrollWidth <= window.innerWidth'))->toBeTrue();
 
     $page->press('#bt-drawdown tbody tr:first-child button')->assertDontSeeIn('[data-test="nav-visible-period"]', '01 Mar 2011');
+    $window = $page->script('document.querySelector("[data-test=nav-visible-period]").innerText');
+    [$from, $to] = explode(' to ', str_replace('Showing ', '', $window));
+    $firstNav = $this->backtest->dailySnapshots()->whereDate('date', CarbonImmutable::parse($from))->value('nav');
+    $lastNav = $this->backtest->dailySnapshots()->whereDate('date', CarbonImmutable::parse($to))->value('nav');
+    $lastVisibleNav = rtrim(rtrim(number_format($lastNav, 2), '0'), '.');
+    $windowReturn = sprintf('%+.2f%%', ($lastNav / $firstNav - 1) * 100);
+    $page->press('#bt-nav button:has-text("Lin")')
+        ->assertSeeIn('[data-test="nav-legend"]', $to)
+        ->assertSeeIn('[data-test="nav-legend"]', $lastVisibleNav)
+        ->press('#bt-nav button:text-is("%")')
+        ->assertSeeIn('[data-test="nav-legend"]', $windowReturn)
+        ->press('#bt-nav button:has-text("Log")');
     $page->press('Max')->assertSeeIn('[data-test="nav-visible-period"]', '01 Mar 2011');
     $page->select('#result-benchmark', 'nifty-100')
-        ->assertSee('A CAGR difference is unavailable because the periods differ.')
-        ->assertSeeIn('[data-test="benchmark-comparison"]', '—');
+        ->assertSeeIn('#bt-overview', 'A CAGR difference is unavailable because the periods differ.')
+        ->assertSeeIn('[data-test="benchmark-comparison"]', 'Nifty 100')
+        ->assertNotPresent('[data-test="cagr-difference"]');
+    $partialHistory = DB::table('nse_indices')->where('slug', 'nifty-100');
+    $firstClose = (clone $partialHistory)->orderBy('date')->value('close');
+    $lastClose = $partialHistory->orderByDesc('date')->value('close');
+    $page->press('#bt-nav button:text-is("%")')
+        ->assertSeeIn('[data-test="nav-legend"]', sprintf('%+.2f%%', ($lastClose / $firstClose - 1) * 100))
+        ->press('#bt-nav button:has-text("Log")');
     $page->select('#result-benchmark', '')
-        ->assertSeeIn('[data-test="benchmark-comparison"]', 'Choose a benchmark')
-        ->assertDontSeeIn('#bt-nav', 'Nifty 100 CAGR:')
+        ->assertQueryStringHas('benchmark', 'none')
+        ->refresh()
+        ->assertSelected('#result-benchmark', '')
+        ->assertNotPresent('[data-test="benchmark-comparison"]')
+        ->assertDontSeeIn('[data-test="performance-metrics"]', 'Nifty 100')
         ->resize($width === 1440 ? 390 : 1440, $height)
         ->assertSeeIn('[data-test="nav-visible-period"]', '01 Mar 2011')
         ->assertSeeIn('[data-test="nav-visible-period"]', '02 Nov 2026')
+        ->press('[role="tab"]:has-text("Settings")')
+        ->assertSeeIn('[data-test="save-and-run"]', 'Save and Run')
+        ->assertQueryStringHas('benchmark', 'none')
+        ->press('[role="tab"]:has-text("Results")')
+        ->assertSeeIn('[data-test="save-and-run"]', 'Re-run backtest')
         ->assertNoJavaScriptErrors();
 })->with([[1440, 1000], [390, 844]]);
 
@@ -111,11 +156,13 @@ it('opens the selected holding period and can restore the full trade log', funct
     $page = visit('/backtests/'.$this->backtest->id)->resize(390, 844)
         ->press('button[aria-label="View trades for ITC from 01 Jan 2013"]')
         ->assertSee('Loaded 4 of 4 matching trades.')
+        ->assertSeeIn('#bt-trades', '4 matching trades of 7')
         ->assertSee('Transactions within this holding period')
         ->press('Expand loaded')
         ->assertSeeIn('#bt-trades strong', 'ITC')
         ->assertDontSeeIn('#bt-trades', 'OPEN');
     expect($page->script('document.querySelectorAll("#bt-trades tbody tr").length'))->toBe(4);
+    expect($page->script('Array.from(document.querySelectorAll("#bt-trades button"), b => b.textContent.trim()).filter(t => /^\d{4}$/.test(t))'))->toBe(['2015', '2014', '2013']);
     $page->screenshot(false, 'backtest-position-trades-mobile');
     expect($page->script('document.documentElement.scrollWidth <= window.innerWidth'))->toBeTrue();
 

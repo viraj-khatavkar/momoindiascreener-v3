@@ -62,22 +62,31 @@ it('keeps results tied to saved rules and supports discard and apply without cha
     createScreenResultRow('BETA', 'Beta', '2026-07-31', ['absolute_return_one_year' => 10, 'ma_50' => 95]);
     $this->actingAs($screen->user);
 
-    $page = visit('/screens/'.$screen->id.'/edit')
-        ->assertSee('ALPHA')->assertSee('BETA')
-        ->click('#screen-tab-rules')
-        ->fill('minimum_return_one_year', '15')
+    $page = visit('/screens/'.$screen->id.'/edit?tab=rules')
+        ->assertDisabled('Save and Apply')
+        ->assertMissing('#screen-panel-results tbody tr');
+    $page->script('window.resultLoads = 0; document.addEventListener("inertia:start", e => { if (e.detail.visit.only.includes("results")) window.resultLoads++; })');
+    $page->script('document.getElementById("screen-rules-form").requestSubmit()');
+    $page->assertQueryStringHas('tab', 'rules')->assertDontSee('Changes saved. Results updated.')
+        ->fill('minimum_return_one_year', '15')->assertEnabled('Save and Apply')
         ->assertSee('Changes not applied')
         ->click('#screen-tab-results')
+        ->assertQueryStringHas('tab', 'results')
         ->assertSee('One-year return > 5.5%')
-        ->assertSee('BETA')
+        ->assertSee('ALPHA')->assertSee('BETA')
         ->assertDisabled('Edit Columns');
 
     expect($page->script('document.querySelector("a[aria-disabled=\"true\"]").hasAttribute("href")'))->toBeFalse();
     expect($page->script('(() => { const event = new Event("beforeunload", { cancelable: true }); window.dispatchEvent(event); return event.defaultPrevented; })()'))->toBeTrue();
     $page->script('window.confirm = () => false');
     $page->click('a[href="/screens"]')->assertPathIs('/screens/'.$screen->id.'/edit');
-    $page->press('Discard changes')->assertDontSee('Changes not applied')
-        ->click('#screen-tab-rules')->assertValue('minimum_return_one_year', (string) $screen->minimum_return_one_year)
+    $page->click('#screen-tab-rules')->assertValue('minimum_return_one_year', '15')
+        ->assertMissing('#screen-panel-results tbody tr')
+        ->click('#screen-tab-results')->assertSee('BETA');
+    expect($page->script('window.resultLoads'))->toBe(1);
+    $page->click('#screen-tab-rules')
+        ->press('Discard changes')->assertDontSee('Changes not applied')
+        ->assertDisabled('Save and Apply')->assertValue('minimum_return_one_year', (string) $screen->minimum_return_one_year)
         ->fill('minimum_return_one_year', '15')->press('Save and Apply')
         ->assertSee('Changes saved. Results updated.')
         ->assertSee('One-year return > 15%')->assertSee('ALPHA')->assertMissing('a[href="/instruments/BETA"]')
@@ -86,6 +95,57 @@ it('keeps results tied to saved rules and supports discard and apply without cha
     expect($screen->refresh()->minimum_return_one_year)->toEqual(15)
         ->and(Arr::except($screen->getAttributes(), ['minimum_return_one_year', 'updated_at']))
         ->toBe(Arr::except($original, ['minimum_return_one_year', 'updated_at']));
+});
+
+it('searches each ranking factor by name and lookback and shows the selected combination', function () {
+    $screen = Screen::factory()->create(['apply_factor_two' => true, 'apply_factor_three' => true]);
+    $this->actingAs($screen->user);
+    $search = '#screen-rules-form input[type="search"]';
+
+    visit('/screens/'.$screen->id.'/edit?tab=rules')->resize(390, 844)
+        ->press('button[aria-label="Search sort by (factor)"]')->fill($search, 'no such factor')
+        ->assertSee('No matching factors.')->assertDisabled('Save and Apply')
+        ->fill($search, 'sharpe 12 6 3')
+        ->assertVisible('button:text-is("Average Sharpe return (12, 6, 3 and 1 month)")')->keys($search, 'Enter')
+        ->assertSelected('sort_by', 'average_sharpe_return_twelve_six_three_months')
+        ->assertEnabled('Save and Apply')
+        ->press('button[aria-label="Search sort by (factor two)"]')->fill($search, 'rsi 9')
+        ->press('button:text-is("RSI 9 months")')->assertSelected('factor_two_sort_by', 'rsi_nine_months')
+        ->press('button[aria-label="Search sort by (factor three)"]')->fill($search, 'market cap')
+        ->keys($search, 'Enter')->assertSelected('factor_three_sort_by', 'marketcap')
+        ->assertSeeIn('#screen-section-multi-factor > button', 'RSI 9 months · Lowest to Highest + Market cap · Lowest to Highest')
+        ->press('Discard changes')->assertDisabled('Save and Apply')
+        ->assertSelected('sort_by', $screen->sort_by)->assertNoJavaScriptErrors();
+});
+
+it('describes draft limits and preserves stock valuations when switching universes', function () {
+    $screen = Screen::factory()->create([
+        'apply_ma' => true, 'above_ma_200' => true, 'circuits_one_year' => 20,
+        'marketcap_from' => 40, 'marketcap_to' => 2000,
+        'apply_pe' => true, 'price_to_earnings_from' => 5, 'price_to_earnings_to' => 25,
+    ]);
+    createScreenResultRow('ALPHA', 'Alpha', '2026-07-31');
+    $this->actingAs($screen->user);
+    $circuits = 'button:has-text("Circuit Filters")';
+
+    visit('/screens/'.$screen->id.'/edit?tab=rules')
+        ->assertSeeIn('button:has-text("Above 200-day MA")', 'Moving Average Filters')
+        ->assertSeeIn($circuits, 'One year ≤ 20')
+        ->assertValue('circuits_one_year', '20')->assertValue('circuits_one_months', '')
+        ->fill('circuits_one_year', '0')->assertSeeIn($circuits, 'One year ≤ 0')
+        ->fill('circuits_one_year', '')->assertSeeIn($circuits, 'No limit')
+        ->select('index', 'etf')
+        ->assertSee('Market cap applies to companies.')->assertSee('P/E uses company earnings.')
+        ->assertDisabled('marketcap_from')->assertDisabled('marketcap_to')
+        ->assertDisabled('button[role="switch"][disabled]')
+        ->assertDisabled('price_to_earnings_from')->assertDisabled('price_to_earnings_to')
+        ->select('index', $screen->index->value)
+        ->assertEnabled('marketcap_from')->assertValue('marketcap_from', '40')
+        ->assertEnabled('price_to_earnings_to')->assertValue('price_to_earnings_to', '25')
+        ->press('Save and Apply')->assertSee('Changes saved. Results updated.')
+        ->click('#screen-tab-rules')->assertDisabled('Save and Apply')->assertNoJavaScriptErrors();
+
+    expect($screen->refresh()->circuits_one_year)->toEqual(300);
 });
 
 it('sorts mobile results without changing screen ranks and keeps labels unique', function () {

@@ -1,5 +1,6 @@
 <?php
 
+use App\Actions\Backtest\LoadBenchmarkSeriesAction;
 use App\Enums\BacktestStatusEnum;
 use App\Http\Middleware\HandleInertiaRequests;
 use App\Models\Backtest;
@@ -31,6 +32,17 @@ it('returns 404 for another users backtest', function () {
         ->assertNotFound();
 });
 
+it('skips the default benchmark history when a shared result selects another comparison', function (string $benchmark) {
+    $user = User::factory()->create(['is_paid' => true]);
+    $backtest = Backtest::factory()->for($user)->create(['status' => BacktestStatusEnum::Completed]);
+    $this->mock(LoadBenchmarkSeriesAction::class)->shouldNotReceive('execute');
+
+    $this->actingAs($user)->get('/backtests/'.$backtest->id.'?benchmark='.$benchmark, [
+        'X-Inertia' => 'true', 'X-Inertia-Partial-Component' => 'Backtests/Show',
+        'X-Inertia-Partial-Data' => 'defaultBenchmark',
+    ])->assertSuccessful()->assertJsonPath('props.defaultBenchmark', null);
+})->with(['nifty-500', 'none']);
+
 it('defers the trade log and returns every trade in bounded pages without duplicates', function () {
     $user = User::factory()->create(['is_paid' => true]);
     $backtest = Backtest::factory()->create(['user_id' => $user->id, 'status' => BacktestStatusEnum::Completed]);
@@ -40,7 +52,8 @@ it('defers the trade log and returns every trade in bounded pages without duplic
         'gross_amount' => 100, 'brokerage' => 0, 'stt' => 0, 'transaction_charges' => 0, 'sebi_charges' => 0,
         'gst' => 0, 'stamp_charges' => 0, 'total_charges' => 1, 'net_amount' => 101,
     ];
-    DB::table('backtest_trades')->insert(array_fill(0, 501, $trade));
+    DB::table('backtest_trades')->insert(array_fill(0, 301, $trade));
+    DB::table('backtest_trades')->insert(array_fill(0, 200, [...$trade, 'trade_type' => 'sell', 'net_amount' => 99]));
     $lastTrade = $backtest->trades()->create(array_replace($trade, [
         'date' => '2018-01-02', 'trade_type' => 'sell', 'quantity' => 501,
         'gross_amount' => 50100, 'total_charges' => 5, 'net_amount' => 50095,
@@ -69,14 +82,20 @@ it('defers the trade log and returns every trade in bounded pages without duplic
     $response->assertSuccessful()
         ->assertJsonCount(100, 'props.trades.data')
         ->assertJsonPath('props.trades.total', 502)
-        ->assertJsonPath('props.trades.data.0', [...$lastTrade->fresh()->toArray(), 'reason_category' => 'filter-exit'])
+        ->assertJsonPath('props.trades.data.0', [
+            ...$lastTrade->fresh()->toArray(), 'reason_category' => 'filter-exit',
+            'day_totals' => ['buys' => 0, 'sells' => 1, 'bought' => 0, 'sold' => 50100, 'charges' => 5],
+        ])
         ->assertJsonPath('scrollProps.trades.pageName', 'trades_page')
         ->assertJsonPath('scrollProps.trades.nextPage', 2)
         ->assertJsonPath('mergeProps', ['trades.data'])
         ->assertJsonPath('matchPropsOn', ['trades.data.id']);
-    expect($queries)->toHaveCount(1);
+    expect($queries)->toHaveCount(2);
     expect($queries->first())->toContain('limit 100');
+    expect($queries->last())->toContain('`date` in (', 'group by `date`');
 
+    $dayTotals = ['buys' => 301, 'sells' => 200, 'bought' => 30100, 'sold' => 20000, 'charges' => 501];
+    expect(array_column($response->json('props.trades.data'), 'day_totals'))->toHaveCount(2)->toContain($dayTotals);
     $ids = array_column($response->json('props.trades.data'), 'id');
     for ($page = 2; $page <= 6; $page++) {
         $response = $this->get('/backtests/'.$backtest->id.'?trades_page='.$page, [
@@ -84,6 +103,7 @@ it('defers the trade log and returns every trade in bounded pages without duplic
             'X-Inertia-Partial-Component' => 'Backtests/Show',
             'X-Inertia-Partial-Data' => 'trades',
         ])->assertSuccessful()->assertJsonCount($page === 6 ? 2 : 100, 'props.trades.data');
+        expect(array_column($response->json('props.trades.data'), 'day_totals'))->toBe([$dayTotals]);
         array_push($ids, ...array_column($response->json('props.trades.data'), 'id'));
     }
     expect(array_unique($ids))->toHaveCount(502);
@@ -100,10 +120,10 @@ it('searches and filters the full trade history and resets the scroll results', 
         'reason' => 'Rank exceeded exit threshold - rotating to gold',
     ]));
     $backtest->trades()->create(tradeLogAttributes($backtest, [
-        'symbol' => 'FINDME', 'name' => 'Special Company', 'date' => '2017-01-01', 'reason' => 'New entry',
+        'symbol' => 'FINDME', 'name' => 'Special Company', 'date' => '2017-01-02', 'reason' => 'New entry',
     ]));
     $otherBacktest = Backtest::factory()->create(['user_id' => $user->id, 'status' => BacktestStatusEnum::Completed]);
-    $otherBacktest->trades()->create(tradeLogAttributes($otherBacktest, ['symbol' => 'FINDME', 'date' => '2017-01-01']));
+    $otherBacktest->trades()->create(tradeLogAttributes($otherBacktest, ['symbol' => 'FINDME', 'date' => '2017-01-02']));
 
     $this->actingAs($user)->get('/backtests/'.$backtest->id.'?'.http_build_query([
         'trade_search' => 'sPeCiAl', 'trade_type' => 'sell', 'trade_reason' => 'gold-rotation', 'trade_year' => 2017,
@@ -116,6 +136,7 @@ it('searches and filters the full trade history and resets the scroll results', 
         ->assertJsonCount(1, 'props.trades.data')
         ->assertJsonPath('props.trades.data.0.id', $target->id)
         ->assertJsonPath('props.trades.data.0.reason_category', 'gold-rotation')
+        ->assertJsonPath('props.trades.data.0.day_totals', ['buys' => 0, 'sells' => 1, 'bought' => 0, 'sold' => 100, 'charges' => 1])
         ->assertJsonPath('props.tradeLogSummary.total', 152)
         ->assertJsonPath('props.tradeLogSummary.counts', ['all' => 2, 'buy' => 1, 'sell' => 1])
         ->assertJsonPath('props.tradeLogSummary.reasons', ['gold-rotation' => 1])
@@ -128,7 +149,7 @@ it('searches and filters the full trade history and resets the scroll results', 
         'X-Inertia' => 'true',
         'X-Inertia-Partial-Component' => 'Backtests/Show',
         'X-Inertia-Partial-Data' => 'trades',
-    ])->assertSuccessful()->assertJsonPath('props.trades.data.0.date', '2017-01-01T00:00:00.000000Z');
+    ])->assertSuccessful()->assertJsonPath('props.trades.data.0.date', '2017-01-02T00:00:00.000000Z');
 });
 
 it('treats wildcard search characters as literal text', function () {
@@ -166,6 +187,9 @@ it('filters a position holding period without including another position or back
         'X-Inertia' => 'true', 'X-Inertia-Partial-Component' => 'Backtests/Show',
         'X-Inertia-Partial-Data' => 'trades,tradeLogSummary,tradeFilters', 'X-Inertia-Reset' => 'trades',
     ])->assertSuccessful()->assertJsonCount(4, 'props.trades.data')
+        ->assertJsonPath('props.trades.total', 4)
+        ->assertJsonPath('props.tradeLogSummary.total', 7)
+        ->assertJsonPath('props.tradeLogSummary.years', [2015, 2014, 2013])
         ->assertJsonPath('props.tradeLogSummary.counts', ['all' => 4, 'buy' => 2, 'sell' => 2])
         ->assertJsonPath('props.tradeFilters.symbol', 'ITC')
         ->assertJsonPath('props.tradeFilters.from', '2013-01-01')

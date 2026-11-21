@@ -84,7 +84,8 @@ class BacktestsController extends Controller
                 ]), 'charts')
                 : [],
             'defaultBenchmark' => $isCompleted
-                ? Inertia::defer(fn () => $loadBenchmark->execute($backtest, 'nifty-50'), 'charts')
+                ? Inertia::defer(fn () => $request->query('benchmark', 'nifty-50') === 'nifty-50'
+                    ? $loadBenchmark->execute($backtest, 'nifty-50') : null, 'charts')
                 : [],
             'marketCapAllocation' => $isCompleted
                 ? Inertia::defer(fn () => $marketCapAllocation->execute($backtest), 'allocation')

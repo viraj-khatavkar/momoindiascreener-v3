@@ -102,7 +102,9 @@
 
         <p class="mb-3 text-xs text-gray-500" role="status" aria-live="polite">
             <template v-if="isFiltering || pendingFilters">Updating trades...</template>
-            <template v-else>Loaded {{ trades.data.length }} of {{ trades.total }} matching trades. Date totals include loaded trades.</template>
+            <template v-else
+                >Loaded {{ trades.data.length.toLocaleString('en-IN') }} of {{ trades.total.toLocaleString('en-IN') }} matching trades.</template
+            >
         </p>
 
         <!-- Grouped by trade date; more rows for the same date join the existing group. -->
@@ -118,19 +120,22 @@
                 >
                     <div class="flex flex-wrap items-center gap-3">
                         <span class="text-sm font-semibold text-gray-900">{{ formatDate(group.date) }}</span>
-                        <span v-if="group.buyCount > 0" class="rounded-full bg-green-100 px-2 py-0.5 text-xs font-medium text-green-700">
-                            {{ group.buyCount }} {{ group.buyCount === 1 ? 'buy' : 'buys' }}
+                        <span v-if="group.totals?.buys" class="rounded-full bg-green-100 px-2 py-0.5 text-xs font-medium text-green-700">
+                            {{ group.totals.buys }} {{ group.totals.buys === 1 ? 'buy' : 'buys' }}
                         </span>
-                        <span v-if="group.sellCount > 0" class="rounded-full bg-red-100 px-2 py-0.5 text-xs font-medium text-red-700">
-                            {{ group.sellCount }} {{ group.sellCount === 1 ? 'sell' : 'sells' }}
+                        <span v-if="group.totals?.sells" class="rounded-full bg-red-100 px-2 py-0.5 text-xs font-medium text-red-700">
+                            {{ group.totals.sells }} {{ group.totals.sells === 1 ? 'sell' : 'sells' }}
+                        </span>
+                        <span v-if="!group.totals || group.trades.length < group.totals.buys + group.totals.sells" class="text-xs text-gray-600">
+                            {{ group.trades.length }} loaded
                         </span>
                     </div>
                     <div class="flex shrink-0 items-center gap-3">
-                        <span class="hidden text-xs text-gray-500 sm:inline">
-                            <template v-if="group.buyGross > 0">↑ {{ formatCurrencyShort(group.buyGross) }} bought</template>
-                            <template v-if="group.buyGross > 0 && group.sellGross > 0"> · </template>
-                            <template v-if="group.sellGross > 0">↓ {{ formatCurrencyShort(group.sellGross) }} sold</template>
-                            <template v-if="group.charges > 0"> · {{ formatCurrencyShort(group.charges) }} fees</template>
+                        <span v-if="group.totals" class="hidden text-xs text-gray-500 sm:inline">
+                            <template v-if="group.totals.bought > 0">↑ {{ formatCurrencyShort(group.totals.bought) }} bought</template>
+                            <template v-if="group.totals.bought > 0 && group.totals.sold > 0"> · </template>
+                            <template v-if="group.totals.sold > 0">↓ {{ formatCurrencyShort(group.totals.sold) }} sold</template>
+                            <template v-if="group.totals.charges > 0"> · {{ formatCurrencyShort(group.totals.charges) }} fees</template>
                         </span>
                         <svg
                             class="h-5 w-5 text-gray-400 transition-transform"
@@ -221,7 +226,7 @@
                 </div>
             </div>
             <template #next="{ loading, hasMore, fetch }">
-                <div class="py-4 text-center text-sm text-gray-500">
+                <div data-test="trade-pagination" class="py-4 text-center text-sm text-gray-500">
                     <p v-if="loading" role="status">Loading more trades...</p>
                     <button
                         v-else-if="hasMore"
@@ -253,7 +258,7 @@ import { InfiniteScroll, router } from '@inertiajs/vue3';
 import type { CancelToken } from '@inertiajs/core';
 import { MagnifyingGlassIcon } from '@heroicons/vue/20/solid';
 import type { BacktestTrade } from '@/types/app/Models/BacktestTrade';
-import type { PaginatedBacktestTrades, PositionTradeScope, TradeLogFilters, TradeLogSummary } from '@/types/BacktestTradeLog';
+import type { PaginatedBacktestTrades, PositionTradeScope, TradeDayTotals, TradeLogFilters, TradeLogSummary } from '@/types/BacktestTradeLog';
 import { formatCurrency, formatCurrencyShort, formatDate } from '@/utils/format';
 
 const props = defineProps<{
@@ -423,38 +428,23 @@ function toggleReasonCategory(key: string): void {
 
 interface TradeGroup {
     date: string;
-    buyCount: number;
-    sellCount: number;
-    buyGross: number;
-    sellGross: number;
-    charges: number;
+    totals?: TradeDayTotals;
     trades: BacktestTrade[];
 }
 
 const filteredGroups = computed((): TradeGroup[] => {
-    const grouped: Record<string, BacktestTrade[]> = {};
+    const groups = new Map<string, TradeGroup>();
     for (const trade of props.trades.data) {
-        const dateKey = trade.date.substring(0, 10);
-        if (!grouped[dateKey]) grouped[dateKey] = [];
-        grouped[dateKey].push(trade);
+        const date = trade.date.substring(0, 10);
+        let group = groups.get(date);
+        if (!group) {
+            group = { date, trades: [] };
+            groups.set(date, group);
+        }
+        group.trades.push(trade);
+        if (trade.day_totals) group.totals = trade.day_totals;
     }
-
-    return Object.keys(grouped)
-        .sort((a, b) => (sortOrder.value === 'desc' ? b.localeCompare(a) : a.localeCompare(b)))
-        .map((date) => {
-            const buys = grouped[date].filter((t) => t.trade_type === 'buy');
-            const sells = grouped[date].filter((t) => t.trade_type === 'sell');
-
-            return {
-                date,
-                buyCount: buys.length,
-                sellCount: sells.length,
-                buyGross: buys.reduce((sum, t) => sum + Number(t.gross_amount), 0),
-                sellGross: sells.reduce((sum, t) => sum + Number(t.gross_amount), 0),
-                charges: grouped[date].reduce((sum, t) => sum + Number(t.total_charges), 0),
-                trades: grouped[date],
-            };
-        });
+    return [...groups.values()];
 });
 
 const availableYears = computed(() => props.summary.years);

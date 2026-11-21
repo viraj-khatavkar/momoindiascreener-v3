@@ -23,8 +23,11 @@ it('includes initial costs in monthly returns and displays the saved Sortino aft
     loginAs($user->email);
 
     $page = visit('/backtests/'.$backtest->id)
-        ->click('More statistics')
+        ->assertAttributeContains('[data-test="performance-metrics"] > div:first-child', 'class', 'text-red-700')
+        ->assertAttributeContains('[data-test="performance-metrics"] > div:nth-child(4)', 'class', 'text-red-700')
+        ->click('#bt-overview [data-test="risk-statistics"] summary')
         ->assertSeeIn('[data-test="sortino-ratio"]', $savedSortino)
+        ->assertAttributeContains('[data-test="sortino-ratio"]', 'class', 'text-red-700')
         ->press('Monthly returns')
         ->assertSeeIn('#bt-monthly tbody tr:first-child td:first-of-type', '-1.0%')
         ->assertSeeIn('#bt-monthly tbody tr:first-child td:last-child', '-1.0%')
@@ -66,7 +69,7 @@ it('shows unavailable CAGR and derived metrics without reporting a zero return',
     $backtest = Backtest::factory()->create([
         'user_id' => $user->id, 'name' => 'Unavailable annual return', 'status' => BacktestStatusEnum::Completed,
     ]);
-    foreach (['2024-01-08' => 99, '2024-01-09' => 1000] as $date => $nav) {
+    foreach (['2024-01-08' => 100, '2024-01-09' => 1000] as $date => $nav) {
         $backtest->dailySnapshots()->create([
             'date' => $date, 'nav' => $nav, 'portfolio_value' => 0, 'cash' => $nav * 50000,
             'total_value' => $nav * 50000, 'holdings_count' => 0,
@@ -77,8 +80,13 @@ it('shows unavailable CAGR and derived metrics without reporting a zero return',
     loginAs($user->email);
 
     visit('/backtests/'.$backtest->id)
-        ->assertSeeIn('#bt-overview dl > div:first-child', '—')
-        ->assertDontSeeIn('#bt-overview dl > div:first-child', '0.00')
+        ->assertSeeIn('[data-test="performance-metrics"] > div:first-child', '—')
+        ->assertAttributeContains('[data-test="performance-metrics"] > div:first-child', 'class', 'text-slate-900')
+        ->assertDontSeeIn('[data-test="performance-metrics"] > div:first-child', '0.00')
+        ->assertSeeIn('[data-test="performance-metrics"] > div:nth-child(2)', '0.00%')
+        ->assertAttributeContains('[data-test="performance-metrics"] > div:nth-child(2)', 'class', 'text-slate-900')
+        ->assertSeeIn('[data-test="performance-metrics"] > div:nth-child(3)', '—')
+        ->assertAttributeContains('[data-test="performance-metrics"] > div:nth-child(3)', 'class', 'text-slate-900')
         ->assertDontSee('Infinity')
         ->assertDontSee('NaN')
         ->assertNoJavaScriptErrors();

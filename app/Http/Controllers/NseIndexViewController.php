@@ -9,6 +9,8 @@ use Inertia\Response;
 
 class NseIndexViewController extends Controller
 {
+    private const CAGR_YEARS = [1, 3, 5, 10];
+
     public function __invoke(string $slug): Response
     {
         $index = NseIndex::query()
@@ -22,6 +24,7 @@ class NseIndexViewController extends Controller
         return inertia('NseIndexView', [
             'index' => $index,
             'slug' => $slug,
+            'trailingCagr' => fn () => $this->getTrailingCagr($index),
             'constituentsUrl' => $membershipIndex !== null
                 ? route('nse-index.constituents.index', ['slug' => $membershipIndex->slug(), 'date' => $index->date->toDateString()], false)
                 : null,
@@ -33,6 +36,36 @@ class NseIndexViewController extends Controller
             'metricHistory' => Inertia::defer(fn () => $this->getMetricHistory($slug), 'metrics'),
             'monthlyReturns' => Inertia::defer(fn () => $this->getMonthlyReturns($slug), 'returns'),
         ]);
+    }
+
+    /** @return list<array{years: int, percent: float}> */
+    private function getTrailingCagr(NseIndex $index): array
+    {
+        if (in_array($index->slug, ['india-vix', 'nifty50-dividend-points'], true)) {
+            return [];
+        }
+
+        $lookups = $index->getConnection()->query();
+        foreach (self::CAGR_YEARS as $years) {
+            $anniversary = $index->date->copy()->subYearsNoOverflow($years);
+            // Allow weekends and holidays without using a stale close across a gap in the series.
+            $baseline = NseIndex::query()->select('close')->where('slug', $index->slug)
+                ->whereBetween('date', [$anniversary->copy()->subWeek()->toDateString(), $anniversary->toDateString()])
+                ->orderByDesc('date')->limit(1);
+            $lookups->selectSub($baseline, "close_{$years}y");
+        }
+
+        $baselines = $lookups->first();
+        $returns = [];
+        foreach (self::CAGR_YEARS as $years) {
+            $start = (float) $baselines->{"close_{$years}y"};
+            if ($start > 0) {
+                $growth = ((float) $index->close / $start) ** (1 / $years);
+                $returns[] = ['years' => $years, 'percent' => round(($growth - 1) * 100, 2)];
+            }
+        }
+
+        return $returns;
     }
 
     /**

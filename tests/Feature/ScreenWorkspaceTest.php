@@ -1,8 +1,10 @@
 <?php
 
 use App\Actions\ApplyScreenFiltersAction;
+use App\Http\Middleware\HandleInertiaRequests;
 use App\Models\Screen;
 use App\Models\User;
+use Illuminate\Http\Request;
 use Inertia\Testing\AssertableInertia as Assert;
 
 it('returns only approved examples to guests without loading screen results', function () {
@@ -43,4 +45,31 @@ it('opens the rules tab after creating a screen', function () {
     $screen = $user->screens()->sole();
 
     $response->assertRedirect(route('screens.edit', ['screen' => $screen, 'tab' => 'rules']));
+});
+
+it('opens an editor directly on rules without accessing market data or ranking any stocks', function () {
+    $screen = Screen::factory()->create();
+    $this->mock(ApplyScreenFiltersAction::class)->shouldNotReceive('execute');
+
+    $this->actingAs($screen->user)->get('/screens/'.$screen->id.'/edit?tab=rules')
+        ->assertSuccessful()->assertInertia(fn (Assert $page) => $page->component('Screens/Edit')
+        ->where('screen.id', $screen->id)->where('results', null)->where('valuationFilterWarnings', []));
+});
+
+it('loads results and their warnings together on the first results tab request for the owner', function () {
+    $screen = Screen::factory()->create(['index' => 'etf', 'apply_pe' => true]);
+    createScreenResultRow('ETFONE', 'Example ETF', '2026-07-31', ['is_etf' => true]);
+    $headers = [
+        'X-Inertia' => 'true',
+        'X-Inertia-Version' => app(HandleInertiaRequests::class)->version(Request::create('/')) ?? '',
+        'X-Inertia-Partial-Component' => 'Screens/Edit',
+        'X-Inertia-Partial-Data' => 'results,valuationFilterWarnings',
+    ];
+    $url = '/screens/'.$screen->id.'/edit?tab=results';
+
+    $this->actingAs($screen->user)->get($url, $headers)->assertSuccessful()
+        ->assertJsonPath('props.results.0.symbol', 'ETFONE')
+        ->assertJsonCount(2, 'props.valuationFilterWarnings')
+        ->assertJsonMissingPath('props.sortByOptions');
+    $this->actingAs(User::factory()->create())->get($url, $headers)->assertNotFound();
 });

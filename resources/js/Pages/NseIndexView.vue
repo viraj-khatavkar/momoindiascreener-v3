@@ -56,6 +56,25 @@
                     </div>
                 </header>
 
+                <section
+                    v-if="trailingCagr.length"
+                    aria-labelledby="index-cagr-heading"
+                    class="mb-5 rounded-xl border border-[#e5e2ea] p-4 sm:mb-6 sm:px-6 lg:flex lg:items-center lg:gap-6"
+                >
+                    <div class="lg:shrink-0">
+                        <h2 id="index-cagr-heading" class="text-sm font-semibold">Trailing CAGR</h2>
+                        <p class="mt-0.5 text-xs text-[#706b7d]">Annualised index returns</p>
+                    </div>
+                    <dl class="mt-4 grid min-w-0 grid-cols-2 gap-x-4 gap-y-3 sm:flex lg:mt-0 lg:flex-1">
+                        <div v-for="period in trailingCagr" :key="period.years" class="min-w-0 sm:flex-1 lg:border-l lg:border-[#e5e2ea] lg:pl-4">
+                            <dt class="text-xs font-medium text-[#706b7d]">{{ period.years }} {{ period.years === 1 ? 'year' : 'years' }}</dt>
+                            <dd class="mt-0.5 text-xl font-semibold tracking-tight tabular-nums" :class="indexChangeClass(period.percent)">
+                                {{ formatIndexChange(period.percent) }}%
+                            </dd>
+                        </div>
+                    </dl>
+                </section>
+
                 <section class="overflow-hidden rounded-xl border border-[#e5e2ea] bg-white" aria-label="Index history">
                     <Deferred :data="['priceHistory', 'metricHistory']">
                         <template #fallback
@@ -238,6 +257,7 @@ interface YearRow {
 const props = defineProps<{
     index: NseIndex;
     slug: string;
+    trailingCagr: { years: number; percent: number }[];
     constituentsUrl: string | null;
     availableIndices: { slug: string; symbol: string }[];
     priceHistory?: DataPoint[];

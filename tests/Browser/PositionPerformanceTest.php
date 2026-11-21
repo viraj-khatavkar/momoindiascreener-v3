@@ -57,12 +57,26 @@ it('shows completed position statistics and separate open results on desktop and
         ->assertSeeIn('[data-test="position-statistics"]', '2 winning / 3 completed · 0 breakeven')
         ->click('summary:has-text("Position averages")')
         ->assertSeeIn('[data-test="position-statistics"]', '₹161 / −₹100')
-        ->assertSeeIn('[data-test="final-holdings"]', 'OPEN')
-        ->assertSeeIn('[data-test="final-holdings"] th:nth-child(7)', 'Realised P&L')
-        ->assertSeeIn('[data-test="final-holdings"] th:nth-child(8)', 'Unrealised P&L')
-        ->assertSeeIn('[data-test="final-holdings"]', '₹20')
-        ->assertSeeIn('[data-test="final-holdings"]', '₹400')
-        ->assertSeeIn('[data-test="top-winners"]', 'ITC')
+        ->assertVisible('[data-test="final-holdings"] button[aria-label="View trades for OPEN"]');
+    if ($width < 1024) {
+        expect($page->script('Array.from(document.querySelectorAll("[data-test=final-holdings] thead th")).filter(th => th.offsetWidth).map(th => th.innerText.trim())'))
+            ->toBe(['Symbol', 'Weight', 'Total P&L']);
+        expect($page->script('(() => { const table = document.querySelector("[data-test=final-holdings] table"); return table.scrollWidth <= table.parentElement.clientWidth; })()'))->toBeTrue();
+        $page->press('button[aria-label="Details for OPEN"]')
+            ->assertAriaAttribute('button[aria-label="Details for OPEN"]', 'expanded', 'true')
+            ->assertSeeIn('#holding-details-OPEN', '01 Jan 2020')
+            ->assertVisible('#holding-details-OPEN dt:text-is("Realised P&L")')
+            ->assertVisible('#holding-details-OPEN dt:text-is("Unrealised P&L")')
+            ->assertSeeIn('#holding-details-OPEN', '₹20')
+            ->assertSeeIn('#holding-details-OPEN', '₹400');
+    } else {
+        $page->assertVisible('[data-test="final-holdings"] a[href="/instruments/OPEN"]')
+            ->assertSeeIn('[data-test="final-holdings"] th:nth-child(7)', 'Realised P&L')
+            ->assertSeeIn('[data-test="final-holdings"] th:nth-child(8)', 'Unrealised P&L')
+            ->assertSeeIn('[data-test="final-holdings"] tbody td:nth-child(7)', '₹20')
+            ->assertSeeIn('[data-test="final-holdings"] tbody td:nth-child(8)', '₹400');
+    }
+    $page->assertSeeIn('[data-test="top-winners"]', 'ITC')
         ->assertSeeIn('[data-test="top-winners"]', "Jan '13")
         ->assertSeeIn('[data-test="top-winners"]', "Jan '15")
         ->assertSeeIn('[data-test="top-losers"]', 'ITC')
@@ -92,6 +106,6 @@ it('shows no completed statistics while all positions remain open', function () 
         ->assertSee('No positions were fully exited during this backtest.')
         ->assertSee('No completed winning positions.')
         ->assertSee('No completed losing positions.')
-        ->assertSeeIn('[data-test="final-holdings"]', 'OPEN')
+        ->assertVisible('[data-test="final-holdings"] button[aria-label="View trades for OPEN"]')
         ->assertNoJavaScriptErrors();
 });

@@ -84,10 +84,8 @@ class ScreensController extends Controller
             abort(404);
         }
 
-        $date = $this->getLatestDate();
-
-        $results = BacktestNseInstrumentPriceResource::collection(
-            $applyScreenFiltersAction->execute($screen, $date)
+        $results = $request->query('tab') === 'rules' ? null : BacktestNseInstrumentPriceResource::collection(
+            $applyScreenFiltersAction->execute($screen, $this->getLatestDate())
         );
 
         $columns = collect($screen->columns)->map(function ($column) {
@@ -108,7 +106,7 @@ class ScreensController extends Controller
             'customFilterValueOptions' => array_values(CustomFilterValueOptionEnum::getOptionsForFilters()),
             'customFilterComparatorOptions' => array_values(CustomFilterComparatorOptionEnum::resolveDisplayableValueList()),
             'results' => $results,
-            'valuationFilterWarnings' => $applyScreenFiltersAction->getValuationFilterWarnings(),
+            'valuationFilterWarnings' => $results === null ? [] : $applyScreenFiltersAction->getValuationFilterWarnings(),
             'columns' => $columns,
             'availableColumns' => $this->getAvailableColumnGroups(),
         ]);

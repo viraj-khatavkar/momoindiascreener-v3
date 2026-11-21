@@ -1,5 +1,5 @@
 <template>
-    <div class="relative mt-6" :aria-busy="loading || undefined">
+    <div v-if="visible" class="relative mt-6" :aria-busy="loading || undefined">
         <!-- Results Toolbar -->
         <div class="flex flex-wrap items-center gap-x-4 gap-y-3">
             <div class="flex flex-wrap items-center gap-x-2 gap-y-1 text-sm text-gray-600">
@@ -16,10 +16,10 @@
                 <span class="text-gray-300">·</span>
                 <span v-if="isMultiFactor">
                     Screen ranking: combined rank of
-                    {{ factorColumns.map((factor) => screenSortByDisplayName(factor.key)).join(' + ') }}
+                    {{ factorColumns.map((factor) => screenFactorLabel(factor.key)).join(' + ') }}
                 </span>
                 <span v-else>
-                    Screen ranking: {{ screenSortByDisplayName(screen.sort_by) }}
+                    Screen ranking: {{ screenFactorLabel(screen.sort_by) }}
                     {{ screen.sort_direction === 'asc' ? '↑' : '↓' }}
                 </span>
                 <span
@@ -163,7 +163,7 @@
                                     :aria-sort="ariaSort(factor.key)"
                                 >
                                     <SortHeaderButton align="right" :direction="sortDirectionFor(factor.key)" @toggle="toggleSort(factor.key)">
-                                        {{ screenSortByDisplayName(factor.key) }}
+                                        {{ screenFactorLabel(factor.key) }}
                                         <span class="font-normal text-gray-400">
                                             {{ factor.direction === 'asc' ? '↑' : '↓' }}
                                         </span>
@@ -262,7 +262,7 @@
                             <template v-if="isMultiFactor">
                                 <div v-for="factor in factorColumns" :key="factor.rankKey" class="flex items-center justify-between gap-4">
                                     <span class="text-sm text-gray-500">
-                                        {{ screenSortByDisplayName(factor.key) }}
+                                        {{ screenFactorLabel(factor.key) }}
                                     </span>
                                     <span class="shrink-0 text-right text-sm tabular-nums" :class="screenCellClass(factor.key, row.item[factor.key])">
                                         {{ formatScreenCellValue(factor.key, row.item[factor.key]) }}
@@ -316,7 +316,7 @@ import SelectInput from '@/Components/Form/SelectInput.vue';
 import ColumnsPanel from '@/Pages/Screens/partials/ColumnsPanel.vue';
 import SortHeaderButton from '@/Pages/Screens/partials/SortHeaderButton.vue';
 import { formatDate } from '@/utils/format';
-import { screenSortByDisplayName } from '@/utils/screenSortByDisplayName';
+import { screenFactorLabel } from '@/utils/screenSortByDisplayName';
 import { formatScreenCellValue, isTextScreenColumn, screenCellClass, screenCellSortValue, screenColumnAlignClass } from '@/utils/screenColumnFormat';
 import type { Screen } from '@/types/app/Models/Screen';
 import type { BacktestNseInstrumentPriceResource } from '@/types/app/Resources/BacktestNseInstrumentPriceResource';
@@ -342,6 +342,7 @@ const props = withDefaults(
         results: ResultItem[];
         columns: ScreenResultColumn[];
         availableColumns?: ScreenColumnGroup[];
+        visible?: boolean;
         valuationFilterWarnings?: string[];
         showActions?: boolean;
         loading?: boolean;
@@ -349,6 +350,7 @@ const props = withDefaults(
     }>(),
     {
         showActions: true,
+        visible: true,
         loading: false,
         valuationFilterWarnings: () => [],
     },
@@ -393,7 +395,7 @@ const sortOptions = computed(() =>
     [
         { id: '', name: 'Screen Rank' },
         { id: 'symbol', name: 'Stock' },
-        ...factorColumns.value.map((factor) => ({ id: factor.key, name: screenSortByDisplayName(factor.key) })),
+        ...factorColumns.value.map((factor) => ({ id: factor.key, name: screenFactorLabel(factor.key) })),
         ...visibleColumns.value.map((column) => ({ id: column.name, name: column.display_name })),
     ].filter((option, index, options) => options.findIndex((item) => item.id === option.id) === index),
 );

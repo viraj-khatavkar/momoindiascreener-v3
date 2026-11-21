@@ -193,6 +193,17 @@ it('rejects invalid unique ETF settings', function () {
     expect($screen->fresh()->unique_etf_per_index)->toBeFalse();
 });
 
+it('preserves stock valuation limits on an ETF save and validates them again on a stock screen', function () {
+    $screen = Screen::factory()->create(['marketcap_from' => 40, 'marketcap_to' => 2000, 'apply_pe' => true, 'price_to_earnings_from' => 5, 'price_to_earnings_to' => 25]);
+    $stockIndex = $screen->index->value;
+    $valuation = $screen->only('marketcap_from', 'marketcap_to', 'apply_pe', 'price_to_earnings_from', 'price_to_earnings_to');
+    $payload = [...$screen->toArray(), 'index' => 'etf', 'marketcap_from' => '', 'marketcap_to' => 0, 'apply_pe' => false, 'price_to_earnings_from' => -1, 'price_to_earnings_to' => 0];
+    $this->actingAs($screen->user)->put('/screens/'.$screen->id, $payload)->assertSessionHasNoErrors();
+    expect($screen->refresh()->index)->toBe(NseIndexEnum::NIFTY_ETF)
+        ->and($screen->only(array_keys($valuation)))->toBe($valuation);
+    $this->put('/screens/'.$screen->id, [...$payload, 'index' => $stockIndex])->assertSessionHasErrors(['marketcap_from', 'price_to_earnings_from']);
+});
+
 it('shows the same unique ETFs on edit and public pages and in the CSV export', function () {
     $screen = Screen::factory()->create([
         'id' => Screen::PUBLIC_SCREENS[0],

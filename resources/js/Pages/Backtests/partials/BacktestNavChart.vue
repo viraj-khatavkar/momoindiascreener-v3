@@ -118,6 +118,7 @@
             <div ref="chartContainer" class="h-full" role="img" aria-label="Strategy NAV versus benchmark line chart" @dblclick="resetView" />
             <div
                 v-if="legendItems.length > 0"
+                data-test="nav-legend"
                 class="pointer-events-none absolute top-2 left-2 z-10 flex flex-col gap-0.5 rounded bg-white/80 px-2 py-1 text-xs backdrop-blur-sm"
             >
                 <div v-if="legendDate" class="font-medium text-gray-900">{{ legendDate }}</div>
@@ -143,7 +144,7 @@ import { createInteractiveChart } from '@/utils/createInteractiveChart';
 import ChartInteractionHint from '@/Components/Charts/ChartInteractionHint.vue';
 import { computed, onUnmounted, ref, watch } from 'vue';
 import { Popover, PopoverButton, PopoverPanel } from '@headlessui/vue';
-import { ColorType, CrosshairMode, LineSeries, PriceScaleMode } from 'lightweight-charts';
+import { ColorType, CrosshairMode, LineSeries, MismatchDirection, PriceScaleMode } from 'lightweight-charts';
 import type { IChartApi, ISeriesApi, LineStyle, SeriesType, Time } from 'lightweight-charts';
 import type { Bar } from 'oakscriptjs';
 import { formatDate } from '@/utils/format';
@@ -279,25 +280,18 @@ let chart: IChartApi | null = null;
 let strategySeries: ISeriesApi<SeriesType> | null = null;
 let benchmarkSeries: ISeriesApi<SeriesType> | null = null;
 const overlaySeriesMap = new Map<string, ISeriesApi<SeriesType>[]>();
-const seriesMeta = new Map<ISeriesApi<SeriesType>, { label: string; color: string; lastValue: number | null }>();
+const seriesMeta = new Map<ISeriesApi<SeriesType>, { label: string; color: string }>();
 const legendDate = ref<string | null>(null);
 const legendItems = ref<{ label: string; color: string; value: string }[]>([]);
+const navFormat = new Intl.NumberFormat('en-IN', { maximumFractionDigits: 2 });
+const returnFormat = new Intl.NumberFormat('en-IN', {
+    style: 'percent',
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+    signDisplay: 'exceptZero',
+});
 let cachedNavBars: Bar[] | null = null;
 let unregisterSync: (() => void) | null = null;
-
-function formatLegendValue(value: number): string {
-    return value.toLocaleString('en-IN', { maximumFractionDigits: 2 });
-}
-
-function hoveredDateLabel(time: Time): string {
-    if (typeof time === 'number') {
-        return formatDate(new Date(time * 1000).toISOString().substring(0, 10));
-    }
-    if (typeof time === 'object') {
-        return formatDate(`${time.year}-${String(time.month).padStart(2, '0')}-${String(time.day).padStart(2, '0')}`);
-    }
-    return formatDate(time);
-}
 
 function initChart(container: HTMLDivElement): void {
     chart = createInteractiveChart(container, {
@@ -337,43 +331,11 @@ function initChart(container: HTMLDivElement): void {
         priceLineVisible: false,
     });
 
-    chart.subscribeCrosshairMove((param) => {
-        if (!param.time || !param.seriesData.size) {
-            updateLegendDefaults();
-            return;
-        }
-
-        const items: { label: string; color: string; value: string }[] = [];
-
-        if (strategySeries) {
-            const data = param.seriesData.get(strategySeries) as { value?: number } | undefined;
-            if (data?.value !== undefined) {
-                items.push({ label: 'Strategy', color: STRATEGY_COLOR, value: formatLegendValue(data.value) });
-            }
-        }
-
-        if (benchmarkSeries) {
-            const data = param.seriesData.get(benchmarkSeries) as { value?: number } | undefined;
-            if (data?.value !== undefined) {
-                items.push({ label: benchmarkLabel.value, color: BENCHMARK_COLOR, value: formatLegendValue(data.value) });
-            }
-        }
-
-        if (scaleMode.value !== 'percent') {
-            for (const [series, meta] of seriesMeta) {
-                const data = param.seriesData.get(series) as { value?: number } | undefined;
-                if (data?.value !== undefined) {
-                    items.push({ label: meta.label, color: meta.color, value: formatLegendValue(data.value) });
-                }
-            }
-        }
-
-        legendDate.value = hoveredDateLabel(param.time);
-        legendItems.value = items;
-    });
+    chart.subscribeCrosshairMove((event) => updateLegend(event.time));
 
     chart.timeScale().subscribeVisibleTimeRangeChange((range) => {
         visiblePeriod.value = range ? { from: dateKey(range.from), to: dateKey(range.to) } : null;
+        updateLegend();
     });
 
     setStrategyData();
@@ -381,7 +343,7 @@ function initChart(container: HTMLDivElement): void {
     syncIndicators();
     applyScaleMode();
     applyTimeRange();
-    updateLegendDefaults();
+    updateLegend();
 
     if (props.syncGroup && strategySeries) {
         unregisterSync = props.syncGroup.register(chart, strategySeries);
@@ -475,7 +437,6 @@ function syncIndicators(): void {
             seriesMeta.set(series, {
                 label: plotStyle.label,
                 color: plotStyle.color,
-                lastValue: plotData.length > 0 ? plotData[plotData.length - 1].value : null,
             });
             seriesList.push(series);
         }
@@ -494,26 +455,39 @@ function syncOverlayVisibility(): void {
     }
 }
 
-function updateLegendDefaults(): void {
-    const items: { label: string; color: string; value: string }[] = [];
+function legendValue(series: ISeriesApi<SeriesType>, index: number, firstVisible: number): string {
+    const point = series.dataByIndex(index);
+    if (!point || !('value' in point)) return '—';
+    if (scaleMode.value !== 'percent') return navFormat.format(point.value);
 
-    if (props.dailySnapshots.length > 0) {
-        const last = props.dailySnapshots[props.dailySnapshots.length - 1];
-        items.push({ label: 'Strategy', color: STRATEGY_COLOR, value: formatLegendValue(Number(last.nav)) });
+    const base = series.dataByIndex(firstVisible, MismatchDirection.NearestRight);
+    if (!base || !('value' in base) || base.value <= 0) return '—';
+    return returnFormat.format(point.value / base.value - 1);
+}
+
+function updateLegend(hoveredTime?: Time): void {
+    const timeScale = chart?.timeScale();
+    const range = timeScale?.getVisibleRange();
+    if (!timeScale || !range) {
+        legendDate.value = null;
+        legendItems.value = [];
+        return;
     }
 
-    if (props.benchmarkData.length > 0) {
-        const last = props.benchmarkData[props.benchmarkData.length - 1];
-        items.push({ label: benchmarkLabel.value, color: BENCHMARK_COLOR, value: formatLegendValue(Number(last.nav)) });
-    }
+    const time = hoveredTime ?? range.to;
+    const index = timeScale.timeToIndex(time);
+    const start = timeScale.timeToIndex(range.from);
+    if (index === null || start === null) return;
 
+    const items: typeof legendItems.value = [];
+    if (strategySeries) items.push({ label: 'Strategy', color: STRATEGY_COLOR, value: legendValue(strategySeries, index, start) });
+    if (benchmarkSeries && props.benchmarkData.length) {
+        items.push({ label: benchmarkLabel.value, color: BENCHMARK_COLOR, value: legendValue(benchmarkSeries, index, start) });
+    }
     if (scaleMode.value !== 'percent') {
-        for (const [, meta] of seriesMeta) {
-            items.push({ label: meta.label, color: meta.color, value: meta.lastValue !== null ? formatLegendValue(meta.lastValue) : '-' });
-        }
+        for (const [series, meta] of seriesMeta) items.push({ ...meta, value: legendValue(series, index, start) });
     }
-
-    legendDate.value = null;
+    legendDate.value = formatDate(dateKey(time));
     legendItems.value = items;
 }
 
@@ -621,7 +595,7 @@ watch(
         }
         syncIndicators();
         applyTimeRange();
-        updateLegendDefaults();
+        updateLegend();
     },
 );
 
@@ -631,7 +605,7 @@ watch(
     () => {
         if (!chart) return;
         setBenchmarkData();
-        updateLegendDefaults();
+        updateLegend();
     },
     { immediate: true, deep: true },
 );
@@ -639,7 +613,7 @@ watch(
 watch(activeIndicators, () => {
     if (!chart) return;
     syncIndicators();
-    updateLegendDefaults();
+    updateLegend();
 });
 
 watch(selectedRange, applyTimeRange);
@@ -652,7 +626,7 @@ watch(scaleMode, (mode) => {
     }
     applyScaleMode();
     syncOverlayVisibility();
-    updateLegendDefaults();
+    updateLegend();
 });
 
 onUnmounted(destroyChart);

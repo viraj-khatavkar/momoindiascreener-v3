@@ -1,7 +1,15 @@
 import type { BacktestTrade } from '@/types/app/Models/BacktestTrade';
 
+export interface TradeDayTotals {
+    buys: number;
+    sells: number;
+    bought: number;
+    sold: number;
+    charges: number;
+}
+
 export interface PaginatedBacktestTrades {
-    data: BacktestTrade[];
+    data: (BacktestTrade & { day_totals?: TradeDayTotals })[];
     current_page: number;
     per_page: number;
     total: number;

@@ -1,5 +1,5 @@
 <template>
-    <div class="min-w-0 rounded-xl border border-slate-200 bg-white p-4 sm:p-5">
+    <div class="min-w-0 sm:p-5" :class="[headline ? 'p-3' : 'rounded-xl border border-slate-200 p-4', toneClasses[tone]]">
         <dt class="flex items-center gap-2 text-sm font-medium text-slate-600">
             {{ label }}
             <button
@@ -14,13 +14,16 @@
                 <InformationCircleIcon class="h-4 w-4" aria-hidden="true" />
             </button>
         </dt>
-        <dd
-            class="mt-2 text-2xl font-semibold tracking-tight tabular-nums"
-            :class="tone === 'positive' ? 'text-emerald-700' : tone === 'negative' ? 'text-red-700' : 'text-slate-900'"
-        >
-            {{ value }}
+        <dd class="mt-2 text-2xl font-semibold tracking-tight wrap-anywhere tabular-nums" :class="headline && 'sm:text-3xl xl:text-4xl'">
+            <slot name="value">{{ value }}</slot>
         </dd>
-        <dd v-if="detail" class="mt-2 text-sm leading-relaxed text-slate-500">{{ detail }}</dd>
+        <dd
+            v-if="detail || $slots.default"
+            class="mt-2 text-slate-600"
+            :class="headline ? 'text-xs leading-5 sm:text-sm' : 'text-sm leading-relaxed'"
+        >
+            <slot>{{ detail }}</slot>
+        </dd>
         <dd v-if="expanded && help" :id="helpId" class="mt-3 border-t border-slate-100 pt-3 text-sm leading-relaxed text-slate-600">{{ help }}</dd>
     </div>
 </template>
@@ -29,7 +32,15 @@
 import { InformationCircleIcon } from '@heroicons/vue/20/solid';
 import { ref, useId } from 'vue';
 
-withDefaults(defineProps<{ label: string; value: string; detail?: string; help?: string; tone?: 'positive' | 'negative' | 'neutral' }>(), {
+const toneClasses = {
+    neutral: 'bg-white text-slate-900',
+    positive: 'bg-emerald-50 text-emerald-700',
+    negative: 'bg-red-50 text-red-700',
+    risk: 'bg-amber-50 text-amber-800',
+    ratio: 'bg-violet-50 text-violet-700',
+};
+
+withDefaults(defineProps<{ label: string; value?: string; detail?: string; help?: string; tone?: keyof typeof toneClasses; headline?: boolean }>(), {
     tone: 'neutral',
 });
 const expanded = ref(false);

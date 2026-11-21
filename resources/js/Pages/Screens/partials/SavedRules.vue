@@ -49,7 +49,7 @@
 import { computed } from 'vue';
 import type { Screen } from '@/types/app/Models/Screen';
 import type { SelectOption } from '@/types/SelectOption';
-import { screenSortByDisplayName } from '@/utils/screenSortByDisplayName';
+import { screenFactorLabel, screenSortByDisplayName } from '@/utils/screenSortByDisplayName';
 import { screenRuleGroups } from '@/utils/screenRules';
 
 const props = defineProps<{ screen: Screen; applyFiltersOnOptions: SelectOption[]; customFilterValueOptions: SelectOption[]; expanded?: boolean }>();
@@ -57,9 +57,9 @@ defineEmits<{ showRules: [] }>();
 const groups = computed(() => screenRuleGroups(props.screen, props.applyFiltersOnOptions, props.customFilterValueOptions));
 const ranking = computed(() => {
     const screen = props.screen;
-    const factors = [screenSortByDisplayName(screen.sort_by)];
-    if (screen.apply_factor_two) factors.push(screenSortByDisplayName(screen.factor_two_sort_by));
-    if (screen.apply_factor_three) factors.push(screenSortByDisplayName(screen.factor_three_sort_by));
+    const factors = [screenFactorLabel(screen.sort_by)];
+    if (screen.apply_factor_two) factors.push(screenFactorLabel(screen.factor_two_sort_by));
+    if (screen.apply_factor_three) factors.push(screenFactorLabel(screen.factor_three_sort_by));
     return factors.length > 1
         ? `${factors.join(' + ')} · Combined rank`
         : `${factors[0]} · ${screen.sort_direction === 'asc' ? 'Lowest to Highest' : 'Highest to Lowest'}`;
@@ -74,7 +74,7 @@ const highlights = computed(() => {
     if (screen.apply_ema && ([200, 100, 50, 20] as const).some((period) => screen[`above_ema_${period}`] || screen[`below_ema_${period}`])) {
         labels.push('EMA filters on');
     }
-    if (screen.apply_pe) labels.push('P/E filter on');
+    if (screen.apply_pe && screen.index !== 'etf') labels.push('P/E filter on');
     return labels;
 });
 </script>

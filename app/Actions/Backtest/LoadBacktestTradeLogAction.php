@@ -47,13 +47,35 @@ class LoadBacktestTradeLogAction
             $query->whereRaw('('.self::REASON_CATEGORY_SQL.') = ?', [$filters['reason']]);
         }
 
-        return $query->select('backtest_trades.*')
+        $page = (clone $query)->select('backtest_trades.*')
             ->selectRaw(self::REASON_CATEGORY_SQL.' AS reason_category')
             ->orderBy('date', $filters['sort'])
             ->orderBy('trade_type')
             ->orderBy('id')
             ->paginate(100, pageName: 'trades_page')
             ->withQueryString();
+
+        // A page can split a trading day. Send its full filtered totals once per date on this page.
+        $representatives = $page->getCollection()->keyBy(fn (BacktestTrade $trade) => $trade->getRawOriginal('date'));
+        if ($representatives->isNotEmpty()) {
+            $days = $query->toBase()->whereIn('date', $representatives->keys())
+                ->select('date')
+                ->selectRaw("SUM(CASE WHEN trade_type = 'buy' THEN 1 ELSE 0 END) AS buys,
+                    SUM(CASE WHEN trade_type = 'sell' THEN 1 ELSE 0 END) AS sells,
+                    SUM(CASE WHEN trade_type = 'buy' THEN gross_amount ELSE 0 END) AS bought,
+                    SUM(CASE WHEN trade_type = 'sell' THEN gross_amount ELSE 0 END) AS sold,
+                    SUM(total_charges) AS charges")
+                ->groupBy('date')->get();
+
+            foreach ($days as $day) {
+                $representatives[$day->date]->setAttribute('day_totals', [
+                    'buys' => (int) $day->buys, 'sells' => (int) $day->sells,
+                    'bought' => (float) $day->bought, 'sold' => (float) $day->sold, 'charges' => (float) $day->charges,
+                ]);
+            }
+        }
+
+        return $page;
     }
 
     /**
@@ -80,7 +102,7 @@ class LoadBacktestTradeLogAction
             }
         }
 
-        $years = $backtest->trades()->toBase()->selectRaw('YEAR(date) AS year')
+        $years = $this->query($backtest, [...$filters, 'search' => '', 'year' => null])->toBase()->selectRaw('YEAR(date) AS year')
             ->distinct()->orderByDesc('year')->pluck('year')->map(fn ($year): int => (int) $year)->all();
 
         return [
