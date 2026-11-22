@@ -17,8 +17,9 @@ export interface Backtest {
     stop_loss_percentage: number | string;
     trail_stop_loss: boolean;
     stop_loss_proceeds: 'wait_for_rebalance' | 'replace_immediately';
-    rebalance_frequency: 'weekly' | 'monthly';
+    rebalance_frequency: 'weekly' | 'fortnightly' | 'monthly' | 'quarterly' | 'six_monthly' | 'yearly';
     rebalance_day: number;
+    rebalance_month: number | null;
     weightage: 'equal_weight' | 'equal_weight_rebalanced' | 'inverse_volatility' | 'rank_weighted' | 'price_weighted';
     cash_call: 'no_cash_call' | 'cash_call_if_not_enough_stocks' | 'full_cash_below_index_dma' | 'only_exits_below_index_dma' | 'allocate_to_gold_below_index_dma' | 'only_exits_allocate_to_gold_below_index_dma' | 'only_exits_allocate_to_gold_above_dma_below_index_dma';
     cash_call_index: string;

@@ -30,7 +30,7 @@
                     {{ backtest.max_stocks_to_hold }} stocks
                 </span>
                 <span class="rounded-md bg-gray-100 px-2 py-0.5 text-xs text-gray-700">
-                    {{ backtest.rebalance_frequency === 'weekly' ? 'Weekly · ' + weekdayName(backtest.rebalance_day) : 'Monthly day ' + backtest.rebalance_day }}
+                    {{ rebalanceDescription(backtest.rebalance_frequency, backtest.rebalance_day, backtest.rebalance_month) }}
                 </span>
                 <span v-if="backtest.worst_rank_held > 0" class="rounded-md bg-gray-100 px-2 py-0.5 text-xs text-gray-700">
                     Worst rank {{ backtest.worst_rank_held }}
@@ -149,6 +149,7 @@
 <script setup lang="ts">
 import type { Backtest } from '@/types/app/Models/Backtest';
 import { formatCompactNumber, formatCurrencyShort } from '@/utils/format';
+import { rebalanceDescription } from '@/utils/backtestRebalance';
 
 defineProps<{
     backtest: Backtest;
@@ -246,10 +247,6 @@ function hasDmaBasedCashCall(value: string): boolean {
 
 function formatSnakeCase(value: string): string {
     return value.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
-}
-
-function weekdayName(day: number): string {
-    return ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday'][day - 1] ?? 'day ' + day;
 }
 
 function formatApplyFiltersOn(value: string): string {

@@ -4,6 +4,33 @@ use App\Models\Backtest;
 use App\Models\Screen;
 use App\Models\User;
 
+it('previews and saves the new rebalance controls across frequency changes', function () {
+    $user = User::factory()->create(['is_paid' => true]);
+    $backtest = Backtest::factory()->for($user)->create(['start_date' => '2024-05-01', 'rebalance_day' => 20]);
+    $this->actingAs($user);
+
+    $page = visit('/backtests/'.$backtest->id.'?tab=settings')->resize(390, 844)
+        ->assertMissing('[name="rebalance_month"]')
+        ->select('rebalance_frequency', 'quarterly')->assertSelected('rebalance_month', '5')
+        ->select('rebalance_month', '10')->select('rebalance_frequency', 'monthly')->assertEnabled('Duplicate')
+        ->select('rebalance_frequency', 'quarterly')
+        ->select('rebalance_month', '10')->fill('rebalance_day', '10')
+        ->assertSee('Every 3 months from 10 October. The first scheduled date is 10 October 2024.')
+        ->press('Save')->assertSee('Settings saved.')->refresh()
+        ->assertSelected('rebalance_frequency', 'quarterly')->assertSelected('rebalance_month', '10')->assertValue('rebalance_day', '10')
+        ->select('rebalance_frequency', 'six_monthly')->assertSee('Every 6 months from 10 October')
+        ->select('rebalance_frequency', 'yearly')->assertSee('Every year on 10 October')
+        ->select('rebalance_frequency', 'fortnightly')->assertMissing('[name="rebalance_month"]')
+        ->assertSelected('rebalance_day', '1')->select('rebalance_day', '2')
+        ->assertSee('Every other Tuesday. The first scheduled date is 7 May 2024.')
+        ->press('Save')->assertSee('Settings saved.')->refresh()
+        ->assertSelected('rebalance_frequency', 'fortnightly')->assertSelected('rebalance_day', '2')
+        ->assertNoJavaScriptErrors();
+
+    expect($page->script('document.documentElement.scrollWidth <= window.innerWidth'))->toBeTrue()
+        ->and($backtest->fresh()->rebalance_frequency->value)->toBe('fortnightly');
+});
+
 it('sets the start date from the universe and the latest active filter limit', function () {
     $user = User::factory()->create(['is_paid' => true]);
     $backtest = Backtest::factory()->for($user)->create();

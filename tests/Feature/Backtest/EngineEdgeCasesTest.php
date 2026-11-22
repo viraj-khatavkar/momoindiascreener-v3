@@ -222,6 +222,35 @@ it('uses the holiday fallback only for a period followed by later trading data',
     expect($backtest->trades()->whereDate('date', $end)->count())->toBe(2);
 })->with([['weekly', 5, '2024-01-11', '2024-01-15'], ['monthly', 31, '2024-01-30', '2024-02-01']]);
 
+it('opens the portfolio and trades the decision-date winner on the new rebalance schedules', function (
+    string $frequency, int $day, ?int $month, string $firstDecision, string $firstFill, string $secondDecision, string $secondFill, bool $nextDay,
+) {
+    $backtest = edgeBacktest([
+        'rebalance_frequency' => $frequency, 'rebalance_day' => $day, 'rebalance_month' => $month,
+        'max_stocks_to_hold' => 1, 'worst_rank_held' => 1, 'execute_next_trading_day' => $nextDay,
+    ]);
+    foreach ([
+        '2024-01-08' => 'A', '2024-01-09' => 'A', '2024-01-15' => 'B',
+        $firstDecision => 'B', $firstFill => 'A', $secondDecision => 'A', $secondFill => 'B',
+    ] as $date => $winner) {
+        foreach (['A', 'B'] as $symbol) {
+            edgeQuote($symbol, $date, in_array($date, [$firstFill, $secondFill]) ? 110 : 100, ['sharpe_return_one_year' => $symbol === $winner ? 10 : 1]);
+        }
+    }
+
+    app(RunBacktestAction::class)->execute($backtest);
+    $buys = $backtest->trades()->where('trade_type', 'buy')->orderBy('date')->get();
+    expect($buys->pluck('symbol')->all())->toBe(['A', 'B', 'A'])
+        ->and($buys->map(fn ($trade) => $trade->date->toDateString())->all())->toBe($nextDay
+            ? ['2024-01-09', $firstFill, $secondFill] : ['2024-01-08', $firstDecision, $secondDecision])
+        ->and((float) $buys[1]->price)->toBe($nextDay ? 110.0 : 100.0);
+})->with([
+    ['fortnightly', 1, null, '2024-01-22', '2024-01-23', '2024-02-05', '2024-02-06'],
+    ['quarterly', 12, 2, '2024-02-12', '2024-02-13', '2024-05-13', '2024-05-14'],
+    ['six_monthly', 12, 2, '2024-02-12', '2024-02-13', '2024-08-12', '2024-08-13'],
+    ['yearly', 12, 2, '2024-02-12', '2024-02-13', '2025-02-12', '2025-02-13'],
+])->with([false, true]);
+
 it('includes entry charges in drawdown and ulcer index from initial capital', function () {
     $backtest = edgeBacktest(['max_stocks_to_hold' => 1, 'brokerage_rate' => 1]);
     edgeQuote('A', '2024-01-08', 100);

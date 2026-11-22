@@ -20,6 +20,7 @@ use Illuminate\Queue\MaxAttemptsExceededException;
 use Illuminate\Support\Facades\Bus;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Queue;
+use Illuminate\Validation\ValidationException;
 use Inertia\Testing\AssertableInertia as Assert;
 
 use function Pest\Laravel\mock;
@@ -138,7 +139,7 @@ it('passes the settings form options to the unified show page', function () {
             ->has('applyFiltersOnOptions')
             ->has('customFilterValueOptions')
             ->has('customFilterComparatorOptions')
-            ->has('rebalanceFrequencyOptions')
+            ->where('rebalanceFrequencyOptions', fn ($options) => collect($options)->pluck('id')->all() === ['weekly', 'fortnightly', 'monthly', 'quarterly', 'six_monthly', 'yearly'])
             ->has('weightageOptions')
             ->has('cashCallOptions')
             ->has('cashCallIndexOptions')
@@ -184,6 +185,48 @@ it('offers and saves six and three month Sharpe sorting for all backtest factors
         ->and($backtest->factor_three_sort_by)->toBe($factor)
         ->and($backtest->settings_changed_at)->not->toBeNull();
     Queue::assertNothingPushed();
+});
+
+it('saves and queues the selected rebalance schedule', function (string $frequency, int $day, ?int $month) {
+    Queue::fake();
+    $backtest = Backtest::factory()->for(User::factory()->state(['is_paid' => true]))->create();
+    $this->actingAs($backtest->user)->put('/backtests/'.$backtest->id, validBacktestUpdatePayload($backtest, [
+        'rebalance_frequency' => $frequency, 'rebalance_day' => $day, 'rebalance_month' => $month, 'run' => true,
+    ]))->assertSessionHasNoErrors();
+
+    Queue::assertPushed(RunBacktestJob::class, fn (RunBacktestJob $job) => $job->backtest->rebalance_frequency->value === $frequency
+        && (int) $job->backtest->rebalance_day === $day && $job->backtest->rebalance_month === $month);
+})->with([['fortnightly', 5, null], ['quarterly', 28, 10], ['six_monthly', 1, 4], ['yearly', 10, 12]]);
+
+it('rejects an invalid rebalance schedule before saving or queueing it', function (string $frequency, int $day, mixed $month, string $field) {
+    Queue::fake();
+    $backtest = Backtest::factory()->for(User::factory()->state(['is_paid' => true]))->create();
+    $this->actingAs($backtest->user)->put('/backtests/'.$backtest->id, validBacktestUpdatePayload($backtest, [
+        'rebalance_frequency' => $frequency, 'rebalance_day' => $day, 'rebalance_month' => $month, 'run' => true,
+    ]))->assertSessionHasErrors($field);
+    expect($backtest->refresh()->rebalance_frequency->value)->toBe('monthly');
+    Queue::assertNothingPushed();
+})->with([
+    ['fortnightly', 6, null, 'rebalance_day'], ['quarterly', 0, 1, 'rebalance_day'], ['yearly', 29, 4, 'rebalance_day'],
+    ['quarterly', 10, null, 'rebalance_month'], ['six_monthly', 10, 13, 'rebalance_month'], ['yearly', 10, 0, 'rebalance_month'],
+]);
+
+it('accepts older weekly and monthly settings payloads without a rebalance month', function (string $frequency, int $day) {
+    $backtest = Backtest::factory()->for(User::factory()->state(['is_paid' => true]))->create();
+    $payload = validBacktestUpdatePayload($backtest, ['rebalance_frequency' => $frequency, 'rebalance_day' => $day]);
+    unset($payload['rebalance_month']);
+    $this->actingAs($backtest->user)->put('/backtests/'.$backtest->id, $payload)->assertSessionHasNoErrors();
+    expect($backtest->fresh()->rebalance_month)->toBeNull()->and($backtest->fresh()->rebalance_frequency->value)->toBe($frequency);
+})->with([['monthly', 28], ['weekly', 5]]);
+
+it('preserves saved results if a worker receives a month-based schedule without an anchor', function () {
+    $backtest = Backtest::factory()->create(['rebalance_frequency' => 'quarterly', 'rebalance_month' => null, 'started_at' => now()]);
+    seedBacktestResults($backtest);
+    expect(fn () => app()->call([new RunBacktestJob($backtest), 'handle']))
+        ->toThrow(ValidationException::class, 'Select a first rebalance month.');
+    expect($backtest->trades()->count())->toBe(1)
+        ->and($backtest->dailySnapshots()->count())->toBe(1)
+        ->and($backtest->summaryMetrics()->exists())->toBeTrue();
 });
 
 it('does not touch settings_changed_at when only the name changes', function () {

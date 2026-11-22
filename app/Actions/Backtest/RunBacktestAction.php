@@ -78,6 +78,7 @@ class RunBacktestAction
         private BacktestNavSourceAction $navSource,
         private LoadBacktestIndexDataAction $indexDataLoader,
         private BacktestTradingCalendarAction $tradingCalendar,
+        private BacktestRebalanceDatesAction $rebalanceSchedule,
         private BacktestStartDateAction $startDates,
         private SelectUniqueEtfsAction $uniqueEtfs,
     ) {}
@@ -125,7 +126,7 @@ class RunBacktestAction
             }
             $this->computeDma($this->dmaPeriod);
         }
-        $this->computeRebalanceDates($backtest, $tradingDates);
+        $this->rebalanceDates = $this->rebalanceSchedule->execute($backtest, $tradingDates);
 
         $previousDate = null;
         foreach ($tradingDates as $date) {
@@ -225,6 +226,7 @@ class RunBacktestAction
     public function validateDataAvailability(Backtest $backtest, ?string $throughDate = null, bool $validateSourceNav = true): void
     {
         $this->startDates->validate($backtest);
+        $this->rebalanceSchedule->validateMonth($backtest);
         $this->validateFnoMembership($backtest, $throughDate);
         $dates = $this->tradingCalendar->latestDates(
             $backtest->index,
@@ -291,59 +293,6 @@ class RunBacktestAction
 
             if ($count >= $period) {
                 $this->dmaData[$date] = array_sum(array_slice($closes, -$period)) / $period;
-            }
-        }
-    }
-
-    private function computeRebalanceDates(Backtest $backtest, $tradingDates): void
-    {
-        $this->rebalanceDates = [];
-
-        // First trading day is always initial rebalance
-        $firstDate = $tradingDates->first()->format('Y-m-d');
-        $this->rebalanceDates[$firstDate] = $firstDate;
-
-        if ($backtest->rebalance_frequency->value === 'weekly') {
-            $grouped = $tradingDates->groupBy(fn (Carbon $d) => $d->isoWeekYear().'-W'.$d->isoWeek());
-
-            foreach ($grouped as $dates) {
-                $matched = null;
-                foreach ($dates as $date) {
-                    if ($date->dayOfWeekIso >= $backtest->rebalance_day) {
-                        $matched = $date->format('Y-m-d');
-                        break;
-                    }
-                }
-
-                /** Later-period data must confirm the week is complete before using its last trading day. */
-                if ($matched === null && $dates->last()->copy()->endOfWeek()->lt($tradingDates->last())) {
-                    $matched = $dates->last()->format('Y-m-d');
-                }
-
-                if ($matched !== null && $matched !== $firstDate) {
-                    $this->rebalanceDates[$matched] = $matched;
-                }
-            }
-        } else {
-            $grouped = $tradingDates->groupBy(fn (Carbon $d) => $d->format('Y-m'));
-
-            foreach ($grouped as $dates) {
-                $matched = null;
-                foreach ($dates as $date) {
-                    if ($date->day >= $backtest->rebalance_day) {
-                        $matched = $date->format('Y-m-d');
-                        break;
-                    }
-                }
-
-                /** Do not bring a rebalance forward because the latest imported month is incomplete. */
-                if ($matched === null && $dates->last()->copy()->endOfMonth()->lt($tradingDates->last())) {
-                    $matched = $dates->last()->format('Y-m-d');
-                }
-
-                if ($matched !== null && $matched !== $firstDate) {
-                    $this->rebalanceDates[$matched] = $matched;
-                }
             }
         }
     }

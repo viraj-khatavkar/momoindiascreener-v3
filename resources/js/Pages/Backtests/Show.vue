@@ -1212,6 +1212,7 @@
                     :custom-filter-value-options="customFilterValueOptions"
                     :custom-filter-comparator-options="customFilterComparatorOptions"
                     :rebalance-frequency-options="rebalanceFrequencyOptions"
+                    :saved-rebalance-month="backtest.rebalance_month"
                     :weightage-options="weightageOptions"
                     :cash-call-options="cashCallOptions"
                     :stop-loss-proceeds-options="stopLossProceedsOptions"
@@ -1348,6 +1349,7 @@ const form = useForm({
     stop_loss_proceeds: props.backtest.stop_loss_proceeds,
     rebalance_frequency: props.backtest.rebalance_frequency,
     rebalance_day: props.backtest.rebalance_day,
+    rebalance_month: props.backtest.rebalance_month ?? null,
     weightage: props.backtest.weightage,
     cash_call: props.backtest.cash_call,
     cash_call_source: props.backtest.cash_call_source ?? 'index',

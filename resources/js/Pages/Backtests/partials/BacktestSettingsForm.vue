@@ -76,9 +76,17 @@
                     :error="form.errors.rebalance_frequency"
                 />
                 <SelectInput
-                    v-if="form.rebalance_frequency === 'weekly'"
+                    v-if="usesRebalanceMonth(form.rebalance_frequency)"
+                    v-model="form.rebalance_month"
+                    label="First Rebalance Month"
+                    name="rebalance_month"
+                    :options="rebalanceMonthOptions"
+                    :error="form.errors.rebalance_month"
+                />
+                <SelectInput
+                    v-if="usesWeekday"
                     v-model="form.rebalance_day"
-                    label="Day of Week"
+                    :label="form.rebalance_frequency === 'fortnightly' ? 'Every Other Week On' : 'Day of Week'"
                     name="rebalance_day"
                     :options="weekdayOptions"
                     :error="form.errors.rebalance_day"
@@ -91,9 +99,16 @@
                     name="rebalance_day"
                     :error="form.errors.rebalance_day"
                 />
+            </div>
+            <div class="mt-3 space-y-1 text-sm/5 text-gray-600">
+                <p>The opening portfolio is selected on the first trading day.</p>
+                <p v-if="firstTarget" aria-live="polite">{{ scheduleDescription }}. The first scheduled date is <strong>{{ firstTarget }}</strong>.</p>
+                <p>A market holiday moves the decision to the next trading session in that {{ usesWeekday ? 'week' : 'month' }}. If none follows, the last session of the completed {{ usesWeekday ? 'week' : 'month' }} is used.</p>
+            </div>
+            <div class="mt-5 grid grid-cols-1 gap-x-8 gap-y-6 sm:grid-cols-2 lg:grid-cols-3">
                 <div>
                     <Toggle v-model="form.execute_next_trading_day" label="Execute Next Trading Day" />
-                    <p class="mt-1 text-xs text-gray-500">Decide on rebalance day, execute trades at next day's close</p>
+                    <p class="mt-1 text-xs text-gray-500">Execute each decision at the next trading session’s close, including the opening trades.</p>
                 </div>
                 <div>
                     <Toggle v-model="form.skip_circuit_trades" label="Skip Circuit-Hit Trades" />
@@ -1033,6 +1048,7 @@ import ErrorAlert from '@/Components/Alerts/ErrorAlert.vue';
 import InfoAlert from '@/Components/Alerts/InfoAlert.vue';
 import PurpleAlert from '@/Components/Alerts/PurpleAlert.vue';
 import { formatCompactNumber, formatCurrency, formatDate } from '@/utils/format';
+import { firstRebalanceTarget, rebalanceDescription, rebalanceMonthOptions, suggestedRebalanceMonth, usesRebalanceMonth, weekdayOptions } from '@/utils/backtestRebalance';
 import type { SelectOption } from '@/types/SelectOption';
 
 const props = defineProps<{
@@ -1047,6 +1063,7 @@ const props = defineProps<{
     customFilterValueOptions: SelectOption[];
     customFilterComparatorOptions: SelectOption[];
     rebalanceFrequencyOptions: SelectOption[];
+    savedRebalanceMonth: number | null;
     weightageOptions: SelectOption[];
     cashCallOptions: SelectOption[];
     stopLossProceedsOptions: SelectOption[];
@@ -1079,14 +1096,6 @@ const dmaPeriodOptions = [
     { id: '50', name: '50 DMA' },
     { id: '100', name: '100 DMA' },
     { id: '200', name: '200 DMA' },
-];
-
-const weekdayOptions = [
-    { id: '1', name: 'Monday' },
-    { id: '2', name: 'Tuesday' },
-    { id: '3', name: 'Wednesday' },
-    { id: '4', name: 'Thursday' },
-    { id: '5', name: 'Friday' },
 ];
 
 const sortDirectionOptions = [
@@ -1250,13 +1259,24 @@ const applyFiltersOnSelectOptions = computed(() =>
     })),
 );
 
-// --- Rebalance day: weekly select vs monthly number ---
+const usesWeekday = computed(() => props.form.rebalance_frequency === 'weekly' || props.form.rebalance_frequency === 'fortnightly');
+const firstTarget = computed(() =>
+    firstRebalanceTarget(props.form.rebalance_frequency, props.form.start_date, Number(props.form.rebalance_day), props.form.rebalance_month),
+);
+const scheduleDescription = computed(() =>
+    rebalanceDescription(props.form.rebalance_frequency, Number(props.form.rebalance_day), props.form.rebalance_month),
+);
 
 watch(
     () => props.form.rebalance_frequency,
     (frequency) => {
-        if (frequency === 'weekly' && Number(props.form.rebalance_day) > 5) {
+        if (usesWeekday.value && !weekdayOptions.some(({ id }) => id === Number(props.form.rebalance_day))) {
             props.form.rebalance_day = 1;
+        }
+        if (usesRebalanceMonth(frequency)) {
+            props.form.rebalance_month ??= suggestedRebalanceMonth(props.form.start_date, Number(props.form.rebalance_day));
+        } else {
+            props.form.rebalance_month = props.savedRebalanceMonth;
         }
     },
 );
@@ -1560,6 +1580,7 @@ const fieldLabels: Record<string, string> = {
     stop_loss_proceeds: 'After a Stop-Loss Exit',
     rebalance_frequency: 'Rebalance Frequency',
     rebalance_day: 'Rebalance Day',
+    rebalance_month: 'First Rebalance Month',
     cash_call: 'Cash Call',
     cash_call_index: 'Cash Call Index / Benchmark',
     cash_call_source: 'Signal Source',

@@ -129,7 +129,7 @@
 
                             <!-- Rebalance -->
                             <td class="whitespace-nowrap px-4 py-3 text-sm capitalize text-gray-600">
-                                {{ bt.rebalance_frequency }}
+                                {{ bt.rebalance_frequency.replaceAll('_', ' ') }}
                             </td>
 
                             <!-- Max Stocks -->

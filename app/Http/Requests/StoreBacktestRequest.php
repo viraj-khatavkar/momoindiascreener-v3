@@ -67,6 +67,8 @@ class StoreBacktestRequest extends FormRequest
      */
     public function rules(): array
     {
+        $frequency = $this->input('rebalance_frequency');
+        $monthInterval = is_string($frequency) ? BacktestRebalanceFrequencyEnum::tryFrom($frequency)?->monthInterval() : null;
         $minimumStartDate = app(BacktestStartDateAction::class)->minimumDate($this->only([
             'index', 'apply_marketcap', 'apply_pe', 'sort_by', 'apply_factor_two', 'factor_two_sort_by', 'apply_factor_three', 'factor_three_sort_by',
         ]));
@@ -87,7 +89,8 @@ class StoreBacktestRequest extends FormRequest
             'trail_stop_loss' => ['exclude_unless:apply_stop_loss,true', 'required', 'boolean'],
             'stop_loss_proceeds' => ['exclude_unless:apply_stop_loss,true', 'required', Rule::enum(BacktestStopLossProceedsEnum::class)],
             'rebalance_frequency' => ['required', Rule::enum(BacktestRebalanceFrequencyEnum::class)],
-            'rebalance_day' => ['required', 'integer', 'min:1', $this->input('rebalance_frequency') === 'weekly' ? 'max:5' : 'max:28'],
+            'rebalance_day' => ['required', 'integer', 'min:1', $monthInterval === null ? 'max:5' : 'max:28'],
+            'rebalance_month' => [Rule::excludeIf($monthInterval <= 1), 'required', 'integer', 'between:1,12'],
             'weightage' => ['required', Rule::enum(BacktestWeightageEnum::class)],
             'cash_call' => ['required', Rule::enum(BacktestCashCallEnum::class)],
             'cash_call_source' => ['required', Rule::enum(BacktestCashCallSourceEnum::class)],
