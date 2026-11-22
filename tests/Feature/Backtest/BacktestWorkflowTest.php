@@ -125,25 +125,39 @@ it('redirects to the settings tab after creating a backtest', function () {
     $response->assertRedirect('/backtests/'.$backtest->id.'?tab=settings');
 });
 
-it('passes the settings form options to the unified show page', function () {
+it('passes the settings and benchmark options to the unified show page', function () {
     $user = User::factory()->create(['is_paid' => true]);
     $backtest = Backtest::factory()->create(['user_id' => $user->id]);
 
-    $this->actingAs($user)
-        ->get('/backtests/'.$backtest->id)
-        ->assertInertia(fn (Assert $page) => $page
-            ->component('Backtests/Show')
-            ->has('backtest')
-            ->has('indices')
-            ->has('sortByOptions')
-            ->has('applyFiltersOnOptions')
-            ->has('customFilterValueOptions')
-            ->has('customFilterComparatorOptions')
-            ->where('rebalanceFrequencyOptions', fn ($options) => collect($options)->pluck('id')->all() === ['weekly', 'fortnightly', 'monthly', 'quarterly', 'six_monthly', 'yearly'])
-            ->has('weightageOptions')
-            ->has('cashCallOptions')
-            ->has('cashCallIndexOptions')
-            ->has('benchmarkOptions'));
+    $response = $this->actingAs($user)->get('/backtests/'.$backtest->id);
+    $response->assertInertia(fn (Assert $page) => $page
+        ->component('Backtests/Show')
+        ->has('backtest')
+        ->has('indices')
+        ->has('sortByOptions')
+        ->has('applyFiltersOnOptions')
+        ->has('customFilterValueOptions')
+        ->has('customFilterComparatorOptions')
+        ->where('rebalanceFrequencyOptions', fn ($options) => collect($options)->pluck('id')->all() === ['weekly', 'fortnightly', 'monthly', 'quarterly', 'six_monthly', 'yearly'])
+        ->has('weightageOptions')
+        ->has('cashCallOptions'));
+
+    $cashCallIndices = [
+        'nifty-50' => 'Nifty 50',
+        'nifty-100' => 'Nifty 100',
+        'nifty-500' => 'Nifty 500',
+        'nifty200-momentum-30' => 'Nifty 200 Momentum 30',
+        'nifty500-momentum-50' => 'Nifty 500 Momentum 50',
+    ];
+    expect(collect($response->inertiaProps('cashCallIndexOptions'))->pluck('name', 'id')->all())->toEqual($cashCallIndices)
+        ->and(collect($response->inertiaProps('benchmarkOptions'))->pluck('name', 'id')->all())->toEqual([
+            ...$cashCallIndices,
+            'nifty-total-market' => 'Nifty Total Market (750)',
+            'nifty-1000' => 'Nifty 1000',
+            'nifty-largemidcap-250' => 'Nifty LargeMidcap 250',
+            'nifty-smallcap-250' => 'Nifty Smallcap 250',
+            'nifty-midcap150-momentum-50' => 'Nifty Midcap150 Momentum 50',
+        ]);
 });
 
 it('saves settings without queueing a run', function () {

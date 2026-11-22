@@ -31,12 +31,21 @@ use Inertia\Response;
 
 class BacktestsController extends Controller
 {
-    private const INDEX_SLUG_OPTIONS = [
+    private const CASH_CALL_INDEX_OPTIONS = [
         ['id' => 'nifty-50', 'name' => 'Nifty 50'],
         ['id' => 'nifty-100', 'name' => 'Nifty 100'],
         ['id' => 'nifty-500', 'name' => 'Nifty 500'],
         ['id' => 'nifty200-momentum-30', 'name' => 'Nifty 200 Momentum 30'],
         ['id' => 'nifty500-momentum-50', 'name' => 'Nifty 500 Momentum 50'],
+    ];
+
+    private const BENCHMARK_OPTIONS = [
+        ...self::CASH_CALL_INDEX_OPTIONS,
+        ['id' => 'nifty-total-market', 'name' => 'Nifty Total Market (750)'],
+        ['id' => 'nifty-1000', 'name' => 'Nifty 1000'],
+        ['id' => 'nifty-largemidcap-250', 'name' => 'Nifty LargeMidcap 250'],
+        ['id' => 'nifty-smallcap-250', 'name' => 'Nifty Smallcap 250'],
+        ['id' => 'nifty-midcap150-momentum-50', 'name' => 'Nifty Midcap150 Momentum 50'],
     ];
 
     public function index(Request $request)
@@ -97,7 +106,7 @@ class BacktestsController extends Controller
                 ? Inertia::defer(fn () => $tradeLog->summary($backtest, $tradeFilters), 'trades')
                 : null,
             'tradeFilters' => $tradeFilters,
-            'benchmarkOptions' => self::INDEX_SLUG_OPTIONS,
+            'benchmarkOptions' => self::BENCHMARK_OPTIONS,
             'indices' => array_values(NseIndexEnum::getOptionsForFilters()),
             'sortByOptions' => array_values(ScreenSortByOptionEnum::getOptionsForFilters()),
             'startDateLimits' => $startDates->limits(),
@@ -108,7 +117,7 @@ class BacktestsController extends Controller
             'weightageOptions' => array_values(BacktestWeightageEnum::resolveDisplayableValueList()),
             'stopLossProceedsOptions' => BacktestStopLossProceedsEnum::resolveDisplayableValueList(),
             'cashCallOptions' => array_values(BacktestCashCallEnum::resolveDisplayableValueList()),
-            'cashCallIndexOptions' => self::INDEX_SLUG_OPTIONS,
+            'cashCallIndexOptions' => self::CASH_CALL_INDEX_OPTIONS,
             'cashCallBacktestOptions' => fn () => $readOnly ? [] : $request->user()->backtests()
                 ->where('id', '!=', $backtest->id)
                 ->where('cash_call', BacktestCashCallEnum::NoCashCall)
