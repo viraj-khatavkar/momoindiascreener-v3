@@ -114,17 +114,8 @@
                         </dl>
                         <div v-else class="text-sm text-gray-600 sm:text-right">
                             <template v-if="backtest.status === 'running'">
-                                <p>{{ backtest.progress }}% complete</p>
-                                <div
-                                    class="mt-2 h-1.5 overflow-hidden rounded-full bg-gray-100"
-                                    role="progressbar"
-                                    :aria-label="`${backtest.name} progress`"
-                                    :aria-valuenow="backtest.progress"
-                                    aria-valuemin="0"
-                                    aria-valuemax="100"
-                                >
-                                    <div class="h-full rounded-full bg-blue-500" :style="{ width: `${backtest.progress}%` }" />
-                                </div>
+                                <p>{{ backtest.progress > 0 ? `${backtest.progress}% complete` : 'Waiting to start' }}</p>
+                                <BacktestProgressBar :progress="backtest.progress" :label="`${backtest.name} progress`" compact class="mt-2" />
                             </template>
                             <p v-else-if="backtest.status === 'failed'">Open to review the failed run</p>
                             <p v-else-if="backtest.status === 'pending'">Ready to configure and run</p>
@@ -154,6 +145,7 @@
 </template>
 
 <script setup lang="ts">
+import BacktestProgressBar from '@/Components/BacktestProgressBar.vue';
 import ScreenCard from '@/Components/ScreenCard.vue';
 import type { HomeBacktest, HomeScreen } from '@/types/HomePage';
 import { formatDate, formatPercent } from '@/utils/format';

@@ -2,6 +2,7 @@
 
 use App\Enums\CorporateActionTypeEnum;
 use App\Models\BacktestNseInstrumentPrice;
+use App\Models\User;
 
 beforeEach(function () {
     createScreenResultRow('ALPHA', 'Alpha Industries', '2026-07-29', [
@@ -60,7 +61,7 @@ it('opens a dated constituent list from an instrument pill and returns to a stoc
         ->assertSee('Nifty LargeMidcap 250')
         ->assertSee('2 constituents')
         ->assertSee('As of 31 Jul 2026')
-        ->assertSee('Export CSV')
+        ->assertDontSee('Export CSV')
         ->assertSee('Alpha Industries')
         ->assertSee('Beta Industries')
         ->assertNoJavaScriptErrors();
@@ -70,7 +71,6 @@ it('opens a dated constituent list from an instrument pill and returns to a stoc
         ->assertSee('1 matching constituent')
         ->assertDontSee('Alpha Industries')
         ->assertSee('Beta Industries');
-    expect($page->script('document.querySelector("a[href*=\"/constituents/export\"]").getAttribute("href")'))->toContain('date=2026-07-31', 'search=BETA');
     $page->click('a[href="/instruments/BETA"]:visible')
         ->assertPathIs('/instruments/BETA')
         ->assertSee('Beta Industries')
@@ -79,6 +79,15 @@ it('opens a dated constituent list from an instrument pill and returns to a stoc
     'desktop' => [1440, 1000],
     'mobile' => [390, 844],
 ]);
+
+it('shows paid members the filtered constituent CSV link', function () {
+    $this->actingAs(User::factory()->create(['is_paid' => true]));
+
+    visit('/nse-index/nifty-allcap/constituents?date=2026-07-31')
+        ->fill('#constituent-search', 'BETA')->press('Search')
+        ->assertSee('1 matching constituent')
+        ->assertSeeIn('a[href*="/constituents/export"][href*="date=2026-07-31"][href*="search=BETA"]', 'Export CSV');
+});
 
 it('keeps instrument data readable with tabs for company events', function (int $width, int $height) {
     $page = visit('/instruments/ALPHA')

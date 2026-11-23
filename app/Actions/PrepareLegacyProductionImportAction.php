@@ -25,11 +25,25 @@ use JsonException;
 
 /**
  * @phpstan-type Issue array{kind: string, table: string, column: string, message: string, ids: list<int>, count: int}
- * @phpstan-type TableAudit array{file: string, sha256: string, source_columns: list<string>, destination_columns: list<string>, copied_columns: list<string>, omitted_columns: list<string>, defaulted_columns: array<string, string|null>, rows: int, eligible: int, destination_rows: int, min_id: ?int, max_id: ?int, latest_update: ?string, distributions: array<string, array<string, int>>}
+ * @phpstan-type TableAudit array{file: string, sha256: string, source_columns: list<string>, destination_columns: list<string>, copied_columns: list<string>, omitted_columns: list<string>, defaulted_columns: array<string, string|null>, rows: int, eligible: int, destination_rows: int, min_id: ?int, max_id: ?int, source_auto_increment: ?int, latest_update: ?string, distributions: array<string, array<string, int>>}
  * @phpstan-type ImportAudit array{audited_at: string, database: string, destination_time_zone: string, source_time_zone?: ?string, market_data_range: array{first: ?string, last: ?string}, tables: array<string, TableAudit>, issues: array<string, Issue>, invalid_ids: array<string, array<int, true>>, unsupported_screen_ids: array<int, true>, public_screens: list<array{id: int, user_id: int}>}
  */
 class PrepareLegacyProductionImportAction
 {
+    public const ORDER_IDENTIFIERS = ['order_id', 'invoice_number', 'razorpay_payment_id', 'razorpay_order_id'];
+
+    private const DEFAULTS = [
+        'users' => ['convertkit_subscriber_id' => null],
+        'orders' => [],
+        'screens' => [
+            'unique_etf_per_index' => '0', 'apply_ema' => '0',
+            'above_ema_200' => '0', 'above_ema_100' => '0', 'above_ema_50' => '0', 'above_ema_20' => '0',
+            'below_ema_200' => '0', 'below_ema_100' => '0', 'below_ema_50' => '0', 'below_ema_20' => '0',
+        ],
+    ];
+
+    private const OMITTED_SCREEN_COLUMNS = ['ignore_top_beta', 'ignore_top_volatility'];
+
     /** @var ImportAudit */
     private array $report;
 
@@ -93,38 +107,38 @@ class PrepareLegacyProductionImportAction
                 'source_columns' => [],
                 'destination_columns' => $destinationColumns,
                 'copied_columns' => [],
-                'omitted_columns' => $table === 'screens' ? ['ignore_top_beta', 'ignore_top_volatility'] : [],
-                'defaulted_columns' => match ($table) {
-                    'users' => ['convertkit_subscriber_id' => null],
-                    'screens' => ['unique_etf_per_index' => '0'],
-                    default => [],
-                },
+                'omitted_columns' => [],
+                'defaulted_columns' => [],
                 'rows' => 0,
                 'eligible' => 0,
                 'destination_rows' => DB::table($destination)->count(),
                 'min_id' => null,
                 'max_id' => null,
+                'source_auto_increment' => null,
                 'latest_update' => null,
                 'distributions' => [],
             ];
 
-            foreach ($this->reader->execute($paths[$table], $table) as $row) {
+            $read = $this->reader->execute($paths[$table], $table, function (int $nextId) use ($table): void {
+                $this->report['tables'][$table]['source_auto_increment'] = $nextId;
+            });
+
+            foreach ($read as $row) {
                 $summary = &$this->report['tables'][$table];
                 $summary['rows']++;
 
                 if ($summary['source_columns'] === []) {
                     $summary['source_columns'] = array_keys($row);
                     $summary['copied_columns'] = array_values(array_intersect(array_keys($row), $destinationColumns));
-                    $expected = $destinationColumns;
+                    $summary['omitted_columns'] = array_values(array_diff(array_keys($row), $destinationColumns));
+                    $summary['defaulted_columns'] = array_diff_key(self::DEFAULTS[$table], $row);
+                    $missing = array_diff($destinationColumns, array_keys($row), array_keys($summary['defaulted_columns']));
+                    $unknown = array_diff($summary['omitted_columns'], $table === 'screens' ? self::OMITTED_SCREEN_COLUMNS : []);
+                    $missingDestination = array_diff(array_keys(self::DEFAULTS[$table]), $destinationColumns);
 
-                    if ($table === 'screens') {
-                        $expected = array_merge(array_diff($expected, ['unique_etf_per_index']), ['ignore_top_beta', 'ignore_top_volatility']);
-                    } elseif ($table === 'users') {
-                        $expected = array_diff($expected, ['convertkit_subscriber_id']);
-                    }
-
-                    if (array_diff($expected, array_keys($row)) !== [] || array_diff(array_keys($row), $expected) !== []) {
-                        throw new InvalidArgumentException("The {$table} dump columns do not match the supported production schema.");
+                    if ($missing !== [] || $unknown !== [] || $missingDestination !== []) {
+                        $columns = implode(', ', array_merge($missing, $unknown, $missingDestination));
+                        throw new InvalidArgumentException("The {$table} schema has unmapped columns ({$columns}).");
                     }
                 }
 
@@ -194,16 +208,13 @@ class PrepareLegacyProductionImportAction
      */
     public function normalize(string $table, array $row): array
     {
-        if ($table === 'users') {
-            $row['convertkit_subscriber_id'] = null;
-        }
+        $row += self::DEFAULTS[$table];
 
         if ($table !== 'screens') {
             return $row;
         }
 
         unset($row['ignore_top_beta'], $row['ignore_top_volatility']);
-        $row['unique_etf_per_index'] = '0';
         $row['index'] = match ($row['index']) {
             'nifty_large_mid_250' => 'nifty_largemidcap_250',
             'nifty_mid_small_400' => 'nifty_midsmallcap_400',
@@ -329,7 +340,7 @@ class PrepareLegacyProductionImportAction
     /** @param array<string, string|null> $row */
     private function auditOrder(array $row, int $id): void
     {
-        foreach (['order_id', 'invoice_number', 'razorpay_payment_id'] as $column) {
+        foreach (self::ORDER_IDENTIFIERS as $column) {
             $this->unique('orders', $column, $row[$column], $id);
         }
 
@@ -362,8 +373,8 @@ class PrepareLegacyProductionImportAction
      */
     private function auditScreen(array $row, array $source, int $id): void
     {
-        foreach (['ignore_top_beta', 'ignore_top_volatility'] as $column) {
-            if ($source[$column] === '1') {
+        foreach (self::OMITTED_SCREEN_COLUMNS as $column) {
+            if (($source[$column] ?? null) === '1') {
                 $this->issue('info', 'screens', $column, 'omitted_filter', $id, "{$column} is enabled in the dump and will be omitted.");
             }
         }

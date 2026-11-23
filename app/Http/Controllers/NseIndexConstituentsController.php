@@ -12,6 +12,7 @@ class NseIndexConstituentsController extends Controller
 {
     public function __invoke(NseIndexConstituentsRequest $request, QueryNseIndexConstituentsAction $queryConstituents): Response
     {
+        $user = $request->user();
         $index = $request->index();
         $filters = $request->filters();
         ['date' => $date, 'query' => $query] = $queryConstituents->execute($index, $filters);
@@ -29,7 +30,8 @@ class NseIndexConstituentsController extends Controller
             'constituents' => $constituents,
             'filters' => $filters,
             'listUrl' => route('nse-index.constituents.index', ['slug' => $index->slug()], false),
-            'exportUrl' => route('nse-index.constituents.export', ['slug' => $index->slug(), ...$filters], false),
+            'exportUrl' => $user?->is_paid && $user->hasVerifiedEmail()
+                ? route('nse-index.constituents.export', ['slug' => $index->slug(), ...$filters], false) : null,
             'indexUrl' => NseIndex::query()->where('slug', $index->slug())->exists()
                 ? route('nse-index.show', ['slug' => $index->slug()], false) : null,
             'allIndicesUrl' => route('indices.index', absolute: false),

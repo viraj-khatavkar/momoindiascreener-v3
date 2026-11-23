@@ -1,10 +1,13 @@
 <?php
 
 use App\Models\Order;
+use App\Models\Portfolio;
 use App\Models\Screen;
+use App\Models\ScreenExport;
 use App\Models\User;
 use Carbon\CarbonImmutable;
 use Illuminate\Database\Events\QueryExecuted;
+use Illuminate\Support\Arr;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\Hash;
@@ -35,7 +38,10 @@ beforeEach(function () {
         'id' => 40, 'user_id' => 20, 'ignore_top_beta' => false, 'ignore_top_volatility' => false,
         'created_at' => '2025-02-03 04:05:06', 'updated_at' => '2026-11-01 07:08:09',
     ])->getAttributes();
-    unset($screen['unique_etf_per_index']);
+    $screen = Arr::except($screen, [
+        'unique_etf_per_index', 'apply_ema', 'above_ema_200', 'above_ema_100', 'above_ema_50', 'above_ema_20',
+        'below_ema_200', 'below_ema_100', 'below_ema_50', 'below_ema_20',
+    ]);
 
     $this->legacyRows = ['users' => [$user], 'orders' => [$order], 'screens' => [$screen]];
     $this->importOptions = ['directory' => $this->legacyDirectory, '--report' => 'audit.json', '--source-timezone' => '+00:00'];
@@ -90,6 +96,8 @@ it('previews without writes and saves an audit without personal data', function 
     expect($report['tables']['users']['rows'])->toBe(1)
         ->and($report['tables']['users']['defaulted_columns'])->toBe(['convertkit_subscriber_id' => null])
         ->and($report['tables']['screens']['eligible'])->toBe(1)
+        ->and($report['tables']['screens']['defaulted_columns'])->toHaveCount(10)
+        ->and($report['tables']['screens']['defaulted_columns']['apply_ema'])->toBe('0')
         ->and($json)->not->toContain('legacy@example.test', $this->legacyRows['users'][0]['password']);
 });
 
@@ -273,6 +281,114 @@ it('does not replace existing records or rerun an import', function () {
         ->expectsOutputToContain('destination tables must be empty')
         ->assertFailed();
     expect(User::sole()->id)->toBe($existing->id)->and(Order::count())->toBe(0);
+});
+
+it('copies optional fields that exist in the export and defaults only missing fields', function () {
+    $this->legacyRows['screens'][0]['above_ema_200'] = true;
+    writeLegacyTestDumps($this->legacyDirectory, $this->legacyRows);
+
+    $this->artisan('legacy:import-production', $this->importOptions + ['--apply' => true])->assertSuccessful();
+    $report = Storage::disk('local')->json('audit.json');
+    expect(Screen::sole()->above_ema_200)->toBeTrue()
+        ->and(Screen::sole()->below_ema_200)->toBeFalse()
+        ->and($report['tables']['screens']['copied_columns'])->toContain('above_ema_200')
+        ->and($report['tables']['screens']['defaulted_columns'])->not->toHaveKey('above_ema_200');
+});
+
+it('blocks a fresh import when a retained record would lose its owner', function () {
+    $user = User::factory()->create(['id' => 21]);
+    $portfolio = Portfolio::factory()->for($user)->create();
+    DB::table('sessions')->insert(['id' => 'legacy-session', 'user_id' => 21, 'payload' => '', 'last_activity' => 1]);
+    writeLegacyTestDumps($this->legacyDirectory, $this->legacyRows);
+
+    $this->artisan('legacy:import-production', $this->importOptions + ['--fresh' => true, '--apply' => true])
+        ->expectsOutputToContain('unresolved ownership links')->assertFailed();
+    $report = Storage::disk('local')->json('audit.json');
+    expect($report['status'])->toBe('blocked')
+        ->and(array_sum($report['unresolved_references']))->toBe(2)
+        ->and(User::sole()->is($user))->toBeTrue()
+        ->and(Portfolio::sole()->is($portfolio))->toBeTrue();
+});
+
+it('detects a reused account ID before replacing its retained portfolio owner', function () {
+    $old = User::factory()->create(['id' => 20, 'email' => 'different@example.test']);
+    $portfolio = Portfolio::factory()->for($old)->create();
+    writeLegacyTestDumps($this->legacyDirectory, $this->legacyRows);
+
+    $this->artisan('legacy:import-production', $this->importOptions + ['--fresh' => true, '--apply' => true])
+        ->expectsOutputToContain('unresolved ownership links')->assertFailed();
+    expect(array_sum(Storage::disk('local')->json('audit.json')['unresolved_references']))->toBe(1)
+        ->and($portfolio->fresh()->user->email)->toBe('different@example.test');
+});
+
+it('detects a changed stored field even when all row counts match', function () {
+    writeLegacyTestDumps($this->legacyDirectory, $this->legacyRows);
+    DB::listen(function (QueryExecuted $query): void {
+        if (str_starts_with($query->sql, 'insert into `orders`')) {
+            DB::table('orders')->where('id', 30)->update(['amount' => '1.00']);
+        }
+    });
+
+    $this->artisan('legacy:import-production', $this->importOptions + ['--apply' => true])
+        ->expectsOutputToContain('Stored orders values differ')->assertFailed();
+    expect(User::count())->toBe(0)->and(Order::count())->toBe(0);
+});
+
+it('previews then truncates only the three import tables and verifies a repeat run', function () {
+    writeLegacyTestDumps($this->legacyDirectory, $this->legacyRows);
+    $path = $this->legacyDirectory.'/screens.gz';
+    $sql = str_replace('(`id` bigint);', '(`id` bigint) ENGINE=InnoDB AUTO_INCREMENT=83;', gzdecode(file_get_contents($path)));
+    file_put_contents($path, gzencode($sql));
+
+    // MySQL TRUNCATE commits implicitly. Exercise it on a separate connection to the same isolated test database.
+    config(['database.connections.legacy_cutover' => Arr::except(DB::connection()->getConfig(), 'name')]);
+    DB::usingConnection('legacy_cutover', function () {
+        expect(User::count())->toBe(0)->and(Order::count())->toBe(0)->and(Screen::count())->toBe(0);
+        try {
+            $user = User::factory()->create(['id' => 20, 'email' => 'legacy@example.test']);
+            $screen = Screen::factory()->for($user)->create(['id' => 40, 'name' => 'Before import', 'apply_ema' => true]);
+            $portfolio = Portfolio::factory()->for($user)->create();
+            $export = ScreenExport::factory()->for($user)->create(['screen_id' => $screen->id, 'settings' => []]);
+            $extra = User::factory()->create(['id' => 200]);
+            Order::factory()->for($extra)->create(['id' => 300]);
+            Screen::factory()->for($extra)->create(['id' => 400]);
+
+            $options = $this->importOptions + ['--fresh' => true];
+            $this->artisan('legacy:import-production', $options)->expectsOutputToContain('Preview only.')->assertSuccessful();
+            expect($screen->fresh()->name)->toBe('Before import')->and(User::count())->toBe(2);
+
+            $interrupt = true;
+            DB::listen(function (QueryExecuted $query) use (&$interrupt): void {
+                if ($interrupt && str_starts_with($query->sql, 'insert into `orders`')) {
+                    $interrupt = false;
+                    throw new RuntimeException('Simulated interruption after truncation.');
+                }
+            });
+            $this->artisan('legacy:import-production', array_replace($options, ['--apply' => true, '--report' => 'interrupted.json']))
+                ->expectsOutputToContain('Rerun --fresh --apply')->assertFailed();
+            expect($interrupt)->toBeFalse()->and(User::count())->toBe(0)
+                ->and((int) DB::selectOne('SELECT @@session.foreign_key_checks AS enabled')->enabled)->toBe(1);
+
+            foreach (['first.json', 'repeat.json'] as $report) {
+                $this->artisan('legacy:import-production', array_replace($options, ['--apply' => true, '--report' => $report]))->assertSuccessful();
+                $verified = Storage::disk('local')->json($report);
+                expect($verified['status'])->toBe('import_verified')->and($verified['staged_tables']['screens']['rows'])->toBe(1)
+                    ->and(User::sole()->id)->toBe(20)->and(Order::sole()->id)->toBe(30)->and(Screen::sole()->id)->toBe(40)
+                    ->and(Screen::sole()->apply_ema)->toBeFalse()
+                    ->and($user->fresh()->getRawOriginal('password'))->toBe($this->legacyRows['users'][0]['password'])
+                    ->and($portfolio->fresh()->user_id)->toBe(20)->and($export->fresh()->screen_id)->toBe(40)
+                    ->and((int) DB::selectOne('SELECT @@session.foreign_key_checks AS enabled')->enabled)->toBe(1);
+            }
+            expect(Screen::factory()->for($user)->create()->id)->toBe(83);
+        } finally {
+            DB::table('screen_exports')->where('user_id', 20)->delete();
+            DB::table('portfolios')->where('user_id', 20)->delete();
+            foreach (['orders', 'screens'] as $table) {
+                DB::table($table)->whereIn('user_id', [20, 200])->delete();
+            }
+            DB::table('users')->whereIn('id', [20, 200])->delete();
+        }
+    });
 });
 
 it('rolls back all three tables if a write fails after users were inserted', function () {

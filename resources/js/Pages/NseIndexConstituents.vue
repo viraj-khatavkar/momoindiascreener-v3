@@ -32,7 +32,7 @@
                 </p>
             </div>
             <a
-                v-if="constituents.total > 0"
+                v-if="exportUrl && constituents.total > 0"
                 :href="exportUrl"
                 class="inline-flex min-h-11 shrink-0 items-center justify-center gap-2 self-start rounded-md bg-purple-700 px-4 py-2 text-sm font-semibold text-white hover:bg-purple-800 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-purple-600"
             >
@@ -148,7 +148,7 @@ const props = defineProps<{
     };
     filters: Filters;
     listUrl: string;
-    exportUrl: string;
+    exportUrl: string | null;
     indexUrl: string | null;
     allIndicesUrl: string;
 }>();

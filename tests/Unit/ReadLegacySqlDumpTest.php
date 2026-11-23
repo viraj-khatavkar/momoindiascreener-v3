@@ -39,6 +39,21 @@ it('reads actual line breaks inside quoted values', function () {
     expect(iterator_to_array((new ReadLegacySqlDumpAction)->execute($this->dumpPath, 'users'))[0]['name'])->toBe("one\ntwo");
 });
 
+it('reads the next ID from table options and ignores quoted lookalikes', function () {
+    $sql = <<<'SQL'
+CREATE TABLE `users` (`id` bigint, `name` varchar(255) COMMENT ') ENGINE=InnoDB AUTO_INCREMENT=700')
+ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 AUTO_INCREMENT = 83 COMMENT='AUTO_INCREMENT=900 (old)';
+INSERT INTO `users` (`id`, `name`) VALUES (3, 'test');
+SQL;
+    file_put_contents($this->dumpPath, $sql);
+    $nextId = null;
+    $rows = (new ReadLegacySqlDumpAction)->execute($this->dumpPath, 'users', function (int $value) use (&$nextId): void {
+        $nextId = $value;
+    });
+
+    expect(iterator_to_array($rows))->toHaveCount(1)->and($nextId)->toBe(83);
+});
+
 it('rejects incomplete or unsupported SQL instead of executing or skipping it', function (string $sql) {
     file_put_contents($this->dumpPath, $sql);
 

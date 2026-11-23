@@ -4,6 +4,7 @@ use App\Enums\NseIndexEnum;
 use App\Http\Requests\StoreBacktestRequest;
 use App\Models\BacktestNseIndexConstituent;
 use App\Models\Screen;
+use App\Models\User;
 use Illuminate\Database\Events\QueryExecuted;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
@@ -79,7 +80,8 @@ it('shows additional membership pills and dated constituent pages and exports', 
         ->assertSuccessful()->assertInertia(fn (Assert $page) => $page
         ->where('date', '2026-11-16')->where('constituents.total', 1)
         ->where('constituents.data.0.symbol', 'OLD'));
-    $csv = $this->get('/nse-index/nifty-bank/constituents/export?date=2026-11-16')
+    $csv = $this->actingAs(User::factory()->create(['is_paid' => true]))
+        ->get('/nse-index/nifty-bank/constituents/export?date=2026-11-16')
         ->assertSuccessful()->assertDownload('nifty-bank-constituents-2026-11-16.csv')->streamedContent();
     expect($csv)->toContain('OLD')->not->toContain('NEW');
     $this->get('/nse-index/nifty-bank/constituents?date=2026-11-13')

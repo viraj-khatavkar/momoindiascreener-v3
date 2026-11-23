@@ -102,9 +102,13 @@
                                 >
                                     {{ bt.status }}
                                 </span>
-                                <div v-if="bt.status === 'running'" class="mt-1 h-1 w-16 rounded-full bg-gray-200">
-                                    <div class="h-1 rounded-full bg-blue-500 transition-all duration-300" :style="`width: ${bt.progress}%`" />
-                                </div>
+                                <BacktestProgressBar
+                                    v-if="bt.status === 'running'"
+                                    :progress="bt.progress"
+                                    :label="`${bt.name} progress`"
+                                    compact
+                                    class="mt-1 w-16"
+                                />
                             </td>
 
                             <!-- CAGR -->
@@ -186,6 +190,7 @@ import { Head, Link } from '@inertiajs/vue3';
 import { computed, reactive, ref } from 'vue';
 import { MagnifyingGlassIcon, ChevronUpIcon, ChevronDownIcon, ChevronRightIcon } from '@heroicons/vue/20/solid';
 import PageHeader from '@/Components/PageHeader.vue';
+import BacktestProgressBar from '@/Components/BacktestProgressBar.vue';
 import BacktestStrategyRules from '@/Pages/Backtests/partials/BacktestStrategyRules.vue';
 import DuplicateBacktestButton from '@/Pages/Backtests/partials/DuplicateBacktestButton.vue';
 import type { Backtest } from '@/types/app/Models/Backtest';

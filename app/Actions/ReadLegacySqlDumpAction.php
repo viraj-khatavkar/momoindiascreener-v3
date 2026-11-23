@@ -2,6 +2,7 @@
 
 namespace App\Actions;
 
+use Closure;
 use Generator;
 use InvalidArgumentException;
 
@@ -12,9 +13,10 @@ class ReadLegacySqlDumpAction
     /**
      * Read literal INSERT values from a TablePlus MySQL export. Never execute its SQL.
      *
+     * @param  (Closure(int): void)|null  $onAutoIncrement
      * @return Generator<int, array<string, string|null>>
      */
-    public function execute(string $path, string $table): Generator
+    public function execute(string $path, string $table, ?Closure $onAutoIncrement = null): Generator
     {
         if (! in_array($table, ['users', 'orders', 'screens'], true)) {
             throw new InvalidArgumentException('Unsupported dump table.');
@@ -50,6 +52,10 @@ class ReadLegacySqlDumpAction
 
         foreach ($this->statements($contents, $table) as $statement) {
             if (preg_match('/\A(?:CREATE TABLE|DROP TABLE IF EXISTS) `'.$table.'`(?:\s|\z)/', $statement)) {
+                if ($onAutoIncrement !== null && ($nextId = $this->autoIncrement($statement)) !== null) {
+                    $onAutoIncrement($nextId);
+                }
+
                 continue;
             }
 
@@ -99,6 +105,29 @@ class ReadLegacySqlDumpAction
                 throw new InvalidArgumentException("Incomplete INSERT in the {$table} dump.");
             }
         }
+    }
+
+    private function autoIncrement(string $statement): ?int
+    {
+        // Quoted defaults, identifiers and comments can contain parentheses or option names.
+        $unquoted = preg_replace(<<<'REGEX'
+            ~
+                '(?: \\. | '' | [^'\\]++ )*'
+              | "(?: \\. | "" | [^"\\]++ )*"
+              | `(?: \\. | `` | [^`\\]++ )*`
+            ~sx
+            REGEX, ' ', $statement);
+        $options = strrchr($unquoted ?? '', ')');
+        if ($options === false || ! preg_match('/\bAUTO_INCREMENT\s*=\s*(\d+)\b/i', $options, $match)) {
+            return null;
+        }
+
+        $nextId = filter_var($match[1], FILTER_VALIDATE_INT, ['options' => ['min_range' => 1]]);
+        if ($nextId === false) {
+            throw new InvalidArgumentException('Invalid AUTO_INCREMENT in the dump.');
+        }
+
+        return $nextId;
     }
 
     /** @return Generator<int, string> */

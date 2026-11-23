@@ -2,14 +2,16 @@
 
 namespace App\Console\Commands;
 
+use App\Actions\LoadLegacyProductionImportAction;
 use App\Actions\PrepareLegacyProductionImportAction;
-use App\Actions\ReadLegacySqlDumpAction;
 use Illuminate\Console\Command;
 use Illuminate\Database\QueryException;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\File;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 use InvalidArgumentException;
+use League\Flysystem\WhitespacePathNormalizer;
 use RuntimeException;
 use Throwable;
 
@@ -18,14 +20,15 @@ class ImportLegacyProductionCommand extends Command
 {
     protected $signature = 'legacy:import-production
         {directory : Directory with users.gz, orders.gz and screens.gz (or .sql files)}
-        {--apply : Import into empty destination tables after the audit passes}
+        {--apply : Write the audited import to the destination}
+        {--fresh : Verify a complete replacement. With --apply, truncate users, orders and screens without a backup}
         {--skip-unsupported-screens : Omit screens with unsupported settings; list their IDs in the report}
         {--source-timezone= : MySQL export session offset, such as +00:00 or +05:30; required with --apply}
         {--report= : New JSON report path relative to the private local storage disk}';
 
-    protected $description = 'Audit and import production users, orders and screens from TablePlus SQL dumps';
+    protected $description = 'Audit and load users, orders and screens for the legacy production migration';
 
-    public function handle(PrepareLegacyProductionImportAction $prepare, ReadLegacySqlDumpAction $reader): int
+    public function handle(PrepareLegacyProductionImportAction $prepare, LoadLegacyProductionImportAction $load): int
     {
         try {
             $paths = $this->paths();
@@ -41,6 +44,11 @@ class ImportLegacyProductionCommand extends Command
 
             $report = $prepare->execute($paths);
             $report['source_time_zone'] = $sourceTimezone;
+            $fresh = (bool) $this->option('fresh');
+            $apply = (bool) $this->option('apply');
+            $report['mode'] = $fresh ? 'fresh' : 'empty';
+            $report['apply_requested'] = $apply;
+            $report['status'] = 'source_audited';
             $reportPath = $this->saveReport($report);
             $this->showReport($report);
             $this->info('Audit report: '.$reportPath);
@@ -49,28 +57,47 @@ class ImportLegacyProductionCommand extends Command
             $hasUnsupported = $report['unsupported_screen_ids'] !== [] && ! $this->option('skip-unsupported-screens');
             $hasDestinationRows = collect($report['tables'])->contains(fn (array $table): bool => $table['destination_rows'] > 0);
 
-            if ($hasDestinationRows) {
+            if ($hasDestinationRows && ! $fresh) {
                 $this->warn('The users, orders and screens destination tables must be empty before import.');
             }
 
-            if ($hasErrors || $hasUnsupported || $hasDestinationRows) {
+            if ($hasErrors || $hasUnsupported || ($hasDestinationRows && ! $fresh)) {
                 $this->error('Import blocked. No database rows were changed. Review the audit report.');
 
                 return self::FAILURE;
             }
 
-            if (! $this->option('apply')) {
-                $this->info('Preview only. No database rows were changed. Use --apply to import.');
+            if ($apply && $sourceTimezone === null) {
+                throw new InvalidArgumentException('Confirm the export session time zone and provide --source-timezone before using --apply.');
+            }
+
+            if ($fresh || $apply) {
+                $load->execute($paths, $report, $fresh, $apply, function (array $verified, array $references) use (&$report, $reportPath): void {
+                    $report['staged_tables'] = $verified;
+                    $report['unresolved_references'] = $references;
+                    $report['status'] = array_filter($references) === [] ? 'staged' : 'blocked';
+                    File::replace($reportPath, json_encode($report, JSON_PRETTY_PRINT | JSON_THROW_ON_ERROR), 0600);
+                });
+            }
+
+            if (! $apply) {
+                $this->info($fresh
+                    ? 'Preview only. All staged values and retained references passed. Add --apply to truncate and reload the three tables.'
+                    : 'Preview only. No database rows were changed. Use --apply to import.');
 
                 return self::SUCCESS;
             }
 
-            if ($sourceTimezone === null) {
-                throw new InvalidArgumentException('Confirm the export session time zone and provide --source-timezone before using --apply.');
-            }
+            $report['status'] = 'import_verified';
+            $report['completed_at'] = now()->toIso8601String();
+            try {
+                File::replace($reportPath, json_encode($report, JSON_PRETTY_PRINT | JSON_THROW_ON_ERROR), 0600);
+            } catch (Throwable) {
+                $this->error('The import committed and verified, but writing the completion status to the audit report failed.');
 
-            $this->import($paths, $report, $prepare, $reader);
-            $this->info('Import complete. Source IDs, passwords, timestamps and ownership links were preserved.');
+                return self::FAILURE;
+            }
+            $this->info('Import complete. Every stored row and column matched the audited data.');
 
             return self::SUCCESS;
         } catch (QueryException $exception) {
@@ -106,17 +133,23 @@ class ImportLegacyProductionCommand extends Command
     private function saveReport(array $report): string
     {
         $path = $this->option('report') ?: 'migration-reports/production-'.now()->format('Ymd-His').'-'.Str::random(8).'.json';
+        $path = (new WhitespacePathNormalizer)->normalizePath($path);
         $disk = Storage::disk('local');
-
-        if ($disk->exists($path)) {
-            throw new InvalidArgumentException('The report path already exists. Choose a new report path.');
+        if (dirname($path) !== '.') {
+            $disk->makeDirectory(dirname($path));
         }
 
-        if (! $disk->put($path, json_encode($report, JSON_PRETTY_PRINT | JSON_THROW_ON_ERROR), ['visibility' => 'private'])) {
-            throw new RuntimeException('Cannot save the audit report. No data was imported.');
+        $absolute = $disk->path($path);
+        $file = @fopen($absolute, 'xb');
+        if ($file === false) {
+            throw new RuntimeException($disk->exists($path)
+                ? 'The report path already exists. Choose a new report path.'
+                : 'Cannot create the private audit report.');
         }
+        fclose($file);
+        File::replace($absolute, json_encode($report, JSON_PRETTY_PRINT | JSON_THROW_ON_ERROR), 0600);
 
-        return $disk->path($path);
+        return $absolute;
     }
 
     /** @param ImportAudit $report */
@@ -139,79 +172,5 @@ class ImportLegacyProductionCommand extends Command
         $this->line('Export session time zone: '.($report['source_time_zone'] ?? 'unknown; required for --apply').'. Destination session time zone: '.$report['destination_time_zone'].'.');
         $this->line('Local market data: '.($report['market_data_range']['first'] ?? 'none').' to '.($report['market_data_range']['last'] ?? 'none').'.');
         $this->line('Sessions, password reset tokens, market data and other tables are outside this import.');
-    }
-
-    /**
-     * @param  array<string, string>  $paths
-     * @param  ImportAudit  $report
-     */
-    private function import(array $paths, array $report, PrepareLegacyProductionImportAction $prepare, ReadLegacySqlDumpAction $reader): void
-    {
-        $connection = DB::connection();
-        $previousTimezone = $connection->selectOne('SELECT @@session.time_zone AS zone')->zone;
-        $lock = 'legacy-import:'.substr(hash('sha256', $connection->getDatabaseName()), 0, 40);
-
-        if ((int) $connection->selectOne('SELECT GET_LOCK(?, 0) AS acquired', [$lock])->acquired !== 1) {
-            throw new RuntimeException('Another production import holds the database lock.');
-        }
-
-        try {
-            $connection->statement('SET time_zone = ?', [$this->option('source-timezone')]);
-
-            foreach (PrepareLegacyProductionImportAction::tables() as $table) {
-                $engine = $connection->selectOne(
-                    'SELECT ENGINE AS engine FROM information_schema.TABLES WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ?',
-                    [$connection->getTablePrefix().$table],
-                );
-
-                if ($engine?->engine !== 'InnoDB') {
-                    throw new RuntimeException('All three destination tables must use InnoDB for a transaction-safe import.');
-                }
-            }
-
-            $connection->transaction(function () use ($paths, $report, $prepare, $reader): void {
-                foreach (PrepareLegacyProductionImportAction::tables() as $table) {
-                    if (DB::table($table)->exists()) {
-                        throw new RuntimeException('Destination tables are no longer empty. No data was imported.');
-                    }
-                }
-
-                foreach (PrepareLegacyProductionImportAction::tables() as $table => $destination) {
-                    if (hash_file('sha256', $paths[$table]) !== $report['tables'][$table]['sha256']) {
-                        throw new RuntimeException('A source dump changed after the audit. No data was imported.');
-                    }
-
-                    $batch = [];
-
-                    foreach ($reader->execute($paths[$table], $table) as $row) {
-                        if ($table === 'screens' && isset($report['unsupported_screen_ids'][(int) $row['id']])) {
-                            continue;
-                        }
-
-                        $batch[] = $prepare->normalize($table, $row);
-
-                        if (count($batch) === 100) {
-                            DB::table($destination)->insert($batch);
-                            $batch = [];
-                        }
-                    }
-
-                    if ($batch !== []) {
-                        DB::table($destination)->insert($batch);
-                    }
-
-                    if (hash_file('sha256', $paths[$table]) !== $report['tables'][$table]['sha256'] || DB::table($destination)->count() !== $report['tables'][$table]['eligible']) {
-                        throw new RuntimeException('The source or destination changed during import. The transaction was rolled back.');
-                    }
-                }
-            });
-        } finally {
-            try {
-                $connection->statement('SET time_zone = ?', [$previousTimezone]);
-                $connection->selectOne('SELECT RELEASE_LOCK(?)', [$lock]);
-            } catch (Throwable) {
-                $connection->disconnect();
-            }
-        }
     }
 }

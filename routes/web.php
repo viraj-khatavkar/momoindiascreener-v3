@@ -90,7 +90,6 @@ Route::post('/razorpay/callback', [RazorpayController::class, 'callback']);
 Route::get('/razorpay/cancel', [RazorpayController::class, 'cancel']);
 
 Route::get('/dashboard', IndicesDashboardController::class)->name('indices.index');
-Route::get('/nse-index/{slug}/constituents/export', NseIndexConstituentsCsvController::class)->name('nse-index.constituents.export');
 Route::get('/nse-index/{slug}/constituents', NseIndexConstituentsController::class)->name('nse-index.constituents.index');
 Route::get('/nse-index/{slug}', NseIndexViewController::class)->name('nse-index.show');
 
@@ -140,6 +139,8 @@ Route::middleware(['auth', 'verified'])->group(function () {
 
     // Tools that require a paid subscription.
     Route::middleware(VerifyIsPaid::class)->group(function () {
+        Route::get('/nse-index/{slug}/constituents/export', NseIndexConstituentsCsvController::class)->name('nse-index.constituents.export');
+
         Route::get('/screen-exports', [ScreenExportsController::class, 'index'])->name('screen-exports.index');
         Route::post('/screen-exports', [ScreenExportsController::class, 'store'])->name('screen-exports.store');
         Route::get('/screen-exports/{screenExport}/download', ScreenExportDownloadController::class)->name('screen-exports.download');

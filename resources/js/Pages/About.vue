@@ -97,7 +97,22 @@
                             Tomorrow I might trade something else. I am not married to any strategy or asset class.
                             I am married to making money.
                         </p>
-                        <p>Here are a few unwritten trading rules that I follow:</p>
+                        <p>
+                            Here are a few
+                            <button
+                                type="button"
+                                class="relative cursor-pointer rounded-sm underline decoration-purple-300 decoration-dotted underline-offset-4 focus-visible:outline-2 focus-visible:outline-purple-600"
+                                :aria-pressed="written"
+                                @click="written = !written"
+                            >
+                                <span class="prefix" :class="{ corrected: written }" :aria-hidden="written || undefined">un</span>written<PencilIcon
+                                    v-if="written"
+                                    aria-hidden="true"
+                                    class="correction-pencil pointer-events-none absolute bottom-1/2 left-0 size-4 text-purple-700"
+                                />
+                            </button>
+                            trading rules that I follow:
+                        </p>
                         <ul role="list">
                             <li>Don't marry a stock or a strategy.</li>
                             <li>Don't be afraid to change your mind.</li>
@@ -115,4 +130,56 @@
 
 <script setup lang="ts">
 import { Head } from '@inertiajs/vue3';
+import { PencilIcon } from '@heroicons/vue/24/outline';
+import { ref } from 'vue';
+
+const written = ref(false);
 </script>
+
+<style scoped>
+.prefix {
+    position: relative;
+}
+.corrected::after {
+    content: '';
+    position: absolute;
+    inset: 55% -1px auto;
+    border-top: 2px solid #7515d9;
+    transform: rotate(-7deg);
+    transform-origin: left;
+}
+.correction-pencil {
+    opacity: 0;
+}
+@media (prefers-reduced-motion: no-preference) {
+    .correction-pencil {
+        animation: pencil 700ms both;
+    }
+    .corrected::after {
+        animation: strike 240ms 170ms ease-out backwards;
+    }
+}
+@keyframes pencil {
+    0% {
+        opacity: 0;
+        transform: translate(-1.6em, -0.4em);
+    }
+    25% {
+        opacity: 1;
+        transform: translateX(-0.15em);
+    }
+    60% {
+        opacity: 1;
+        transform: translateX(1em);
+    }
+    100% {
+        opacity: 0;
+        transform: translate(1.8em, -0.6em);
+    }
+}
+@keyframes strike {
+    from {
+        transform: rotate(-7deg) scaleX(0);
+    }
+}
+</style>

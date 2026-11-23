@@ -5,6 +5,7 @@ use App\Enums\NseIndexEnum;
 use App\Models\AdminProcessRun;
 use App\Models\BacktestNseIndexConstituent;
 use App\Models\NseIndex;
+use App\Models\User;
 use Illuminate\Testing\TestResponse;
 use Inertia\Testing\AssertableInertia as Assert;
 
@@ -21,6 +22,25 @@ function constituentCsvRows(TestResponse $response): array
 
     return $rows;
 }
+
+it('keeps constituents public and restricts CSV exports to verified paid accounts', function (?User $user, string $redirect) {
+    if ($user !== null) {
+        $this->actingAs($user);
+    }
+
+    createScreenResultRow('MEMBER', 'Midcap member', '2026-11-17', ['is_nifty_midcap_100' => true]);
+    $url = '/nse-index/nifty-midcap-100/constituents';
+
+    $this->get($url)->assertSuccessful()->assertInertia(fn (Assert $page) => $page
+        ->where('constituents.data.0.symbol', 'MEMBER')
+        ->where('exportUrl', null));
+    $this->get($url.'/export')->assertRedirect($redirect);
+})->with([
+    'guest' => [null, '/login'],
+    'free account' => [fn () => User::factory()->create(['is_paid' => false]), '/pricing'],
+    'newsletter-only subscriber' => [fn () => User::factory()->create(['is_newsletter_paid' => true]), '/pricing'],
+    'unverified paid account' => [fn () => User::factory()->unverified()->create(['is_paid' => true]), '/email/verify'],
+]);
 
 it('links each instrument membership to its dated constituent list', function (NseIndexEnum $index) {
     createScreenResultRow('MEMBER', 'A member', '2026-10-30', [
@@ -56,6 +76,7 @@ it('reads dated flags without copying the current membership list into history',
 })->with([NseIndexEnum::NIFTY_FNO, NseIndexEnum::NIFTY_LARGEMIDCAP_250]);
 
 it('keeps list and export on the latest finished date', function (AdminProcessRunStatusEnum $status) {
+    $this->actingAs(User::factory()->create(['is_paid' => true]));
     createScreenResultRow('READY', 'Completed data', '2026-10-30', ['is_nifty_50' => true]);
     createScreenResultRow('PARTIAL', 'Unfinished data', '2026-11-02', ['is_nifty_50' => true]);
     AdminProcessRun::factory()->create(['process_date' => '2026-11-02', 'status' => $status]);
@@ -70,6 +91,7 @@ it('keeps list and export on the latest finished date', function (AdminProcessRu
 })->with(array_values(array_filter(AdminProcessRunStatusEnum::cases(), fn (AdminProcessRunStatusEnum $status): bool => $status !== AdminProcessRunStatusEnum::Completed)));
 
 it('includes trusts and preserves missing and zero metrics', function () {
+    $this->actingAs(User::factory()->create(['is_paid' => true]));
     createScreenResultRow('EMBASSY', 'Embassy', '2026-10-30', [
         'series' => 'RR', 'is_nifty_total_market' => true, 'close_raw' => 200, 'close_adjusted' => 100,
         'marketcap' => 100, 'price_to_earnings' => null, 'absolute_return_one_year' => 0, 'beta' => null,
@@ -95,6 +117,7 @@ it('includes trusts and preserves missing and zero metrics', function () {
 });
 
 it('paginates the list but exports every matching row with the same search and sort', function () {
+    $this->actingAs(User::factory()->create(['is_paid' => true]));
     foreach (range(1, 52) as $number) {
         createScreenResultRow('STOCK'.str_pad((string) $number, 2, '0', STR_PAD_LEFT), 'Example Company', '2026-10-30', [
             'is_nifty_fno' => true, 'marketcap' => 100 + $number,
@@ -128,6 +151,7 @@ it('keeps missing values last when sorting either way', function (string $direct
 ]);
 
 it('escapes spreadsheet formulas in company names while retaining numeric returns', function () {
+    $this->actingAs(User::factory()->create(['is_paid' => true]));
     createScreenResultRow('MEMBER', '=1+1', '2026-10-30', ['is_nifty_50' => true, 'absolute_return_one_year' => -10]);
     $rows = constituentCsvRows($this->get('/nse-index/nifty-50/constituents/export')->assertSuccessful());
     expect($rows[1][2])->toBe("'=1+1")->and((float) $rows[1][6])->toBe(-10.0);
@@ -141,12 +165,14 @@ it('shows an empty list instead of using an older membership snapshot', function
 });
 
 it('handles an empty database with a usable page and CSV header', function () {
+    $this->actingAs(User::factory()->create(['is_paid' => true]));
     $this->get('/nse-index/nifty-50/constituents')->assertSuccessful()->assertInertia(fn (Assert $page) => $page
         ->where('date', null)->where('constituents.total', 0)->where('indexUrl', null));
     expect(constituentCsvRows($this->get('/nse-index/nifty-50/constituents/export')->assertSuccessful()))->toHaveCount(1);
 });
 
 it('rejects unsupported indices and invalid query fields', function (string $suffix) {
+    $this->actingAs(User::factory()->create(['is_paid' => true]));
     $this->get('/nse-index/unknown/constituents'.$suffix)->assertNotFound();
     $this->get('/nse-index/nifty_fno/constituents'.$suffix)->assertNotFound();
     foreach (['sort' => 'not_a_column', 'direction' => 'invalid', 'date' => '2026-02-30', 'page' => 0, 'search' => str_repeat('x', 101)] as $key => $value) {

@@ -106,7 +106,7 @@
 
         <!-- No results at all -->
         <div v-if="results.length === 0" class="mt-4 rounded-lg border border-dashed border-gray-300 px-6 py-16 text-center">
-            <FunnelIcon class="mx-auto h-10 w-10 text-gray-400" />
+            <EmptyScreenFunnel />
             <p class="mt-3 text-sm font-semibold text-gray-900">No stocks matched your filters</p>
             <p class="mt-1 text-sm text-gray-500">
                 {{
@@ -188,47 +188,65 @@
                             </tr>
                         </thead>
                         <tbody>
-                            <tr v-for="row in displayedRows" :key="row.item.id" class="group hover:bg-gray-50">
-                                <td
-                                    class="sticky left-0 z-10 w-20 min-w-20 border-b border-gray-200 bg-white px-3 py-2.5 text-sm whitespace-nowrap text-gray-500 tabular-nums group-last:border-b-0 group-hover:bg-gray-50"
-                                >
-                                    {{ row.screenRank }}
-                                </td>
-                                <td
-                                    class="sticky left-20 z-10 border-r border-b border-gray-200 bg-white px-3 py-2.5 whitespace-nowrap group-last:border-b-0 group-hover:bg-gray-50"
-                                >
-                                    <Link
-                                        :href="`/instruments/${row.item.symbol}`"
-                                        class="block max-w-44 cursor-pointer text-gray-900 hover:text-purple-600"
+                            <template v-for="row in displayedRows" :key="row.item.id">
+                                <tr class="group hover:bg-gray-50">
+                                    <td
+                                        class="sticky left-0 z-10 w-20 min-w-20 border-b border-gray-200 bg-white px-3 py-2.5 text-sm whitespace-nowrap text-gray-500 tabular-nums group-last:border-b-0 group-hover:bg-gray-50"
                                     >
-                                        <span class="block truncate text-sm font-semibold">
-                                            {{ row.item.symbol }}
+                                        <button
+                                            type="button"
+                                            :class="rankButtonClass"
+                                            :aria-label="`Rank receipt for ${row.item.symbol}, screen rank ${row.screenRank}`"
+                                            :aria-expanded="receiptId === row.item.id"
+                                            :aria-controls="receiptId === row.item.id ? `rank-receipt-${row.item.id}` : undefined"
+                                            @click="toggleReceipt(row.item.id)"
+                                        >
+                                            {{ row.screenRank }}
+                                        </button>
+                                    </td>
+                                    <td
+                                        class="sticky left-20 z-10 border-r border-b border-gray-200 bg-white px-3 py-2.5 whitespace-nowrap group-last:border-b-0 group-hover:bg-gray-50"
+                                    >
+                                        <Link
+                                            :href="`/instruments/${row.item.symbol}`"
+                                            class="block max-w-44 cursor-pointer text-gray-900 hover:text-purple-600"
+                                        >
+                                            <span class="block truncate text-sm font-semibold">
+                                                {{ row.item.symbol }}
+                                            </span>
+                                            <span class="block truncate text-xs text-gray-500">
+                                                {{ row.item.name }}
+                                            </span>
+                                        </Link>
+                                    </td>
+                                    <td
+                                        v-for="factor in factorColumns"
+                                        :key="`${row.item.id}-${factor.rankKey}`"
+                                        class="border-b border-gray-200 px-3 py-2.5 text-right text-sm whitespace-nowrap tabular-nums group-last:border-b-0"
+                                        :class="screenCellClass(factor.key, row.item[factor.key])"
+                                    >
+                                        {{ formatScreenCellValue(factor.key, row.item[factor.key]) }}
+                                        <span v-if="isMultiFactor && row.item[factor.rankKey] != null" class="ml-1 text-xs text-gray-400">
+                                            #{{ row.item[factor.rankKey] }}
                                         </span>
-                                        <span class="block truncate text-xs text-gray-500">
-                                            {{ row.item.name }}
-                                        </span>
-                                    </Link>
-                                </td>
-                                <td
-                                    v-for="factor in factorColumns"
-                                    :key="`${row.item.id}-${factor.rankKey}`"
-                                    class="border-b border-gray-200 px-3 py-2.5 text-right text-sm whitespace-nowrap tabular-nums group-last:border-b-0"
-                                    :class="screenCellClass(factor.key, row.item[factor.key])"
-                                >
-                                    {{ formatScreenCellValue(factor.key, row.item[factor.key]) }}
-                                    <span v-if="isMultiFactor && row.item[factor.rankKey] != null" class="ml-1 text-xs text-gray-400">
-                                        #{{ row.item[factor.rankKey] }}
-                                    </span>
-                                </td>
-                                <td
-                                    v-for="column in visibleColumns"
-                                    :key="`${row.item.id}-${column.name}`"
-                                    class="border-b border-gray-200 px-3 py-2.5 text-sm whitespace-nowrap tabular-nums group-last:border-b-0"
-                                    :class="[screenColumnAlignClass(column.name), screenCellClass(column.name, row.item[column.name])]"
-                                >
-                                    {{ formatScreenCellValue(column.name, row.item[column.name]) }}
-                                </td>
-                            </tr>
+                                    </td>
+                                    <td
+                                        v-for="column in visibleColumns"
+                                        :key="`${row.item.id}-${column.name}`"
+                                        class="border-b border-gray-200 px-3 py-2.5 text-sm whitespace-nowrap tabular-nums group-last:border-b-0"
+                                        :class="[screenColumnAlignClass(column.name), screenCellClass(column.name, row.item[column.name])]"
+                                    >
+                                        {{ formatScreenCellValue(column.name, row.item[column.name]) }}
+                                    </td>
+                                </tr>
+                                <tr v-if="receiptId === row.item.id" :id="`rank-receipt-${row.item.id}`">
+                                    <td :colspan="2 + factorColumns.length + visibleColumns.length" class="border-b border-gray-200 py-2">
+                                        <div class="sticky left-0 w-[min(24rem,85vw)] px-3">
+                                            <RankReceipt :item="row.item" :factors="factorColumns" :rank="row.screenRank" :count="results.length" />
+                                        </div>
+                                    </td>
+                                </tr>
+                            </template>
                         </tbody>
                     </table>
                 </div>
@@ -238,25 +256,43 @@
             <div class="mt-4 md:hidden">
                 <p class="mb-2 text-xs text-gray-500">Row values: {{ mobileValueLabel }}</p>
                 <Disclosure v-for="row in displayedRows" :key="row.item.id" v-slot="{ open }" as="div" class="border-b border-gray-200">
-                    <DisclosureButton
-                        class="flex w-full cursor-pointer items-center gap-3 rounded py-3 text-left focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-purple-600"
-                    >
-                        <span class="w-7 shrink-0 text-sm text-gray-400 tabular-nums">
-                            <span class="sr-only">Screen rank </span>{{ row.screenRank }}
-                        </span>
-                        <span class="min-w-0 flex-1">
-                            <span class="block truncate text-sm font-semibold text-gray-900">
-                                {{ row.item.symbol }}
+                    <div class="flex items-center gap-1">
+                        <button
+                            type="button"
+                            :class="rankButtonClass"
+                            :aria-label="`Rank receipt for ${row.item.symbol}, screen rank ${row.screenRank}`"
+                            :aria-expanded="receiptId === row.item.id"
+                            :aria-controls="receiptId === row.item.id ? `mobile-rank-receipt-${row.item.id}` : undefined"
+                            @click="toggleReceipt(row.item.id)"
+                        >
+                            {{ row.screenRank }}
+                        </button>
+                        <DisclosureButton
+                            class="flex min-w-0 flex-1 cursor-pointer items-center gap-3 rounded py-3 text-left focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-purple-600"
+                        >
+                            <span class="min-w-0 flex-1">
+                                <span class="block truncate text-sm font-semibold text-gray-900">
+                                    {{ row.item.symbol }}
+                                </span>
+                                <span class="block truncate text-xs text-gray-500">
+                                    {{ row.item.name }}
+                                </span>
                             </span>
-                            <span class="block truncate text-xs text-gray-500">
-                                {{ row.item.name }}
+                            <span class="shrink-0 text-sm tabular-nums" :class="screenCellClass(mobileValueColumn, row.item[mobileValueColumn])">
+                                {{ formatScreenCellValue(mobileValueColumn, row.item[mobileValueColumn]) }}
                             </span>
-                        </span>
-                        <span class="shrink-0 text-sm tabular-nums" :class="screenCellClass(mobileValueColumn, row.item[mobileValueColumn])">
-                            {{ formatScreenCellValue(mobileValueColumn, row.item[mobileValueColumn]) }}
-                        </span>
-                        <ChevronDownIcon :class="[open ? 'rotate-180' : '', 'h-5 w-5 shrink-0 text-gray-400']" />
-                    </DisclosureButton>
+                            <ChevronDownIcon :class="[open ? 'rotate-180' : '', 'h-5 w-5 shrink-0 text-gray-400']" />
+                        </DisclosureButton>
+                    </div>
+                    <RankReceipt
+                        v-if="receiptId === row.item.id"
+                        :id="`mobile-rank-receipt-${row.item.id}`"
+                        class="mb-3"
+                        :item="row.item"
+                        :factors="factorColumns"
+                        :rank="row.screenRank"
+                        :count="results.length"
+                    />
                     <DisclosurePanel class="pb-4 pl-10">
                         <div class="flex flex-col gap-3">
                             <template v-if="isMultiFactor">
@@ -306,10 +342,11 @@
 </template>
 
 <script setup lang="ts">
-import { computed, ref } from 'vue';
+import { computed, ref, watch } from 'vue';
 import { Disclosure, DisclosureButton, DisclosurePanel } from '@headlessui/vue';
 import { ArrowDownTrayIcon, ChevronDownIcon, MagnifyingGlassIcon, TableCellsIcon } from '@heroicons/vue/20/solid';
-import { FunnelIcon } from '@heroicons/vue/24/outline';
+import EmptyScreenFunnel from './EmptyScreenFunnel.vue';
+import RankReceipt, { type RankFactor } from './RankReceipt.vue';
 import { Link } from '@inertiajs/vue3';
 import WarningAlert from '@/Components/Alerts/WarningAlert.vue';
 import SelectInput from '@/Components/Form/SelectInput.vue';
@@ -328,12 +365,6 @@ type ResultItem = BacktestNseInstrumentPriceResource & Record<string, any>;
 interface ResultRow {
     item: ResultItem;
     screenRank: number;
-}
-
-interface FactorColumn {
-    key: string;
-    direction: string;
-    rankKey: string;
 }
 
 const props = withDefaults(
@@ -358,8 +389,8 @@ const props = withDefaults(
 
 const isMultiFactor = computed(() => props.screen.apply_factor_two || props.screen.apply_factor_three);
 
-const factorColumns = computed<FactorColumn[]>(() => {
-    const factors: FactorColumn[] = [
+const factorColumns = computed<RankFactor[]>(() => {
+    const factors: RankFactor[] = [
         {
             key: props.screen.sort_by,
             direction: props.screen.sort_direction,
@@ -391,6 +422,18 @@ const visibleColumns = computed(() => props.columns.filter((column) => !factorCo
 const searchQuery = ref('');
 const clientSort = ref<{ column: string; direction: 'asc' | 'desc' } | null>(null);
 const columnsPanelOpen = ref(false);
+const receiptId = ref<number | null>(null);
+const rankButtonClass =
+    'inline-flex min-h-11 min-w-11 cursor-pointer items-center rounded text-sm font-medium text-purple-700 underline decoration-dotted underline-offset-4 focus-visible:outline-2 focus-visible:outline-purple-600 md:min-h-8 md:min-w-8';
+function toggleReceipt(id: number): void {
+    receiptId.value = receiptId.value === id ? null : id;
+}
+watch(
+    () => props.results,
+    () => {
+        receiptId.value = null;
+    },
+);
 const sortOptions = computed(() =>
     [
         { id: '', name: 'Screen Rank' },

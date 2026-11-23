@@ -137,91 +137,13 @@
                 <BacktestStrategyRules v-if="showStrategyRules" :backtest="backtest" />
             </div>
 
-            <!-- Running state -->
-            <div v-if="backtest.status === 'running'" class="mt-6">
-                <div
-                    class="relative overflow-hidden rounded-2xl bg-linear-to-br from-gray-900 to-gray-950 p-8 shadow-xl ring-1 ring-white/10"
-                    role="progressbar"
-                    :aria-valuenow="backtest.progress > 0 ? backtest.progress : undefined"
-                    aria-valuemin="0"
-                    aria-valuemax="100"
-                    aria-live="polite"
-                    :aria-label="backtest.progress === 0 ? progressStageLabel : `Backtest ${backtest.progress}% complete`"
-                >
-                    <!-- Animated background grid -->
-                    <div
-                        class="pointer-events-none absolute inset-0 opacity-[0.03]"
-                        style="
-                            background-image:
-                                linear-gradient(rgba(255, 255, 255, 0.1) 1px, transparent 1px),
-                                linear-gradient(90deg, rgba(255, 255, 255, 0.1) 1px, transparent 1px);
-                            background-size: 24px 24px;
-                        "
-                    />
-
-                    <!-- Glow behind progress -->
-                    <div
-                        class="pointer-events-none absolute -top-20 left-0 h-40 w-40 rounded-full bg-purple-500/20 blur-3xl transition-all duration-1000"
-                        :style="`left: ${Math.max(0, backtest.progress - 10)}%`"
-                    />
-
-                    <!-- Top row: percentage + status -->
-                    <div class="relative flex items-end justify-between">
-                        <div v-if="backtest.progress > 0" class="flex items-baseline gap-3">
-                            <span class="text-5xl font-black tracking-tight text-white tabular-nums">{{ backtest.progress }}</span>
-                            <span class="text-lg font-medium text-white/40">%</span>
-                        </div>
-                        <span v-else class="text-3xl font-black tracking-tight text-white">{{ sourceIsRunning ? 'Source first' : 'Starting' }}</span>
-                        <div class="flex items-center gap-2 pb-2">
-                            <span class="relative flex h-2.5 w-2.5">
-                                <span
-                                    class="absolute inline-flex h-full w-full rounded-full bg-purple-400 opacity-75 motion-safe:animate-ping"
-                                ></span>
-                                <span class="relative inline-flex h-2.5 w-2.5 rounded-full bg-purple-500"></span>
-                            </span>
-                            <span class="text-sm font-medium text-white/60">{{ progressStageLabel }}</span>
-                        </div>
-                    </div>
-
-                    <!-- Progress bar -->
-                    <div class="relative mt-6 h-3 w-full overflow-hidden rounded-full bg-white/10">
-                        <div
-                            v-if="backtest.progress === 0"
-                            class="absolute inset-0 bg-linear-to-r from-violet-500/30 via-purple-500 to-fuchsia-500/30 motion-safe:animate-pulse"
-                        />
-                        <!-- Track glow -->
-                        <div
-                            v-else
-                            class="absolute inset-y-0 left-0 rounded-full bg-linear-to-r from-violet-500 via-purple-500 to-fuchsia-500 transition-all duration-700 ease-out"
-                            :style="`width: ${backtest.progress}%`"
-                        />
-                        <!-- Shimmer overlay -->
-                        <div
-                            class="absolute inset-y-0 left-0 overflow-hidden rounded-full transition-all duration-700 ease-out"
-                            :style="`width: ${backtest.progress}%`"
-                        >
-                            <div
-                                class="absolute inset-0 -translate-x-full animate-shimmer bg-linear-to-r from-transparent via-white/25 to-transparent"
-                            />
-                        </div>
-                    </div>
-
-                    <!-- Bottom detail chips -->
-                    <div class="mt-5 flex flex-wrap items-center gap-3 text-xs">
-                        <span class="rounded-full bg-white/10 px-3 py-1 font-medium text-white/50">
-                            {{ progressStageLabel }}
-                        </span>
-                        <span v-if="sourceIsRunning" class="text-white/40">
-                            This backtest will start only after the source completes successfully. You can leave this page.
-                        </span>
-                        <span v-else-if="backtest.progress === 0" class="text-white/40">
-                            Your run will start when a worker is free. You can leave this page.
-                        </span>
-                        <span v-else-if="backtest.progress < 5" class="text-white/40"> Loading prices and strategy data </span>
-                        <span v-else-if="backtest.progress < 95" class="text-white/30"> {{ simulatedDaysPct }}% of trading days processed </span>
-                    </div>
-                </div>
-            </div>
+            <BacktestRunProgress
+                v-if="backtest.status === 'running'"
+                :key="backtest.id"
+                :progress="backtest.progress"
+                :source="cashCallBacktest"
+                class="mt-6"
+            />
 
             <!-- Failed state -->
             <div v-else-if="backtest.status === 'failed'" class="mt-6 space-y-4">
@@ -1238,6 +1160,7 @@ import InfoAlert from '@/Components/Alerts/InfoAlert.vue';
 import ResultMetric from '@/Pages/Backtests/partials/ResultMetric.vue';
 import BacktestMonthlyReturns from '@/Pages/Backtests/partials/BacktestMonthlyReturns.vue';
 import BacktestNavChart from '@/Pages/Backtests/partials/BacktestNavChart.vue';
+import BacktestRunProgress from '@/Pages/Backtests/partials/BacktestRunProgress.vue';
 import BacktestSettingsForm from '@/Pages/Backtests/partials/BacktestSettingsForm.vue';
 import BacktestStrategyRules from '@/Pages/Backtests/partials/BacktestStrategyRules.vue';
 import CashAllocationChart from '@/Pages/Backtests/partials/CashAllocationChart.vue';
@@ -1772,24 +1695,6 @@ function returnColor(value: number): string {
 }
 
 // --- Computed: derived metrics ---
-
-// Honest stages: 0% is the queue wait, 1-4% is preparation, 5-94% is the
-// trading-day simulation, 95-97% is metrics, and 98-99% is market cap allocation.
-const sourceIsRunning = computed(() => props.backtest.progress === 0 && props.cashCallBacktest?.status === 'running');
-
-const progressStageLabel = computed(() => {
-    const p = props.backtest.progress;
-    if (p === 0 && props.cashCallBacktest?.status === 'running') {
-        return `Running source backtest: ${props.cashCallBacktest.name} (${props.cashCallBacktest.progress}%)`;
-    }
-    if (p === 0) return 'Waiting for a worker';
-    if (p < 5) return 'Preparing market data';
-    if (p < 95) return 'Simulating trades';
-    if (p < 98) return 'Computing metrics';
-    return 'Calculating market cap allocation';
-});
-
-const simulatedDaysPct = computed(() => Math.max(0, Math.min(100, Math.round(((props.backtest.progress - 5) / 89) * 100))));
 
 const growthMultiplier = computed(() => {
     const capital = Number(props.backtest.initial_capital);
