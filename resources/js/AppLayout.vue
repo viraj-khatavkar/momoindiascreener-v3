@@ -247,6 +247,7 @@ import {
     KeyIcon,
     LifebuoyIcon,
     NewspaperIcon,
+    PresentationChartLineIcon,
     QuestionMarkCircleIcon,
     SunIcon,
     UserIcon,
@@ -347,6 +348,12 @@ const navigation = computed(() => {
             current: page.url.startsWith('/ama-recording'),
         },
         {
+            name: "Viraj's Portfolio Performance",
+            href: '/my-performance',
+            icon: PresentationChartLineIcon,
+            current: page.url.startsWith('/my-performance'),
+        },
+        {
             name: 'Support',
             href: '/support',
             icon: LifebuoyIcon,
@@ -361,8 +368,8 @@ const navigation = computed(() => {
     ];
 
     const user = page.props.auth.user;
-    const guestRestrictedItems = new Set(['Backtests', 'Rebalance Tracker', 'Profile', 'Change Password', 'Invoices', 'AMA Recording']);
-    const paidItems = new Set(['Backtests', 'Rebalance Tracker', 'AMA Recording']);
+    const paidItems = new Set(['Backtests', 'Rebalance Tracker', 'AMA Recording', "Viraj's Portfolio Performance"]);
+    const guestRestrictedItems = new Set([...paidItems, 'Profile', 'Change Password', 'Invoices']);
     const visibleItems = items.filter((item) => {
         if (!user) {
             return !guestRestrictedItems.has(item.name);

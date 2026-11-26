@@ -139,6 +139,10 @@ Route::middleware(['auth', 'verified'])->group(function () {
 
     // Tools that require a paid subscription.
     Route::middleware(VerifyIsPaid::class)->group(function () {
+        Route::inertia('/my-performance', 'MyPerformance', [
+            'spreadsheetUrl' => 'https://docs.google.com/spreadsheets/d/e/2PACX-1vTqHyY_pvnLDi-LPJCrK7uvXWF_Bl6MYN_vOEpArGw7OKbTf7F03_KRoCmla8lV_vNE5nVj8e6_Qm_9/pubhtml?gid=1561259004&single=true&widget=true&headers=false',
+        ])->name('my-performance');
+
         Route::get('/nse-index/{slug}/constituents/export', NseIndexConstituentsCsvController::class)->name('nse-index.constituents.export');
 
         Route::get('/screen-exports', [ScreenExportsController::class, 'index'])->name('screen-exports.index');
